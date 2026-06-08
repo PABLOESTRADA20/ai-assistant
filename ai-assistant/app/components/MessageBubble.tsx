@@ -1,0 +1,300 @@
+// app/components/MessageBubble.tsx
+'use client'
+
+import { useState, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Copy, Check, User, Sparkles, Volume2, VolumeX, Loader2 } from 'lucide-react'
+import { Message } from '@/app/types'
+import clsx from 'clsx'
+
+interface Props {
+  message: Message
+  isStreaming?: boolean
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-all duration-200"
+      style={{
+        color: copied ? '#4ade80' : 'var(--text-muted)',
+        background: copied ? 'rgba(74,222,128,0.1)' : 'var(--surface-3)',
+      }}
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? 'Copiado' : 'Copiar'}
+    </button>
+  )
+}
+
+function CodeBlock({ language, code }: { language: string; code: string }) {
+  return (
+    <div className="rounded-xl overflow-hidden my-3" style={{ border: '1px solid var(--border)' }}>
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ background: 'var(--surface-3)', borderBottom: '1px solid var(--border)' }}
+      >
+        <span className="text-xs font-medium" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+          {language || 'code'}
+        </span>
+        <CopyButton text={code} />
+      </div>
+      <SyntaxHighlighter
+        language={language || 'text'}
+        style={vscDarkPlus}
+        customStyle={{
+          margin: 0,
+          padding: '1rem',
+          fontSize: '0.8125rem',
+          lineHeight: '1.6',
+          background: '#0d0d14',
+        }}
+        codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  )
+}
+
+// Strip markdown for TTS (reads cleaner without symbols)
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, 'bloque de código.')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/\n{2,}/g, '. ')
+    .trim()
+    .slice(0, 800) // limit length for faster generation
+}
+
+// ── Kokoro TTS SpeakButton ──────────────────────────────────────────────────
+function SpeakButton({ text }: { text: string }) {
+  const [speaking, setSpeaking] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    setSpeaking(false)
+    setLoading(false)
+  }
+
+  const handleSpeak = async () => {
+    // If already playing, stop it
+    if (speaking || loading) {
+      stopAudio()
+      return
+    }
+
+    const clean = stripMarkdown(text)
+    
+    if (!clean || clean.trim().length === 0) {
+      setError('No hay contenido para reproducir')
+      setTimeout(() => setError(null), 3000)
+      return
+    }
+
+    setError(null)
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clean, voice: 'af_heart' }),
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Error al generar audio')
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+
+      audio.onplay = () => { setLoading(false); setSpeaking(true) }
+      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url) }
+      audio.onerror = () => { 
+        setSpeaking(false)
+        setLoading(false)
+        setError('Error al reproducir audio')
+        setTimeout(() => setError(null), 3000)
+      }
+
+      await audio.play()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
+      console.error('TTS error:', err)
+      setError(errorMessage)
+      setLoading(false)
+      setSpeaking(false)
+      setTimeout(() => setError(null), 5000)
+    }
+  }
+
+  const isActive = speaking || loading
+
+  return (
+    <>
+      <button
+        onClick={handleSpeak}
+        title={error ? error : (isActive ? 'Detener lectura' : 'Leer en voz alta')}
+        className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200"
+        style={{
+          color: error ? '#ef4444' : (isActive ? 'var(--accent)' : 'var(--text-muted)'),
+          background: error ? 'rgba(239,68,68,0.1)' : (isActive ? 'var(--accent-muted)' : 'transparent'),
+        }}
+      >
+        {loading
+          ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+          : error
+          ? <VolumeX size={11} />
+          : isActive
+          ? <VolumeX size={11} />
+          : <Volume2 size={11} />}
+        {loading ? 'Generando...' : error ? 'Error' : speaking ? 'Detener' : 'Escuchar'}
+      </button>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </>
+  )
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+export default function MessageBubble({ message, isStreaming }: Props) {
+  const isUser = message.role === 'user'
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyMessage = async () => {
+    await navigator.clipboard.writeText(message.content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div
+      className={clsx(
+        'flex gap-3 w-full animate-slide-up',
+        isUser ? 'flex-row-reverse' : 'flex-row'
+      )}
+    >
+      {/* Avatar */}
+      <div
+        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5"
+        style={{
+          background: isUser
+            ? 'linear-gradient(135deg, #7c6af7, #a78bfa)'
+            : 'linear-gradient(135deg, #1a1a2e, #2d2b52)',
+          border: isUser ? 'none' : '1px solid var(--border)',
+        }}
+      >
+        {isUser ? (
+          <User size={14} style={{ color: '#fff' }} />
+        ) : (
+          <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className={clsx('flex flex-col gap-1 max-w-[85%]', isUser && 'items-end')}>
+        <span className="text-xs font-medium px-1" style={{ color: 'var(--text-muted)' }}>
+          {isUser ? 'Tú' : 'ARIA'}
+          {message.model && !isUser && (
+            <span
+              className="ml-2 px-1.5 py-0.5 rounded text-xs"
+              style={{ background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: '0.65rem' }}
+            >
+              {message.model}
+            </span>
+          )}
+        </span>
+
+        <div
+          className={clsx('rounded-2xl px-4 py-3 text-sm leading-relaxed', isUser && 'rounded-tr-sm')}
+          style={
+            isUser
+              ? {
+                  background: 'linear-gradient(135deg, #7c6af7, #6d5ce6)',
+                  color: '#fff',
+                }
+              : {
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  borderTopLeftRadius: '4px',
+                }
+          }
+        >
+          {isUser ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+          ) : (
+            <div className="prose-chat">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ node, className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    const code = String(children).replace(/\n$/, '')
+                    const isBlock = code.includes('\n') || (match && match[1])
+
+                    if (isBlock) {
+                      return <CodeBlock language={match?.[1] || ''} code={code} />
+                    }
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    )
+                  },
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+              {isStreaming && <span className="cursor-blink" />}
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons for assistant messages */}
+        {!isUser && !isStreaming && (
+          <div className="flex items-center gap-1 ml-1">
+            <button
+              onClick={handleCopyMessage}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200"
+              style={{ color: copied ? '#4ade80' : 'var(--text-muted)' }}
+            >
+              {copied ? <Check size={11} /> : <Copy size={11} />}
+              {copied ? 'Copiado' : 'Copiar'}
+            </button>
+            <SpeakButton text={message.content} />
+          </div>
+        )}
+      </div>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}

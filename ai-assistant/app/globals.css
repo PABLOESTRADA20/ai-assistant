@@ -1,0 +1,196 @@
+/* app/globals.css */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface-0: #0a0a0f;
+  --surface-1: #111118;
+  --surface-2: #1a1a24;
+  --surface-3: #222230;
+  --accent: #7c6af7;
+  --accent-muted: rgba(124, 106, 247, 0.15);
+  --accent-glow: rgba(124, 106, 247, 0.4);
+  --text-primary: #f0effe;
+  --text-secondary: #a9a7c4;
+  --text-muted: #6b698a;
+  --border: rgba(255, 255, 255, 0.07);
+  --font-geist: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+.light {
+  --surface-0: #fafafa;
+  --surface-1: #f4f4f8;
+  --surface-2: #ebebf2;
+  --surface-3: #e0e0ea;
+  --accent: #5b4fcf;
+  --accent-muted: rgba(91, 79, 207, 0.1);
+  --accent-glow: rgba(91, 79, 207, 0.3);
+  --text-primary: #12111f;
+  --text-secondary: #4a4868;
+  --text-muted: #8c8aaa;
+  --border: rgba(0, 0, 0, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--font-geist);
+  background: var(--surface-0);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--surface-0);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Prose styles for markdown */
+.prose-chat {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.prose-chat p { margin-bottom: 0.75rem; }
+.prose-chat p:last-child { margin-bottom: 0; }
+
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+.prose-chat h1 { font-size: 1.3rem; }
+.prose-chat h2 { font-size: 1.15rem; }
+.prose-chat h3 { font-size: 1rem; }
+
+.prose-chat ul,
+.prose-chat ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.prose-chat li { margin-bottom: 0.25rem; }
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+
+.prose-chat code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: var(--surface-3);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: #c4b5fd;
+}
+
+.prose-chat pre {
+  margin: 0.75rem 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.prose-chat pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 0.84em;
+}
+
+.prose-chat blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  margin: 0.75rem 0;
+  font-style: italic;
+}
+
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.prose-chat th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.prose-chat a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0;
+}
+
+.prose-chat strong { font-weight: 600; }
+
+/* Custom animations */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+  border-radius: 1px;
+}
+
+/* Noise texture overlay */
+.noise::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  z-index: 9999;
+}
+
+/* Glow effect for accent elements */
+.glow-accent {
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+/* Sidebar transition */
+.sidebar-enter { transform: translateX(-100%); }
+.sidebar-enter-active { transform: translateX(0); transition: transform 0.3s ease; }
