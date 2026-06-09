@@ -1,15 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ['mongoose', 'kokoro-js', 'onnxruntime-node', '@huggingface/transformers'],
+  output: 'export',
+  images: { unoptimized: true },
+  trailingSlash: true,
+  skipTrailingSlashRedirect: true,
   webpack: (config, { isServer }) => {
-    // Ignorar archivos .node (binarios nativos de módulos)
-    config.module.rules.push({
-      test: /\.node$/,
-      use: [{ loader: 'file-loader' }],
-    })
-
-    // Para el bundle del cliente, no incluir módulos de Node.js
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -22,12 +18,8 @@ const nextConfig = {
         'canvas': false,
       }
     }
-
     return config
   },
 }
 
 module.exports = nextConfig
-
-const { initOpenNextCloudflareForDev } = require('@opennextjs/cloudflare')
-initOpenNextCloudflareForDev()

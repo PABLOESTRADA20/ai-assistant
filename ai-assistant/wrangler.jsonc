@@ -1,27 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
   "name": "ai-assistant",
+  "pages_build_output_dir": "out",
   "compatibility_date": "2024-12-30",
   "compatibility_flags": [
-    "nodejs_compat",
-    "global_fetch_strictly_public"
-  ],
-  "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS"
-  },
-  "services": [
-    {
-      "binding": "WORKER_SELF_REFERENCE",
-      "service": "ai-assistant"
-    }
-  ],
-  "alias": {
-    "kokoro-js": "./.wrangler-shims/kokoro-shim.js",
-    "@huggingface/transformers": "./.wrangler-shims/shim.js",
-    "onnxruntime-node": "./.wrangler-shims/shim.js",
-    "onnxruntime-web": "./.wrangler-shims/shim.js",
-    "sharp": "./.wrangler-shims/shim.js"
-  }
+    "nodejs_compat"
+  ]
 }
