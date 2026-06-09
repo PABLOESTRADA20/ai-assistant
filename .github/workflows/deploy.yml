@@ -5,6 +5,7 @@ on:
     branches: [main]
 
   workflow_dispatch:
+  # Trigger: bump CI node to 22 for wrangler compat
 
 jobs:
   deploy:
