@@ -59,7 +59,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           padding: '1rem',
           fontSize: '0.8125rem',
           lineHeight: '1.6',
-          background: '#0d0d14',
+          background: 'var(--surface-0)',
         }}
         codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
       >

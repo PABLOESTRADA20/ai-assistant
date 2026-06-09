@@ -48,7 +48,7 @@ export default function Sidebar({
       {isOpen && (
         <div
           className="fixed inset-0 z-20 lg:hidden"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
+          style={{ background: theme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)' }}
           onClick={onClose}
         />
       )}
@@ -86,14 +86,14 @@ export default function Sidebar({
           <div className="flex items-center gap-1">
             <button
               onClick={onToggleTheme}
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-70"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-70 cursor-pointer"
               style={{ color: 'var(--text-muted)' }}
             >
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </button>
             <button
               onClick={onClose}
-              className="lg:hidden w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-70"
+              className="lg:hidden w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-70 cursor-pointer"
               style={{ color: 'var(--text-muted)' }}
             >
               <X size={14} />
@@ -105,7 +105,7 @@ export default function Sidebar({
         <div className="p-3">
           <button
             onClick={onNew}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-80 active:scale-98"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-80 active:opacity-80"
             style={{
               background: 'var(--accent-muted)',
               color: 'var(--accent)',

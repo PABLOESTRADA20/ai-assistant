@@ -50,7 +50,7 @@ export default function ModelSelector({ value, onChange }: Props) {
           style={{
             background: 'var(--surface-2)',
             border: '1px solid var(--border)',
-            boxShadow: '0 -8px 32px rgba(0,0,0,0.4)',
+            boxShadow: '0 -8px 32px rgba(0,0,0,0.25)',
           }}
         >
           {AVAILABLE_MODELS.map((model: AIModel) => (

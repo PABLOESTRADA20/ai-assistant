@@ -31,8 +31,8 @@
   --accent-glow: rgba(91, 79, 207, 0.3);
   --text-primary: #12111f;
   --text-secondary: #4a4868;
-  --text-muted: #8c8aaa;
-  --border: rgba(0, 0, 0, 0.08);
+  --text-muted: #6b698a;
+  --border: rgba(0, 0, 0, 0.15);
 }
 
 * {
@@ -156,6 +156,28 @@ body {
 }
 
 .prose-chat strong { font-weight: 600; }
+
+/* Focus visible for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* Custom animations */
 @keyframes blink {

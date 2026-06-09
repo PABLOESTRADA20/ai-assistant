@@ -56,7 +56,7 @@ export default function WelcomeScreen({ onPrompt }: Props) {
 
   return (
     <div
-      className="flex flex-col items-center justify-center h-full px-4 py-8 max-w-2xl mx-auto transition-all duration-700"
+      className="flex flex-col items-center justify-center h-full px-4 py-8 max-w-3xl mx-auto transition-all duration-700"
       style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(12px)' }}
     >
       <div className="mb-6 flex flex-col items-center">
@@ -118,7 +118,7 @@ export default function WelcomeScreen({ onPrompt }: Props) {
 
         <button
           onClick={handleToggle}
-          className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-200 hover:opacity-80"
+          className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-200 hover:opacity-80 cursor-pointer"
           style={{
             background: isActive ? 'var(--accent-muted)' : 'var(--surface-2)',
             border: `1px solid ${isActive ? 'rgba(124,106,247,0.4)' : 'var(--border)'}`,
@@ -145,10 +145,10 @@ export default function WelcomeScreen({ onPrompt }: Props) {
             <button
               key={i}
               onClick={() => onPrompt(s.text)}
-              className="text-left p-4 rounded-2xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+              className="text-left p-4 rounded-2xl transition-all duration-200 cursor-pointer group hover:shadow-[0_4px_16px_rgba(124,106,247,0.15)] active:opacity-80"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(124,106,247,0.4)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(124,106,247,0.15)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(124,106,247,0.4)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
             >
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent-muted)' }}>

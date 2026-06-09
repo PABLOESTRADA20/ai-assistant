@@ -132,7 +132,7 @@ export default function ChatInput({ value, onChange, onSubmit, onStop, isLoading
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={isListening ? '🎤 Escuchando...' : 'Pregunta cualquier cosa… (Enter para enviar, Shift+Enter para nueva línea)'}
+        placeholder={isListening ? 'Escuchando...' : 'Pregunta cualquier cosa… (Enter para enviar, Shift+Enter para nueva línea)'}
         disabled={disabled}
         rows={1}
         className="flex-1 resize-none bg-transparent outline-none text-sm leading-relaxed py-1"

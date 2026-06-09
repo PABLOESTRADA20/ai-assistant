@@ -299,7 +299,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden w-8 h-8 flex items-center justify-center rounded-xl hover:opacity-70 transition"
+              className="lg:hidden w-8 h-8 flex items-center justify-center rounded-xl hover:opacity-70 transition cursor-pointer"
               style={{ color: 'var(--text-secondary)' }}
             >
               <Menu size={16} />
