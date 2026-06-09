@@ -26,6 +26,12 @@ yarn-error.log*
 .env*.local
 .env
 
+# opennext
+.open-next
+
+# wrangler
+.wrangler/
+
 # vercel
 .vercel
 
