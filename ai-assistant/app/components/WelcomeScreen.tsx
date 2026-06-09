@@ -1,8 +1,8 @@
 // app/components/WelcomeScreen.tsx
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { Sparkles, Code2, Brain, Zap, Volume2, VolumeX, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Sparkles, Code2, Brain, Zap, Volume2, VolumeX } from 'lucide-react'
 import { useTTS } from '@/app/hooks/useTTS'
 
 interface Props {
@@ -36,36 +36,23 @@ const WELCOME_TEXT =
   'Hello! I am ARIA, your advanced artificial intelligence assistant. I am here to help you with code, technical analysis, complex questions and much more. How can I help you today?'
 
 export default function WelcomeScreen({ onPrompt }: Props) {
-  const { speak, stop, speaking, loading } = useTTS()
-  const [hasSpoken, setHasSpoken] = useState(false)
+  const { speak, stop, speaking } = useTTS()
   const [visible, setVisible] = useState(false)
-  const hasMounted = useRef(false)
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 80)
     return () => clearTimeout(t)
   }, [])
 
-  useEffect(() => {
-    if (hasMounted.current) return
-    hasMounted.current = true
-    const t = setTimeout(async () => {
-      await speak(WELCOME_TEXT)
-      setHasSpoken(true)
-    }, 800)
-    return () => clearTimeout(t)
-  }, [speak])
-
-  const handleToggle = async () => {
-    if (speaking || loading) {
+  const handleToggle = () => {
+    if (speaking) {
       stop()
     } else {
-      await speak(WELCOME_TEXT)
-      setHasSpoken(true)
+      speak(WELCOME_TEXT)
     }
   }
 
-  const isActive = speaking || loading
+  const isActive = speaking
 
   return (
     <div
@@ -108,12 +95,8 @@ export default function WelcomeScreen({ onPrompt }: Props) {
                 fontWeight: 600,
               }}
             >
-              {loading ? (
-                <Loader2 size={8} style={{ animation: 'spin 1s linear infinite' }} />
-              ) : (
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1s infinite' }} />
-              )}
-              {loading ? 'cargando' : 'hablando'}
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1s infinite' }} />
+              hablando
             </div>
           )}
         </div>
@@ -142,8 +125,8 @@ export default function WelcomeScreen({ onPrompt }: Props) {
             color: isActive ? 'var(--accent)' : 'var(--text-muted)',
           }}
         >
-          {loading ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : isActive ? <VolumeX size={11} /> : <Volume2 size={11} />}
-          {loading ? 'Generando voz...' : speaking ? 'Silenciar' : hasSpoken ? 'Repetir' : 'Escuchar bienvenida'}
+          {isActive ? <VolumeX size={11} /> : <Volume2 size={11} />}
+          {speaking ? 'Silenciar' : 'Escuchar bienvenida'}
         </button>
       </div>
 
@@ -187,7 +170,6 @@ export default function WelcomeScreen({ onPrompt }: Props) {
       <style>{`
         @keyframes soundwave { 0%, 100% { transform: scaleY(1); opacity: 0.7; } 50% { transform: scaleY(2.2); opacity: 1; } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
     </div>
   )

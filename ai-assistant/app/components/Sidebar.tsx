@@ -185,7 +185,7 @@ export default function Sidebar({
           style={{ borderTop: '1px solid var(--border)' }}
         >
           <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-            ARIA v1.0 · Powered by OpenAI
+            ARIA v1.0 · Powered by Groq
           </p>
         </div>
       </aside>

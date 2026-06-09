@@ -1,12 +1,12 @@
 // app/components/MessageBubble.tsx
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Copy, Check, User, Sparkles, Volume2, VolumeX, Loader2 } from 'lucide-react'
+import { Copy, Check, User, Sparkles, Volume2, VolumeX } from 'lucide-react'
 import { Message } from '@/app/types'
 import clsx from 'clsx'
 
@@ -85,102 +85,46 @@ function stripMarkdown(text: string): string {
     .slice(0, 800) // limit length for faster generation
 }
 
-// ── Kokoro TTS SpeakButton ──────────────────────────────────────────────────
+// ── Web Speech API TTS ──────────────────────────────────────────────────────
 function SpeakButton({ text }: { text: string }) {
   const [speaking, setSpeaking] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const speechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
 
-  const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-      audioRef.current = null
-    }
+  const stop = useCallback(() => {
+    window.speechSynthesis.cancel()
     setSpeaking(false)
-    setLoading(false)
-  }
+  }, [])
 
-  const handleSpeak = async () => {
-    // If already playing, stop it
-    if (speaking || loading) {
-      stopAudio()
-      return
-    }
-
+  const handleSpeak = useCallback(() => {
+    if (speaking) { stop(); return }
     const clean = stripMarkdown(text)
-    
-    if (!clean || clean.trim().length === 0) {
-      setError('No hay contenido para reproducir')
-      setTimeout(() => setError(null), 3000)
-      return
-    }
+    if (!clean) return
+    const utterance = new SpeechSynthesisUtterance(clean)
+    utterance.lang = 'es-ES'
+    utterance.rate = 1.1
+    utterance.onend = () => setSpeaking(false)
+    utterance.onerror = () => setSpeaking(false)
+    utteranceRef.current = utterance
+    window.speechSynthesis.speak(utterance)
+    setSpeaking(true)
+  }, [text, speaking, stop])
 
-    setError(null)
-    setLoading(true)
-
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: clean, voice: 'af_heart' }),
-      })
-
-      if (!res.ok) {
-        const errorData = await res.json()
-        throw new Error(errorData.error || 'Error al generar audio')
-      }
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-
-      audio.onplay = () => { setLoading(false); setSpeaking(true) }
-      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url) }
-      audio.onerror = () => { 
-        setSpeaking(false)
-        setLoading(false)
-        setError('Error al reproducir audio')
-        setTimeout(() => setError(null), 3000)
-      }
-
-      await audio.play()
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
-      console.error('TTS error:', err)
-      setError(errorMessage)
-      setLoading(false)
-      setSpeaking(false)
-      setTimeout(() => setError(null), 5000)
-    }
-  }
-
-  const isActive = speaking || loading
+  if (!speechSupported) return null
 
   return (
-    <>
-      <button
-        onClick={handleSpeak}
-        title={error ? error : (isActive ? 'Detener lectura' : 'Leer en voz alta')}
-        className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200"
-        style={{
-          color: error ? '#ef4444' : (isActive ? 'var(--accent)' : 'var(--text-muted)'),
-          background: error ? 'rgba(239,68,68,0.1)' : (isActive ? 'var(--accent-muted)' : 'transparent'),
-        }}
-      >
-        {loading
-          ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
-          : error
-          ? <VolumeX size={11} />
-          : isActive
-          ? <VolumeX size={11} />
-          : <Volume2 size={11} />}
-        {loading ? 'Generando...' : error ? 'Error' : speaking ? 'Detener' : 'Escuchar'}
-      </button>
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </>
+    <button
+      onClick={handleSpeak}
+      title={speaking ? 'Detener lectura' : 'Leer en voz alta'}
+      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200"
+      style={{
+        color: speaking ? 'var(--accent)' : 'var(--text-muted)',
+        background: speaking ? 'var(--accent-muted)' : 'transparent',
+      }}
+    >
+      {speaking ? <VolumeX size={11} /> : <Volume2 size={11} />}
+      {speaking ? 'Detener' : 'Escuchar'}
+    </button>
   )
 }
 // ────────────────────────────────────────────────────────────────────────────
@@ -294,7 +238,6 @@ export default function MessageBubble({ message, isStreaming }: Props) {
         )}
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

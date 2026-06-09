@@ -183,7 +183,7 @@ export default function Home() {
       const errorMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
-        content: `⚠️ **Error**: ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu OPENAI_API_KEY en el archivo .env.local'}`,
+        content: `⚠️ **Error**: ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu GROQ_API_KEY en el archivo .env.local'}`,
         createdAt: new Date(),
       }
 

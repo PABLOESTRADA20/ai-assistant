@@ -4,7 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'ARIA — AI Assistant',
-  description: 'Advanced AI assistant powered by GPT-4',
+  description: 'Advanced AI assistant powered by Groq',
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>",
   },
