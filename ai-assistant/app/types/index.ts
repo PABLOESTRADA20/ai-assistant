@@ -16,7 +16,14 @@ export interface Conversation {
   updatedAt: Date
 }
 
-export const AVAILABLE_MODELS = [
+export interface AIModel {
+  id: string
+  name: string
+  description: string
+  badge: string
+}
+
+export const AVAILABLE_MODELS: AIModel[] = [
   {
     id: 'llama-3.3-70b-versatile',
     name: 'Llama 3.3 70B',

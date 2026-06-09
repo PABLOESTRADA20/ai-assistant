@@ -1,5 +1,5 @@
 // app/lib/models/Conversation.ts
-import mongoose, { Schema, Document } from 'mongoose'
+import mongoose, { Schema, type Model } from 'mongoose'
 
 export interface IMessage {
   id: string
@@ -9,7 +9,7 @@ export interface IMessage {
   model?: string
 }
 
-export interface IConversation extends Document {
+export interface IConversation {
   id: string
   title: string
   messages: IMessage[]

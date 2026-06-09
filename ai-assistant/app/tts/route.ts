@@ -19,7 +19,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { KokoroTTS } = await import('kokoro-js');
+    // Dynamic import - kokoro-js solo funciona en Node.js, no en Workers
+    let KokoroTTS: any;
+    try {
+      KokoroTTS = (await import(/* @vite-ignore */ 'kokoro-js')).KokoroTTS;
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'TTS no disponible en esta plataforma' }),
+        { status: 501, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     const tts = await KokoroTTS.from_pretrained(
       'onnx-community/Kokoro-82M-v1.0-ONNX',
@@ -50,24 +59,15 @@ export async function POST(req: NextRequest) {
 
     let errorMessage = 'Error al generar el audio';
 
-    // Mensaje más útil cuando falla la voz
     if (error?.message?.toLowerCase().includes('voice') || error?.message?.includes('not found')) {
-      errorMessage = `Voz "${voice}" no encontrada. 
-
-Voces disponibles:
-• af_heart (la mejor calidad - recomendada)
-• af_bella (clara y natural)
-• af_sky (suave)
-• af_nicole (profesional)
-• bf_emma (acento británico)
-• bm_george (voz masculina)`;
+      errorMessage = `Voz "${voice}" no encontrada.`;
     }
 
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      { 
-        status: 500, 
-        headers: { 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
       }
     );
   }

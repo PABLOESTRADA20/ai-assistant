@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    serverComponentsExternalPackages: ['mongoose', 'kokoro-js', 'onnxruntime-node'],
-  },
+  serverExternalPackages: ['mongoose', 'kokoro-js', 'onnxruntime-node', '@huggingface/transformers'],
   webpack: (config, { isServer }) => {
     // Ignorar archivos .node (binarios nativos de módulos)
     config.module.rules.push({
