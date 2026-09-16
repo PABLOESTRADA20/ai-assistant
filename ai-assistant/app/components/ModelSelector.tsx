@@ -46,7 +46,7 @@ export default function ModelSelector({ value, onChange }: Props) {
 
       {open && (
         <div
-          className="absolute bottom-full mb-2 left-0 w-64 rounded-2xl overflow-hidden z-50 animate-fade-in"
+          className="absolute top-full mt-2 left-0 w-64 rounded-2xl overflow-hidden z-50 animate-fade-in"
           style={{
             background: 'var(--surface-2)',
             border: '1px solid var(--border)',

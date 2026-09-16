@@ -33,7 +33,7 @@ const suggestions = [
 ]
 
 const WELCOME_TEXT =
-  'Hello! I am ARIA, your advanced artificial intelligence assistant. I am here to help you with code, technical analysis, complex questions and much more. How can I help you today?'
+  'Hola, soy ARIA, tu asistente de inteligencia artificial. Estoy aquí para ayudarte con código, análisis técnico, preguntas complejas y mucho más. ¿En qué puedo ayudarte hoy?'
 
 export default function WelcomeScreen({ onPrompt }: Props) {
   const { speak, stop, speaking } = useTTS()

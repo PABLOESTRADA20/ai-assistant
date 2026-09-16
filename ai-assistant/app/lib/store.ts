@@ -1,43 +1,65 @@
-// app/lib/store.ts
 import { Conversation, Message } from '@/app/types'
-import { v4 as uuidv4 } from 'uuid'
 
-const STORAGE_KEY = 'aria-conversations'
-
-export function getConversations(): Conversation[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return parsed.map((c: Conversation) => ({
-      ...c,
-      createdAt: new Date(c.createdAt),
-      updatedAt: new Date(c.updatedAt),
-      messages: c.messages.map((m: Message) => ({
-        ...m,
-        createdAt: new Date(m.createdAt),
-      })),
-    }))
-  } catch {
-    return []
-  }
+export async function getConversations(): Promise<Conversation[]> {
+  const res = await fetch('/api/conversations')
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.map((c: Conversation) => ({
+    ...c,
+    createdAt: new Date(c.createdAt),
+    updatedAt: new Date(c.updatedAt),
+    messages: c.messages.map((m: Message) => ({
+      ...m,
+      createdAt: new Date(m.createdAt),
+    })),
+  }))
 }
 
-export function saveConversations(conversations: Conversation[]) {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations))
+export async function saveConversations(_conversations: Conversation[]) {
+  // Not needed — API handles persistence
 }
 
-export function createConversation(model: string): Conversation {
+export async function createConversation(model: string): Promise<Conversation> {
+  const res = await fetch('/api/conversations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+  if (!res.ok) throw new Error('Error al crear conversación')
+  const data = await res.json()
   return {
-    id: uuidv4(),
-    title: 'Nueva conversación',
-    messages: [],
-    model,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    ...data,
+    createdAt: new Date(data.createdAt),
+    updatedAt: new Date(data.updatedAt),
+    messages: (data.messages || []).map((m: Message) => ({
+      ...m,
+      createdAt: new Date(m.createdAt),
+    })),
   }
+}
+
+export async function updateConversation(id: string, data: Partial<{ title: string; messages: Message[] }>): Promise<Conversation> {
+  const res = await fetch(`/api/conversations/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Error al actualizar conversación')
+  const updated = await res.json()
+  return {
+    ...updated,
+    createdAt: new Date(updated.createdAt),
+    updatedAt: new Date(updated.updatedAt),
+    messages: (updated.messages || []).map((m: Message) => ({
+      ...m,
+      createdAt: new Date(m.createdAt),
+    })),
+  }
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Error al eliminar conversación')
 }
 
 export function generateTitle(content: string): string {

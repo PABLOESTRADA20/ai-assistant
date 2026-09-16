@@ -1,8 +1,7 @@
-// app/components/Sidebar.tsx
 'use client'
 
 import { useState } from 'react'
-import { Plus, MessageSquare, Trash2, Sparkles, X, Sun, Moon } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, Sparkles, X, Sun, Moon, Search } from 'lucide-react'
 import { Conversation } from '@/app/types'
 import clsx from 'clsx'
 
@@ -41,10 +40,14 @@ export default function Sidebar({
   onToggleTheme,
 }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  const filtered = conversations
+    .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
   return (
     <>
-      {/* Backdrop for mobile */}
       {isOpen && (
         <div
           className="fixed inset-0 z-20 lg:hidden"
@@ -53,7 +56,6 @@ export default function Sidebar({
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={clsx(
           'fixed lg:relative top-0 left-0 h-full z-30 flex flex-col transition-transform duration-300',
@@ -66,7 +68,6 @@ export default function Sidebar({
           flexShrink: 0,
         }}
       >
-        {/* Header */}
         <div
           className="flex items-center justify-between p-4"
           style={{ borderBottom: '1px solid var(--border)' }}
@@ -101,7 +102,6 @@ export default function Sidebar({
           </div>
         </div>
 
-        {/* New chat button */}
         <div className="p-3">
           <button
             onClick={onNew}
@@ -117,69 +117,81 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Conversations list */}
+        {/* Search */}
+        <div className="px-3 pb-2">
+          <div
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+          >
+            <Search size={12} style={{ color: 'var(--text-muted)' }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar conversaciones..."
+              className="bg-transparent outline-none flex-1 text-xs"
+              style={{ color: 'var(--text-primary)' }}
+            />
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-2 pb-4">
-          {conversations.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="text-center py-8 px-4">
               <MessageSquare size={24} style={{ color: 'var(--text-muted)', margin: '0 auto 8px' }} />
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Sin conversaciones aún
+                {search ? 'Sin resultados' : 'Sin conversaciones aún'}
               </p>
             </div>
           ) : (
             <div className="space-y-0.5">
-              {[...conversations]
-                .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-                .map((conv) => (
-                  <div
-                    key={conv.id}
-                    className="relative group"
-                    onMouseEnter={() => setHoveredId(conv.id)}
-                    onMouseLeave={() => setHoveredId(null)}
+              {filtered.map((conv) => (
+                <div
+                  key={conv.id}
+                  className="relative group"
+                  onMouseEnter={() => setHoveredId(conv.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                >
+                  <button
+                    onClick={() => onSelect(conv.id)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl transition-all duration-150"
+                    style={{
+                      background:
+                        activeId === conv.id
+                          ? 'var(--accent-muted)'
+                          : hoveredId === conv.id
+                          ? 'var(--surface-2)'
+                          : 'transparent',
+                      border: activeId === conv.id
+                        ? '1px solid rgba(124,106,247,0.2)'
+                        : '1px solid transparent',
+                    }}
                   >
-                    <button
-                      onClick={() => onSelect(conv.id)}
-                      className="w-full text-left px-3 py-2.5 rounded-xl transition-all duration-150"
-                      style={{
-                        background:
-                          activeId === conv.id
-                            ? 'var(--accent-muted)'
-                            : hoveredId === conv.id
-                            ? 'var(--surface-2)'
-                            : 'transparent',
-                        border: activeId === conv.id
-                          ? '1px solid rgba(124,106,247,0.2)'
-                          : '1px solid transparent',
-                      }}
+                    <div
+                      className="text-xs font-medium truncate pr-6"
+                      style={{ color: activeId === conv.id ? 'var(--accent)' : 'var(--text-primary)' }}
                     >
-                      <div
-                        className="text-xs font-medium truncate pr-6"
-                        style={{ color: activeId === conv.id ? 'var(--accent)' : 'var(--text-primary)' }}
-                      >
-                        {conv.title}
-                      </div>
-                      <div className="text-xs mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-                        <span>{conv.messages.length} mensajes</span>
-                        <span>·</span>
-                        <span>{timeAgo(conv.updatedAt)}</span>
-                      </div>
-                    </button>
+                      {conv.title}
+                    </div>
+                    <div className="text-xs mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                      <span>{conv.messages.length} mensajes</span>
+                      <span>·</span>
+                      <span>{timeAgo(conv.updatedAt)}</span>
+                    </div>
+                  </button>
 
-                    {/* Delete button */}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(conv.id) }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-500/20"
-                      style={{ color: '#f87171' }}
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(conv.id) }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-500/20"
+                    style={{ color: '#f87171' }}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div
           className="p-4"
           style={{ borderTop: '1px solid var(--border)' }}

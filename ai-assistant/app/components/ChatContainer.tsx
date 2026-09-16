@@ -5,12 +5,13 @@ import { useRef, useEffect } from 'react'
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
 import WelcomeScreen from './WelcomeScreen'
-import { Message } from '@/app/types'
+import { Message, ToolInvocation } from '@/app/types'
 
 interface Props {
   messages: Message[]
   isLoading: boolean
   streamingContent: string
+  streamingTools: ToolInvocation[]
   currentModel: string
   onSuggestion: (text: string) => void
 }
@@ -19,6 +20,7 @@ export default function ChatContainer({
   messages,
   isLoading,
   streamingContent,
+  streamingTools,
   currentModel,
   onSuggestion,
 }: Props) {
@@ -36,13 +38,14 @@ export default function ChatContainer({
 
   // Build display messages — inject streaming message if active
   const streamingMessage: Message | null =
-    streamingContent
+    streamingContent || streamingTools.length > 0
       ? {
           id: '__streaming__',
           role: 'assistant',
           content: streamingContent,
           createdAt: new Date(),
           model: currentModel,
+          tools: streamingTools.length > 0 ? streamingTools : undefined,
         }
       : null
 

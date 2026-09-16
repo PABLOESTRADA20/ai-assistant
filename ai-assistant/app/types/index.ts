@@ -5,11 +5,20 @@ export interface Message {
   content: string
   createdAt: Date
   model?: string
+  tools?: ToolInvocation[]
+}
+
+export interface ToolInvocation {
+  name: string
+  args: Record<string, unknown>
+  result?: string
+  status: 'running' | 'done' | 'error'
 }
 
 export interface Conversation {
   id: string
   title: string
+  summary?: string | null
   messages: Message[]
   model: string
   createdAt: Date

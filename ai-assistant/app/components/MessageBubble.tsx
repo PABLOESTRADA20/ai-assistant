@@ -1,13 +1,15 @@
 // app/components/MessageBubble.tsx
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Copy, Check, User, Sparkles, Volume2, VolumeX } from 'lucide-react'
 import { Message } from '@/app/types'
+import { useTTS } from '@/app/hooks/useTTS'
+import ToolCard from './ToolCard'
 import clsx from 'clsx'
 
 interface Props {
@@ -69,46 +71,15 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   )
 }
 
-// Strip markdown for TTS (reads cleaner without symbols)
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, 'bloque de código.')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/#{1,6}\s+/g, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^[-*+]\s+/gm, '')
-    .replace(/^\d+\.\s+/gm, '')
-    .replace(/\n{2,}/g, '. ')
-    .trim()
-    .slice(0, 800) // limit length for faster generation
-}
-
 // ── Web Speech API TTS ──────────────────────────────────────────────────────
 function SpeakButton({ text }: { text: string }) {
-  const [speaking, setSpeaking] = useState(false)
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const { speak, stop, speaking } = useTTS()
   const speechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
 
-  const stop = useCallback(() => {
-    window.speechSynthesis.cancel()
-    setSpeaking(false)
-  }, [])
-
-  const handleSpeak = useCallback(() => {
+  const handleSpeak = () => {
     if (speaking) { stop(); return }
-    const clean = stripMarkdown(text)
-    if (!clean) return
-    const utterance = new SpeechSynthesisUtterance(clean)
-    utterance.lang = 'es-ES'
-    utterance.rate = 1.1
-    utterance.onend = () => setSpeaking(false)
-    utterance.onerror = () => setSpeaking(false)
-    utteranceRef.current = utterance
-    window.speechSynthesis.speak(utterance)
-    setSpeaking(true)
-  }, [text, speaking, stop])
+    speak(text)
+  }
 
   if (!speechSupported) return null
 
@@ -176,6 +147,14 @@ export default function MessageBubble({ message, isStreaming }: Props) {
             </span>
           )}
         </span>
+
+        {!isUser && message.tools && message.tools.length > 0 && (
+          <div className={clsx('flex flex-col gap-1.5 w-full max-w-md', isUser && 'items-end')}>
+            {message.tools.map((tool, i) => (
+              <ToolCard key={`${tool.name}-${i}`} tool={tool} />
+            ))}
+          </div>
+        )}
 
         <div
           className={clsx('rounded-2xl px-4 py-3 text-sm leading-relaxed', isUser && 'rounded-tr-sm')}
