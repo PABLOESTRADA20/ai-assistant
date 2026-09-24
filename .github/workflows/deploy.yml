@@ -29,6 +29,7 @@ jobs:
       - name: Install dependencies
         env:
           NODE_ENV: development
+          PRISMA_SKIP_POSTINSTALL_GENERATE: 1
         run: npm ci
 
       - name: Apply database migrations (Neon)
@@ -37,15 +38,10 @@ jobs:
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
         run: npx prisma migrate deploy
 
-      - name: Generate Prisma client
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
-        run: npx prisma generate 2>&1; echo "---LS---"; ls -la app/generated/prisma/ 2>&1 || true; echo "---PKG---"; cat app/generated/prisma/package.json 2>&1 || true; echo '{"name":"prisma-client","main":"index.js","types":"index.d.ts"}' > app/generated/prisma/package.json
-
       - name: Build (OpenNext for Cloudflare)
         env:
           NODE_ENV: production
-        run: ls -la app/generated/prisma/ 2>&1 || true; npx opennextjs-cloudflare build
+        run: ls -la app/generated/prisma/index.js 2>&1 || echo "index.js MISSING"; ls -la app/generated/prisma/ 2>&1 || true; npx opennextjs-cloudflare build
 
       - name: Deploy to Workers
         env:

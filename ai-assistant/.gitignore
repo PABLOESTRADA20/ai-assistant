@@ -40,5 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# generated prisma client
-/app/generated/prisma
+# prisma binary engines (not needed in browser/workerd)
+/app/generated/prisma/*.node
+/app/generated/prisma/libquery_engine-*.so.node
+/app/generated/prisma/query_engine-windows.dll.node
