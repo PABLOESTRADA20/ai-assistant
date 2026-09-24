@@ -40,7 +40,7 @@ jobs:
       - name: Generate Prisma client
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
-        run: npx prisma generate
+        run: npx prisma generate && echo '{"name":"prisma-client","main":"index.js","types":"index.d.ts"}' > app/generated/prisma/package.json
 
       - name: Build (OpenNext for Cloudflare)
         env:

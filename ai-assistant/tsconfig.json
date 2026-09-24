@@ -30,8 +30,10 @@
   },
   "include": [
     "next-env.d.ts",
+    "app/generated/prisma",
     "**/*.ts",
     "**/*.tsx",
+    "**/*.js",
     ".next/types/**/*.ts"
   ],
   "exclude": [
