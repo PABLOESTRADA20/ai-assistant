@@ -40,6 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# generated prisma client (commit JS/TS, ignore binary engines)
-/app/generated/prisma/*.node
-/app/generated/prisma/libquery_engine-*.so.node
+# generated prisma client
+/app/generated/prisma
