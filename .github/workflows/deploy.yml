@@ -42,6 +42,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
         run: npx prisma generate
 
+      - name: Verify generated client exists
+        run: ls -la app/generated/prisma && cat app/generated/prisma/package.json | head -c 300
+
       - name: Build (OpenNext for Cloudflare)
         env:
           NODE_ENV: production
