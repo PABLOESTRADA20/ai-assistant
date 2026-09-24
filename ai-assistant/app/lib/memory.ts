@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { Prisma } from '@/app/generated/prisma'
+import { Prisma } from './generated/prisma/index.js'
 import { prisma } from './prisma'
 import { embed } from './llm-embed'
 

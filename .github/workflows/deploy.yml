@@ -40,12 +40,12 @@ jobs:
       - name: Generate Prisma client
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
-        run: npx prisma generate && echo '{"name":"prisma-client","main":"index.js","types":"index.d.ts"}' > app/generated/prisma/package.json
+        run: npx prisma generate 2>&1; echo "---LS---"; ls -la app/generated/prisma/ 2>&1 || true; echo "---PKG---"; cat app/generated/prisma/package.json 2>&1 || true; echo '{"name":"prisma-client","main":"index.js","types":"index.d.ts"}' > app/generated/prisma/package.json
 
       - name: Build (OpenNext for Cloudflare)
         env:
           NODE_ENV: production
-        run: npx opennextjs-cloudflare build
+        run: ls -la app/generated/prisma/ 2>&1 || true; npx opennextjs-cloudflare build
 
       - name: Deploy to Workers
         env:
