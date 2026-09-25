@@ -61,8 +61,11 @@ jobs:
           echo "${{ secrets.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY
 
       - name: Set TAVILY_API_KEY secret
-        if: ${{ secrets.TAVILY_API_KEY != '' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: echo "${{ secrets.TAVILY_API_KEY }}" | npx wrangler secret put TAVILY_API_KEY
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          if [ -n "$TAVILY_API_KEY" ]; then
+            echo "$TAVILY_API_KEY" | npx wrangler secret put TAVILY_API_KEY
+          fi
