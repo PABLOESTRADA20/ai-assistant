@@ -4,6 +4,8 @@
 // biome-ignore-all lint: generated file
 export default async () => {
   const { readFileSync } = await import('node:fs');
-  const wasmBuffer = readFileSync(new URL('./query_engine_bg.wasm', import.meta.url));
+  const { fileURLToPath } = await import('node:url');
+  const wasmPath = fileURLToPath(new URL('./query_engine_bg.wasm', import.meta.url));
+  const wasmBuffer = readFileSync(wasmPath);
   return new WebAssembly.Module(wasmBuffer);
 }
