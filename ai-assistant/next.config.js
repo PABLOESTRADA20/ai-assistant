@@ -8,6 +8,10 @@ if (process.env.NODE_ENV !== 'production') {
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: __dirname,
+  webpack: (config) => {
+    config.experiments = { ...config.experiments, asyncWebAssembly: true };
+    return config;
+  },
 }
 
 module.exports = nextConfig
