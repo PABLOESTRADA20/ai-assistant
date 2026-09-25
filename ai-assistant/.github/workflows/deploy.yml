@@ -43,10 +43,8 @@ jobs:
           NODE_ENV: production
         run: npx opennextjs-cloudflare build
 
-      - name: Copy WASM assets
-        run: |
-          mkdir -p .open-next/assets/static/wasm
-          cp .next/server/chunks/static/wasm/*.wasm .open-next/assets/static/wasm/ 2>/dev/null || true
+      - name: Patch handler.mjs for native WASM import
+        run: node scripts/patch-opennext-wasm.mjs
 
       - name: Deploy to Workers
         env:
