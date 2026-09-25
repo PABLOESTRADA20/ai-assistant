@@ -246,8 +246,9 @@ defineDmmfProperty(exports.Prisma, config.runtimeDataModel)
 config.engineWasm = {
   getRuntime: async () => require('./query_engine_bg.js'),
   getQueryEngineWasmModule: async () => {
-    const loader = (await import('./wasm-worker-loader.mjs')).default
-    return await loader()
+    const loader = (await import('#wasm-engine-loader')).default
+    const wasmModule = await loader()
+    return wasmModule
   }
 }
 config.compilerWasm = undefined
