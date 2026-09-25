@@ -34,26 +34,20 @@ export interface AIModel {
 
 export const AVAILABLE_MODELS: AIModel[] = [
   {
-    id: 'llama-3.3-70b-versatile',
-    name: 'Llama 3.3 70B',
+    id: 'openai/gpt-oss-120b',
+    name: 'GPT-OSS 120B',
     description: 'Más inteligente • Uso general',
     badge: 'Recomendado',
   },
   {
-    id: 'deepseek-r1-distill-llama-70b',
-    name: 'DeepSeek R1',
-    description: 'Razonamiento profundo • Código complejo',
+    id: 'qwen/qwen3.8-27b',
+    name: 'Qwen 3.8 27B',
+    description: 'Razonamiento • Código complejo',
     badge: '🧠 Código',
   },
   {
-    id: 'mixtral-8x7b-32768',
-    name: 'Mixtral 8x7B',
-    description: 'Contexto largo • Análisis',
-    badge: '32K ctx',
-  },
-  {
-    id: 'llama-3.1-8b-instant',
-    name: 'Llama 3.1 8B',
+    id: 'openai/gpt-oss-20b',
+    name: 'GPT-OSS 20B',
     description: 'Ultra rápido • Respuestas simples',
     badge: '⚡ Rápido',
   },

@@ -56,14 +56,14 @@ Always try to use these tools when they would improve your answer. When you use 
 Always aim to be the best engineer and teacher you can be.`
 
 const MODEL_CONFIG: Record<string, { max_tokens: number; temperature: number }> = {
-  'llama-3.3-70b-versatile':   { max_tokens: 8192, temperature: 0.6 },
-  'deepseek-r1-distill-llama-70b': { max_tokens: 8192, temperature: 0.5 },
-  'mixtral-8x7b-32768':        { max_tokens: 8192, temperature: 0.4 },
-  'llama-3.1-8b-instant':      { max_tokens: 4096, temperature: 0.7 },
+  'openai/gpt-oss-120b':  { max_tokens: 8192, temperature: 0.6 },
+  'qwen/qwen3.8-27b':     { max_tokens: 8192, temperature: 0.6 },
+  'openai/gpt-oss-20b':   { max_tokens: 4096, temperature: 0.7 },
 }
 
 const MAX_VISIBLE_MESSAGES = 8
-const CHEAP_MODEL = 'llama-3.1-8b-instant'
+const CHEAP_MODEL = 'openai/gpt-oss-20b'
+const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 
 async function generateSummary(apiKey: string, messages: { role: string; content: string }[]): Promise<string> {
   const text = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n')
@@ -130,7 +130,7 @@ async function rememberTurn(apiKey: string, userContent: string): Promise<void> 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, model = 'llama-3.3-70b-versatile', conversationId } = body
+    const { messages, model = DEFAULT_MODEL, conversationId } = body
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'Messages array is required' }), {
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
     ]
 
     // Check if we should use tool calling (skip for simple/fast models to save latency)
-    const useTools = model !== 'llama-3.1-8b-instant'
+    const useTools = model !== CHEAP_MODEL
 
     if (useTools) {
       try {

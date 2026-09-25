@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 
+const DEFAULT_MODEL = 'openai/gpt-oss-120b'
+
 export async function GET() {
   try {
     const conversations = await prisma.conversation.findMany({
@@ -16,7 +18,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { model = 'llama-3.3-70b-versatile' } = body
+    const { model = DEFAULT_MODEL } = body
     const conversation = await prisma.conversation.create({
       data: { model },
       include: { messages: true },

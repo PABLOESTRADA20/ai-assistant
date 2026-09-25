@@ -14,7 +14,7 @@ datasource db {
 model Conversation {
   id        String    @id @default(uuid())
   title     String    @default("Nueva conversación")
-  model     String    @default("llama-3.3-70b-versatile")
+  model     String    @default("openai/gpt-oss-120b")
   summary   String?
   messages  Message[]
   createdAt DateTime  @default(now())
