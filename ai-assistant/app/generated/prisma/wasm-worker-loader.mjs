@@ -3,6 +3,7 @@
 /* eslint-disable */
 // biome-ignore-all lint: generated file
 export default async () => {
-  const wasmModule = await import(/* webpackIgnore: true */ './query_engine_bg.wasm');
-  return wasmModule;
+  const { readFileSync } = await import('node:fs');
+  const wasmBuffer = readFileSync(new URL('./query_engine_bg.wasm', import.meta.url));
+  return new WebAssembly.Module(wasmBuffer);
 }
