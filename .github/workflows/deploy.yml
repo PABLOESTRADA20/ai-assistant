@@ -41,7 +41,10 @@ jobs:
       - name: Build (OpenNext for Cloudflare)
         env:
           NODE_ENV: production
-        run: ls -la app/generated/prisma/index.js 2>&1 || echo "index.js MISSING"; ls -la app/generated/prisma/ 2>&1 || true; npx opennextjs-cloudflare build
+        run: npx opennextjs-cloudflare build
+
+      - name: Patch handler.mjs for native WASM import
+        run: node scripts/patch-opennext-wasm.mjs
 
       - name: Deploy to Workers
         env:
