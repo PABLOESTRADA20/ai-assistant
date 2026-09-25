@@ -36,7 +36,15 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
-        run: npx prisma migrate deploy
+        run: |
+          for i in 1 2 3; do
+            if npx prisma migrate deploy; then
+              exit 0
+            fi
+            echo "migrate deploy attempt $i failed, retrying (Neon cold start)..."
+            sleep 10
+          done
+          exit 1
 
       - name: Build (OpenNext for Cloudflare)
         env:
