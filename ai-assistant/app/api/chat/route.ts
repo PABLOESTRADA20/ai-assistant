@@ -157,10 +157,24 @@ export async function POST(req: NextRequest) {
       summary = conv?.summary || null
     }
 
-    // Fire-and-forget: extraer y guardar memorias del turno (no bloquea la respuesta)
+    // Extracción de memoria del turno en segundo plano (no bloquea la respuesta).
+    // OBLIGATORIO registrarlo con ctx.waitUntil(): si el promise queda suelto se
+    // resuelve en el contexto de un request posterior y workerd lo cancela
+    // ("Cannot perform I/O on behalf of a different request" -> HTTP 1101),
+    // además de corromper el cliente Prisma compartido.
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (lastUserMsg?.content) {
-      void rememberTurn(apiKey, lastUserMsg.content)
+      const task = rememberTurn(apiKey, lastUserMsg.content)
+      let registered = false
+      try {
+        const { getCloudflareContext } = await import('@opennextjs/cloudflare')
+        const { ctx } = await getCloudflareContext({ async: true })
+        ctx.waitUntil(task)
+        registered = true
+      } catch {
+        // Fuera del runtime de Cloudflare (scripts locales): fire-and-forget.
+      }
+      if (!registered) void task
     }
 
     // Build context-aware message list (summary + recent messages)
