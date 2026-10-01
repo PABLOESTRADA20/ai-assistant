@@ -36,7 +36,6 @@ Edita `.env.local` (aplicación) y `.env` (CLI de Prisma):
 # .env.local — la app usa el pooling de Neon
 GROQ_API_KEY=gsk_tu-api-key-aqui
 DATABASE_URL=postgres://usuario:pass@host-pooler.neon.tech/aria
-TAVILY_API_KEY=tvly-tu-api-key-aqui
 CLOUDFLARE_API_TOKEN=tu_token_workers_ai
 CLOUDFLARE_ACCOUNT_ID=tu_account_id
 VAULT_PATH=C:\Users\pablo\OneDrive\Documentos\Cerebro tt
@@ -87,8 +86,12 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `DATABASE_URL_UNPOOLED` | URL directa de Neon (CLI de Prisma) | ✅ |
 | `CLOUDFLARE_API_TOKEN` | Token con permiso Workers AI (embeddings) | ✅ |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
-| `TAVILY_API_KEY` | API key de Tavily (web search) | opcional |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
+
+> **Búsqueda web sin API key**: `web_search` consulta DuckDuckGo (endpoint HTML)
+> y Wikipedia, ambos gratuitos y sin clave. No hace falta contratar ni configurar
+> Tavily/Brave/Serper. Si algún día se quiere un proveedor con SLA, se agrega la
+> variable y se extiende `app/lib/web-search.ts`.
 
 ## Características
 
@@ -116,10 +119,10 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 
 1. **Neon**: crea el proyecto, copia las dos conexiones (pooled `DATABASE_URL` + directa `DATABASE_URL_UNPOOLED`).
 2. **Cloudflare**: el Worker se llama `ai-assistant`; expone el binding `AI` (Workers AI) para los embeddings.
-3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY`, `TAVILY_API_KEY`.
-4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `TAVILY_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY`.
+4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
-El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` ×3.
+El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` ×2.
 
 Pruebas locales del mismo entorno: `npm run preview` (Worker en workerd).
 

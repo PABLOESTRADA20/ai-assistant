@@ -474,30 +474,25 @@ function getTime(): string {
 
 async function webSearch(query: string): Promise<string> {
   try {
-    const apiKey = process.env.TAVILY_API_KEY
-    if (!apiKey) {
-      return JSON.stringify({ error: 'TAVILY_API_KEY no configurada' })
+    const { searchWeb } = await import('@/app/lib/web-search')
+    const outcome = await searchWeb(query, 5)
+
+    if (outcome.results.length === 0) {
+      return JSON.stringify({
+        error: 'No se encontraron resultados',
+        warnings: outcome.warnings,
+      })
     }
-    const res = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: apiKey,
-        query,
-        search_depth: 'advanced',
-        max_results: 5,
-        include_answer: true,
-      }),
+
+    return JSON.stringify({
+      query: outcome.query,
+      // Formato legible para el modelo, que lo resumira en su respuesta.
+      summary: outcome.results
+        .map((r, i) => `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.snippet}`)
+        .join('\n'),
+      sources: outcome.sources,
+      warnings: outcome.warnings,
     })
-    if (!res.ok) {
-      return JSON.stringify({ error: `Tavily error: ${await res.text()}` })
-    }
-    const data = await res.json()
-    const results = data.results?.map((r: { title: string; url: string; content: string }) =>
-      `- **${r.title}** (${r.url}): ${r.content}`
-    ).join('\n') || ''
-    const answer = data.answer ? `Resumen: ${data.answer}\n\n` : ''
-    return JSON.stringify({ answer: data.answer || null, results: data.results || [] })
   } catch (err) {
     return JSON.stringify({ error: String(err) })
   }
