@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
-import { callGroqWithTools } from '@/app/lib/tools'
+import { callGroqWithTools, groqFetch } from '@/app/lib/tools'
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
 
     if (useTools) {
       try {
-        const { stream, toolCalls } = await callGroqWithTools(
+        const { stream, toolCalls, hitRoundLimit } = await callGroqWithTools(
           apiKey,
           allMessages,
           model,
@@ -241,6 +241,15 @@ export async function POST(req: NextRequest) {
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
           async start(controller) {
+            let emitted = 0
+            let reasoningChars = 0
+            let finishReason: string | null = null
+
+            const emit = (content: string) => {
+              emitted++
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
+            }
+
             try {
               // Emit tool-call events first so the UI can render them
               for (const tc of toolCalls) {
@@ -269,14 +278,73 @@ export async function POST(req: NextRequest) {
                     if (data === '[DONE]') continue
                     try {
                       const parsed = JSON.parse(data)
-                      const content = parsed.choices?.[0]?.delta?.content || ''
-                      if (content) {
-                        controller.enqueue(
-                          encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
-                        )
+                      const delta = parsed.choices?.[0]?.delta ?? {}
+                      if (typeof delta.reasoning === 'string') {
+                        reasoningChars += delta.reasoning.length
                       }
+                      const fr = parsed.choices?.[0]?.finish_reason
+                      if (fr) finishReason = fr
+                      const content = delta.content || ''
+                      if (content) emit(content)
                     } catch { /* skip parse errors */ }
                   }
+                }
+              }
+
+              // Ultimo recurso: el modelo consumio las rondas de herramientas y
+              // cerro el stream solo con `reasoning` (sin una sola palabra de
+              // respuesta). Se le repregunta con los resultados ya reunidos.
+              //
+              // Los resultados van como un unico mensaje `user`, no como mensajes
+              // `role: 'tool'`: reutilizarlos exigiria reconstruir tambien los
+              // `tool_call_id` delHistorial y un `tool` sin id hace que Groq
+              // rechace el request entero ("'messages.2' : for 'role:tool' the
+              // following must be satisfied"), dejando al usuario sin respuesta.
+              if (emitted === 0) {
+                console.warn(
+                  `Stream post-herramientas vacio (${reasoningChars} chars de reasoning, ` +
+                  `finish_reason=${finishReason}, tools=${toolCalls.length}` +
+                  `${hitRoundLimit ? ', limite de rondas alcanzado' : ''}), reintentando`
+                )
+                const digest = toolCalls
+                  .map((tc) => `- ${tc.name}(${JSON.stringify(tc.args)}): ${tc.result}`)
+                  .join('\n')
+                const NO_MORE_TOOLS =
+                  'AVISO: las herramientas ya se usaron y no hay mas resultados. ' +
+                  'Responde ahora al usuario en texto plano, sin pedir herramientas.\n\n' +
+                  `Resultados obtenidos:\n${digest}`
+                const retry = await groqFetch(apiKey, {
+                  model,
+                  messages: [...allMessages, { role: 'user', content: NO_MORE_TOOLS }],
+                  stream: true,
+                  max_tokens: config.max_tokens,
+                  temperature: config.temperature,
+                })
+
+                if (retry.ok) {
+                  const reader2 = retry.body!.getReader()
+                  const decoder2 = new TextDecoder()
+                  let buffer2 = ''
+                  while (true) {
+                    const { done: d2, value: v2 } = await reader2.read()
+                    if (d2) break
+                    buffer2 += decoder2.decode(v2, { stream: true })
+                    const lines2 = buffer2.split('\n')
+                    buffer2 = lines2.pop() || ''
+                    for (const line2 of lines2) {
+                      if (!line2.startsWith('data: ')) continue
+                      const d2text = line2.slice(6)
+                      if (d2text === '[DONE]') continue
+                      try {
+                        const p2 = JSON.parse(d2text)
+                        const c2 = p2.choices?.[0]?.delta?.content || ''
+                        if (c2) emit(c2)
+                      } catch { /* skip */ }
+                    }
+                  }
+                } else {
+                  await retry.text().catch(() => '')
+                  emit('\n\n_No pude generar una respuesta en este intento. Reintenta._')
                 }
               }
             } catch (err) {
@@ -308,19 +376,12 @@ export async function POST(req: NextRequest) {
     // texto. Por eso, si no llega nada de contenido, se reintentaIndicandole que
     // las herramientas no estan disponibles y que responda con lo que sepa.
     const streamSimple = (messages: typeof allMessages): Promise<Response> =>
-      fetch(GROQ_API, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: true,
-          max_tokens: config.max_tokens,
-          temperature: config.temperature,
-        }),
+      groqFetch(apiKey, {
+        model,
+        messages,
+        stream: true,
+        max_tokens: config.max_tokens,
+        temperature: config.temperature,
       })
 
     const NO_TOOLS_NOTICE =

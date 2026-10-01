@@ -1,5 +1,93 @@
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
 
+/**
+ * `fetch` a Groq reintentando ante rate limits (HTTP 429).
+ *
+ * El free tier es aggressive con TPM: un tool call + el stream de respuesta +
+ * la extraccion de memoria pueden cruzarse en el mismo minuto y disparar
+ * `rate_limit_exceeded` ("Limit 8000, Used 5936, Requested 2343"), que ademas
+ * indica cuantos segundos esperar. Sin este retry, un 429 en el tool call
+ * degradaba toda la respuesta a "simple mode" y ese a su vez podia recibir
+ * otro 429, dejando al usuario sin respuesta alguna.
+ *
+ * Respeta el `retry-after` / "Please try again in Xs" que manda Groq y solo
+ * reintenta 429 y 5xx: cualquier otro 4xx se propaga de inmediato.
+ *
+ * Excepcion: `tool_use_failed` (HTTP 400), que tambien se reintenta. Ocurre cuando
+ * el modelo genera argumentos que no cumplen el schema del tool y Groq rechaza el
+ * request COMPLETO. Medido con gpt-oss-120b: emitio `{"cursor": 0, "id": 4}` para
+ * `web_search` (no declaredo ni `cursor` ni `id`), y el error tumbaba todo el
+ * tool-calling al "simple mode", que respondia de memoria sin buscar nada. Es
+ * estocastico, no deterministico: el mismo prompt y el mismo SYSTEM_PROMPT dieron
+ * 16/16 tool calls validos, asi que la respuesta correcta es reintentar (la
+ * generacion siguiente difiere) y no cambiar prompts ni schemas.
+ */
+export async function groqFetch(
+  apiKey: string,
+  body: unknown,
+  maxRetries = 3
+): Promise<Response> {
+  const MAX_BACKOFF_MS = 12_000
+
+  let lastResponse: Response | null = null
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(GROQ_API, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      lastError = err
+      if (attempt === maxRetries) throw err
+      await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS)))
+      continue
+    }
+
+    if (res.ok) return res
+
+    // Consumir el body para no dejar el stream colgado antes de reintentar.
+    const errText = await res.text()
+    lastResponse = res
+
+    const toolUseFailed = errText.includes('"tool_use_failed"')
+
+    const retryable = res.status === 429 || res.status >= 500 || toolUseFailed
+    if (!retryable || attempt === maxRetries) {
+      throw new Error(`Groq API error: ${errText}`)
+    }
+
+    const headerHint = Number(res.headers.get('retry-after'))
+    const bodyHint = /try again in ([\d.]+)s/i.exec(errText)
+    const hintMs = Number.isFinite(headerHint) && headerHint > 0
+      ? headerHint * 1000
+      : bodyHint
+        ? Math.ceil(Number(bodyHint[1]) * 1000)
+        : 0
+
+    // Un `tool_use_failed` no es un rate limit: no hay que esperar, basta con
+    // regenerar. Solo un backoff minimo para no clavarle la cuota de TPM.
+    const backoff = toolUseFailed
+      ? 300
+      : Math.min(Math.max(hintMs + 500, 1000 * 2 ** attempt), MAX_BACKOFF_MS)
+
+    console.warn(
+      `Groq ${res.status}${toolUseFailed ? ' tool_use_failed' : ''}, reintento ${attempt + 1}/${maxRetries} en ${backoff}ms (${errText.slice(0, 120)})`
+    )
+    await new Promise((r) => setTimeout(r, backoff))
+  }
+
+  // Solo se llega aqui por error de red en el ultimo intento.
+  if (lastResponse) throw new Error(`Groq API error ${lastResponse.status}`)
+  throw lastError instanceof Error ? lastError : new Error('Groq API error')
+}
+
 export interface ToolCall {
   id: string
   type: 'function'
@@ -14,7 +102,13 @@ export const TOOL_DEFINITIONS = [
     type: 'function' as const,
     function: {
       name: 'web_search',
-      description: 'Search the internet for current information, news, documentation, or any online content',
+      description:
+        'Search reference sources on the internet for current information, facts, dates, ' +
+        'documentation and technical discussion. Covers official release versions ' +
+        '(endoflife.date), Wikipedia, Stack Overflow, Hacker News and MDN web docs. ' +
+        'Free, no API key. Not suitable for breaking news or for any page that requires ' +
+        'a live index of the whole web. If the results do not contain the answer, say so ' +
+        'instead of guessing.',
       parameters: {
         type: 'object',
         properties: {
@@ -475,11 +569,12 @@ function getTime(): string {
 async function webSearch(query: string): Promise<string> {
   try {
     const { searchWeb } = await import('@/app/lib/web-search')
-    const outcome = await searchWeb(query, 5)
+    const outcome = await searchWeb(query, 6)
 
     if (outcome.results.length === 0) {
       return JSON.stringify({
-        error: 'No se encontraron resultados',
+        error: 'No se encontraron resultados en las fuentes disponibles',
+        query: outcome.query,
         warnings: outcome.warnings,
       })
     }
@@ -488,7 +583,10 @@ async function webSearch(query: string): Promise<string> {
       query: outcome.query,
       // Formato legible para el modelo, que lo resumira en su respuesta.
       summary: outcome.results
-        .map((r, i) => `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.snippet}`)
+        .map(
+          (r, i) =>
+            `[${i + 1}] (${r.source}) ${r.title}\n    ${r.url}\n    ${r.snippet}`
+        )
         .join('\n'),
       sources: outcome.sources,
       warnings: outcome.warnings,
@@ -584,34 +682,25 @@ export async function callGroqWithTools(
   model: string,
   maxTokens: number,
   temperature: number,
-): Promise<{ stream: ReadableStream; toolCalls: ToolCallRecord[] }> {
+): Promise<{ stream: ReadableStream; toolCalls: ToolCallRecord[]; hitRoundLimit: boolean }> {
   const finalMessages: GroqMessage[] = [...messages]
   const toolCalls: ToolCallRecord[] = []
   let toolCallCount = 0
-  const MAX_TOOL_ROUNDS = 5
+  // 3 rondas: con 5 el modelo entra en bucle de busquedas casi identicas
+  // (medido: 5 web_search sobre lo mismo) y cada ronda gasta TPM del free
+  // tier, alargando la respuesta a 25-70s sin llegar a contenido final.
+  const MAX_TOOL_ROUNDS = 3
 
   while (toolCallCount < MAX_TOOL_ROUNDS) {
-    const res = await fetch(GROQ_API, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: finalMessages,
-        tools: TOOL_DEFINITIONS,
-        tool_choice: 'auto',
-        stream: false,
-        max_tokens: maxTokens,
-        temperature,
-      }),
+    const res = await groqFetch(apiKey, {
+      model,
+      messages: finalMessages,
+      tools: TOOL_DEFINITIONS,
+      tool_choice: 'auto',
+      stream: false,
+      max_tokens: maxTokens,
+      temperature,
     })
-
-    if (!res.ok) {
-      const errText = await res.text()
-      throw new Error(`Groq API error: ${errText}`)
-    }
 
     const data = await res.json()
     const choice = data.choices?.[0]
@@ -654,26 +743,34 @@ export async function callGroqWithTools(
     toolCallCount++
   }
 
-  // Now stream the final response with the full context
-  const streamRes = await fetch(GROQ_API, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: finalMessages,
-      stream: true,
-      max_tokens: maxTokens,
-      temperature,
-    }),
-  })
-
-  if (!streamRes.ok) {
-    const errText = await streamRes.text()
-    throw new Error(`Groq stream error: ${errText}`)
+  // Now stream the final response with the full context.
+  //
+  // Si se agotaron las rondas, el modelo sigue pidiendo herramientas en bucle
+  // (medido: 5 web_search sobre lo mismo) y el stream final llega sin texto, solo
+  // `reasoning`. Se le indica explicitamente que responda con lo ya reunido.
+  //
+  // Va como `user` y no como `system`: los modelos `gpt-oss-*` viven en formato
+  // harmony y no aplican un `system` inyectado a mitad del historial, con lo que
+  // el aviso se pierde y el stream vuelve a cerrarse vacio.
+  const hitRoundLimit = toolCallCount >= MAX_TOOL_ROUNDS
+  if (hitRoundLimit) {
+    console.warn(`Limite de ${MAX_TOOL_ROUNDS} rondas de herramientas alcanzado, forzando respuesta`)
+    finalMessages.push({
+      role: 'user',
+      content:
+        'AVISO: se agoto el limite de busquedas. No pidas mas herramientas. ' +
+        'Responde ahora al usuario con la informacion que ya tenes, citando las ' +
+        'fuentes. Si no alcanza, decilo explicitamente.',
+    })
   }
 
-  return { stream: streamRes.body!, toolCalls }
+  const streamRes = await groqFetch(apiKey, {
+    model,
+    messages: finalMessages,
+    stream: true,
+    max_tokens: maxTokens,
+    temperature,
+  })
+
+  return { stream: streamRes.body!, toolCalls, hitRoundLimit }
 }
