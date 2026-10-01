@@ -261,23 +261,204 @@ async function recallMemory(query: string): Promise<string> {
   }
 }
 
+/**
+ * Evaluador de expresiones aritméticas.
+ *
+ * NO usar `eval` / `new Function`: workerd lo prohíbe por diseño
+ * ("Code generation from strings disallowed for this context"). Implementamos
+ * un parser descendente recursivo sobre los tokens, que además es más seguro.
+ *
+ * Soporta: + - * / % ^ ( ), unario +/-, funciones (sqrt, abs, round, floor,
+ * ceil, min, max, pow, sin, cos, tan, asin, acos, atan, log, log2, log10, exp)
+ * y constantes (pi, e).
+ */
+const MATH_CONSTANTS: Record<string, number> = {
+  pi: Math.PI,
+  e: Math.E,
+}
+
+const MATH_FUNCTIONS: Record<string, (...args: number[]) => number> = {
+  sqrt: Math.sqrt,
+  abs: Math.abs,
+  round: Math.round,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  trunc: Math.trunc,
+  sign: Math.sign,
+  pow: Math.pow,
+  min: Math.min,
+  max: Math.max,
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  log: Math.log,
+  log2: Math.log2,
+  log10: Math.log10,
+  exp: Math.exp,
+}
+
+class MathParser {
+  private pos = 0
+
+  constructor(private readonly src: string) {}
+
+  parse(): number {
+    const value = this.parseExpression()
+    this.skipSpaces()
+    if (this.pos < this.src.length) {
+      throw new Error(`carácter inesperado en la posición ${this.pos}: "${this.src[this.pos]}"`)
+    }
+    return value
+  }
+
+  private skipSpaces(): void {
+    while (this.pos < this.src.length && /\s/.test(this.src[this.pos])) this.pos++
+  }
+
+  private peek(): string {
+    this.skipSpaces()
+    return this.src[this.pos] ?? ''
+  }
+
+  private eat(ch: string): boolean {
+    if (this.peek() === ch) {
+      this.pos++
+      return true
+    }
+    return false
+  }
+
+  /** expression := term (('+' | '-') term)* */
+  private parseExpression(): number {
+    let left = this.parseTerm()
+    for (;;) {
+      const ch = this.peek()
+      if (ch === '+') {
+        this.pos++
+        left += this.parseTerm()
+      } else if (ch === '-') {
+        this.pos++
+        left -= this.parseTerm()
+      } else {
+        return left
+      }
+    }
+  }
+
+  /** term := unary (('*' | '/' | '%') unary)* */
+  private parseTerm(): number {
+    let left = this.parseUnary()
+    for (;;) {
+      const ch = this.peek()
+      if (ch === '*') {
+        this.pos++
+        left *= this.parseUnary()
+      } else if (ch === '/') {
+        this.pos++
+        left /= this.parseUnary()
+      } else if (ch === '%') {
+        this.pos++
+        left %= this.parseUnary()
+      } else {
+        return left
+      }
+    }
+  }
+
+  /** unary := ('+' | '-') unary | power */
+  private parseUnary(): number {
+    const ch = this.peek()
+    if (ch === '-') {
+      this.pos++
+      return -this.parseUnary()
+    }
+    if (ch === '+') {
+      this.pos++
+      return this.parseUnary()
+    }
+    return this.parsePower()
+  }
+
+  /** power := primary ('^' unary)?  (asociativo a la derecha) */
+  private parsePower(): number {
+    const base = this.parsePrimary()
+    if (this.eat('^')) {
+      return base ** this.parseUnary()
+    }
+    return base
+  }
+
+  /** primary := number | '(' expression ')' | identifier (constante o función) */
+  private parsePrimary(): number {
+    this.skipSpaces()
+    if (this.pos >= this.src.length) {
+      throw new Error('expresión incompleta')
+    }
+
+    const ch = this.src[this.pos]
+
+    if (ch === '(') {
+      this.pos++
+      const value = this.parseExpression()
+      if (!this.eat(')')) throw new Error('falta el paréntesis de cierre ")"')
+      return value
+    }
+
+    if (/[0-9.]/.test(ch)) {
+      const start = this.pos
+      while (this.pos < this.src.length && /[0-9.]/.test(this.src[this.pos])) this.pos++
+      const raw = this.src.slice(start, this.pos)
+      const num = Number(raw)
+      if (!Number.isFinite(num)) throw new Error(`número inválido: "${raw}"`)
+      return num
+    }
+
+    if (/[a-zA-Z_]/.test(ch)) {
+      const start = this.pos
+      while (this.pos < this.src.length && /[a-zA-Z0-9_]/.test(this.src[this.pos])) this.pos++
+      const name = this.src.slice(start, this.pos).toLowerCase()
+
+      // `in` recorrería el prototipo ("__proto__", "constructor", "toString"...)
+      if (Object.prototype.hasOwnProperty.call(MATH_CONSTANTS, name)) {
+        return MATH_CONSTANTS[name]
+      }
+
+      if (Object.prototype.hasOwnProperty.call(MATH_FUNCTIONS, name)) {
+        const fn = MATH_FUNCTIONS[name]
+        if (!this.eat('(')) throw new Error(`la función "${name}" requiere paréntesis`)
+        const args: number[] = []
+        if (!this.eat(')')) {
+          do {
+            args.push(this.parseExpression())
+          } while (this.eat(','))
+          if (!this.eat(')')) throw new Error(`falta el paréntesis de cierre de "${name}"`)
+        }
+        return fn(...args)
+      }
+
+      throw new Error(`función o constante desconocida: "${name}"`)
+    }
+
+    throw new Error(`carácter no permitido: "${ch}"`)
+  }
+}
+
 function calculate(expression: string): string {
   if (typeof expression !== 'string' || !expression.trim()) {
     return JSON.stringify({ error: 'Expresión vacía' })
   }
-  const sanitized = expression.replace(/\s+/g, '')
-  if (!/^[0-9+\-*/%.()]+$/.test(sanitized)) {
-    return JSON.stringify({ error: 'Expresión con caracteres no permitidos' })
-  }
   try {
-    // eslint-disable-next-line no-new-func
-    const value = new Function(`"use strict"; return (${sanitized});`)()
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
+    const value = new MathParser(expression).parse()
+    if (!Number.isFinite(value)) {
       return JSON.stringify({ error: 'Resultado no es un número finito' })
     }
-    return JSON.stringify({ expression, result: value })
+    // Redondeo para evitar ruido de punto flotante (0.1+0.2 = 0.30000000000000004)
+    return JSON.stringify({ expression, result: Number(value.toPrecision(12)) })
   } catch (err) {
-    return JSON.stringify({ error: `Error evaluando expresión: ${String(err)}` })
+    return JSON.stringify({ error: `Error evaluando expresión: ${err instanceof Error ? err.message : String(err)}` })
   }
 }
 
