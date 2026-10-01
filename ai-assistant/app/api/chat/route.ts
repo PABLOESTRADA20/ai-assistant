@@ -300,21 +300,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Simple mode (no tools or fallback from tool error)
-    const groqRes = await fetch(GROQ_API, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: allMessages,
-        stream: true,
-        max_tokens: config.max_tokens,
-        temperature: config.temperature,
-      }),
-    })
+    // Simple mode (no tools or fallback from tool error).
+    //
+    // `gpt-oss-*` razona en el canal `reasoning` del stream. Cuando decide que
+    // necesita una herramienta pero este modo no se la ofrece, se queda solo con
+    // el razonamiento y devuelve content vacio -> el usuario ve un stream sin
+    // texto. Por eso, si no llega nada de contenido, se reintentaIndicandole que
+    // las herramientas no estan disponibles y que responda con lo que sepa.
+    const streamSimple = (messages: typeof allMessages): Promise<Response> =>
+      fetch(GROQ_API, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: true,
+          max_tokens: config.max_tokens,
+          temperature: config.temperature,
+        }),
+      })
+
+    const NO_TOOLS_NOTICE =
+      'AVISO: en esta respuesta no tenes herramientas disponibles. ' +
+      'No intentes usarlas ni las menciones. Responde directamente con lo que ' +
+      'sepas, y si la pregunta requiere informacion actual que no tenes, ' +
+      'dilo con claridad en vez de quedarte en silencio.'
+
+    const groqRes = await streamSimple(allMessages)
 
     if (!groqRes.ok) {
       const errText = await groqRes.text()
@@ -327,8 +342,11 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
       async start(controller) {
-        try {
-          const reader = groqRes.body!.getReader()
+        let emitted = 0
+        let reasoningChars = 0
+
+        const drain = async (res: Response): Promise<number> => {
+          const reader = res.body!.getReader()
           const decoder = new TextDecoder()
           let buffer = ''
 
@@ -341,19 +359,52 @@ export async function POST(req: NextRequest) {
             buffer = lines.pop() || ''
 
             for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6)
-                if (data === '[DONE]') continue
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content || ''
-                  if (content) {
-                    controller.enqueue(
-                      encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
-                    )
-                  }
-                } catch { /* skip parse errors */ }
-              }
+              if (!line.startsWith('data: ')) continue
+              const data = line.slice(6)
+              if (data === '[DONE]') continue
+              try {
+                const parsed = JSON.parse(data)
+                const delta = parsed.choices?.[0]?.delta ?? {}
+                if (typeof delta.reasoning === 'string') {
+                  reasoningChars += delta.reasoning.length
+                }
+                const content = delta.content || ''
+                if (content) {
+                  emitted++
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
+                  )
+                }
+              } catch { /* skip parse errors */ }
+            }
+          }
+          return emitted
+        }
+
+        try {
+          emitted = await drain(groqRes)
+
+          // Content vacio tras razonar: unico reintento con el aviso explicito.
+          if (emitted === 0) {
+            console.warn(
+              `Simple mode devolvio solo reasoning (${reasoningChars} chars) sin content, reintentando sin tools`
+            )
+            const retry = await streamSimple([
+              ...allMessages,
+              { role: 'system', content: NO_TOOLS_NOTICE },
+            ])
+            if (retry.ok) {
+              await drain(retry)
+            } else {
+              console.error(`Reintento simple mode fallo: ${retry.status}`)
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    content:
+                      '\n\n_No pude generar una respuesta en este intento. Reintenta._',
+                  })}\n\n`
+                )
+              )
             }
           }
         } catch (err) {
