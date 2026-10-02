@@ -121,13 +121,25 @@ type Source = (query: string, limit: number, signal: AbortSignal) => Promise<Web
 // Wikipedia
 // ---------------------------------------------------------------------------
 
-/** Palabras vacias ES/EN: no ayudan a decidir que articulo se busca. */
+/**
+ * Palabras vacias ES/EN: no ayudan a decidir que articulo se busca.
+ *
+ * La lista es amplia a proposito. Un termino que no esta aqui actua como señal de
+ * relevancia y eso es peligroso: "se" e "instala" no lo estaban, y en "que es Deno y
+ * como se instala" eso hacia que *cualquier* artículo en español pasara el filtro de
+ * "coincide con 2 terminos" — la busqueda devolvia "Juan VII Paleólogo" y ningun
+ * artículo de Deno (medido). Los términos cortos que no distinguen un tema de otro
+ * son ruido con forma de señal.
+ */
 const STOPWORDS = new Set(
   (
     'de la el los las un una unos unas y o que en del al por para con como es son fue esta este ' +
-    'estos estas hay quien cual cuales cuando donde cuanto ' +
+    'estos estas hay quien cual cuales cuando donde cuanto se su sus lo le les me te nos os ya ' +
+    'mas pero sino entonces aqui alli ahi ahora tambien solo solo sobre bajo entre desde hasta ' +
+    'hacia segun cada todo toda todos todas otro otra otros otras mismo misma tan bien poco ' +
     'the a an of to in for on and or is are was were what which who how why when ' +
-    'it its this that with be do does did i me my you your'
+    'it its this that with be do does did i me my you your they them their there here as if then so ' +
+    'not no nor but out up down about into over after before between through during'
   ).split(' ')
 )
 
@@ -138,24 +150,60 @@ function queryTokens(query: string): string[] {
 /**
  * Candidatos a entidad, ordenados por probabilidad de ser el sujeto de la consulta.
  *
- * Primero las palabras con mayuscula que no son la primera (nombres propios y
- * siglas: "Alan Turing", "JavaScript", "HTTP"), despues el resto de terminos
- * significativos. La primera palabra se excluye a proposito porque en espanol
- * casi toda consulta empieza por "que", "como" o "quien" y esas nunca son la
- * entidad.
+ * Primero las palabras con mayuscula (nombres propios y siglas: "Alan Turing",
+ * "JavaScript", "HTTP"), despues el resto de terminos significativos.
+ *
+ * La primera palabra tambien cuenta si es un nombre propio. Antes se
+ * excluia a proposito, porque en espanol casi toda consulta empieza por "que",
+ * "como" o "quien" y esas nunca son la entidad; pero esas palabras ya estan en
+ * STOPWORDS, asi que excluir la posicion 0 solo damnificaba a las consultas que
+ * empiezan directamente por el sujeto. Medido con las consultas que el modelo
+ * genero en produccion ("Rust stable release 2026 September version 1.80"): con la
+ * exclusion, "September" era la candidata #1 y `intitle:Rust` no se llegaba a
+ * preguntar, gastando uno de los dos requests disponibles en la entidad correcta.
  */
 function entityCandidates(query: string, max: number): string[] {
   const all = queryTokens(query)
-  const proper = all.filter(
-    (t, i) => i > 0 && /^\p{Lu}/u.test(t) && !STOPWORDS.has(t.toLowerCase())
-  )
-  const rest = all.filter((t) => !STOPWORDS.has(t.toLowerCase()) && !proper.includes(t))
+  /**
+   * Los numeros no son candidatos: no existe un articulo llamado "1.78", asi que
+   * `intitle:1.78` no devuelve nada y el request se pierde. Medido sobre 17 consultas
+   * reales, cambia el resultado solo cuando hay un numero suelto, y siempre a mejor:
+   * "Rust 1.78 release notes" passa de ["Rust", "1.78"] a ["Rust", "release"].
+   */
+  const usable = (t: string) => !STOPWORDS.has(t.toLowerCase()) && /\p{L}/u.test(t)
+  const isProper = (t: string) => /^\p{Lu}/u.test(t) && usable(t)
+
+  /**
+   * Dos mayusculas encadenadas forman UNA entidad.
+   *
+   * "Alan Turing" se partia en "Alan" y "Turing", y Wikipedia tiene un articulo
+   * legitimo llamado "Alan" (sobre el nombre): `intitle:Alan` lo devuelve primero y
+   * ganaba al de la persona (medido). Nombre + apellido es el caso normal, asi que
+   * solo se agrupan pares.
+   *
+   * Tres en cadena NO se agrupan: en "diferencia entre Promise.all y
+   * Promise.allSettled en Node" las palabras cortas "y" y "en" desaparecen al
+   * tokenizar y las tres propias quedan contiguas, dando la entidad inventada
+   * "Promise.all Promise.allSettled Node" (medido).
+   */
+  const phrases: string[] = []
+  for (let i = 0; i + 1 < all.length; i++) {
+    // Un punto ya une el nombre con su miembro: "Promise.all" ya es una unidad, y
+    // agruparla con la siguiente daria "Promise.all Promise.allSettled" (medido).
+    const dotted = (t: string) => /[.+#]/.test(t)
+    if (isProper(all[i]) && isProper(all[i + 1]) && !dotted(all[i]) && !dotted(all[i + 1])) {
+      phrases.push(`${all[i]} ${all[i + 1]}`)
+    }
+  }
+
+  const proper = all.filter(isProper)
+  const rest = all.filter((t) => usable(t) && !proper.includes(t))
 
   const seen = new Set<string>()
   const out: string[] = []
-  for (const token of [...proper, ...rest]) {
+  for (const token of [...phrases, ...proper, ...rest]) {
     const key = token.toLowerCase()
-    if (seen.has(key)) continue
+    if (seen.has(key) || out.some((o) => o.toLowerCase().includes(key))) continue
     seen.add(key)
     out.push(token)
     if (out.length >= max) break
@@ -280,6 +328,32 @@ async function wikiSearch(lang: string, gsrsearch: string, signal: AbortSignal):
  * P1 va primero para no diluir: la consulta completa es la que mejor ordena, asi
  * que sus resultados llenan el top antes de que lleguen los de `intitle:`.
  */
+/**
+ * Normaliza un titulo de Wikipedia para compararlo con la entidad de la consulta:
+ * sin articulo inicial, sin puntuacion y en minusculas. El parentesis se conserva.
+ *
+ * Se conservapropósito: el parentesis ES la desambiguacion de Wikipedia
+ * ("Rust (lenguaje de programacion)", "Rust (pelicula)") y es lo unico que
+ * distingue una cosa de otra. Quitarlo hacia que ambas se normalizaran a "rust" y
+ * el titulo de la pelicula ganara al del lenguaje (medido). Los titulos que no
+ * llevan parentesis son los que hay que tratar aparte.
+ */
+function subjectOf(title: string): string {
+  return title
+    .replace(/^(?:el|la|los|las|the|a|an)\s+/i, '')
+    .replace(/[^\p{L}\p{N}+#.\s()-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/** Separa "rust (lenguaje de programacion)" en ["rust", "lenguaje de programacion"]. */
+function splitQualifier(normalized: string): [string, string] {
+  const at = normalized.indexOf('(')
+  if (at === -1) return [normalized, '']
+  return [normalized.slice(0, at).trim(), normalized.slice(at + 1).replace(/\)$/, '').trim()]
+}
+
 const searchWikipedia: Source = async (query, limit, signal) => {
   const candidates = entityCandidates(query, 3)
 
@@ -311,7 +385,51 @@ const searchWikipedia: Source = async (query, limit, signal) => {
   const specific = hits.filter((h) => !isDisambiguation(h))
   const pool = specific.length > 0 ? specific : hits
 
-  return pool.slice(0, limit).map((hit) => ({
+  /**
+   * Ranking por cuanto se parece el articulo a la entidad, no solo por mencionarla.
+   *
+   * El orden de llegada de Wikipedia es bueno cuando la consulta es una pregunta
+   * directa, pero con las consultas que arma el modelo ("que es Deno y como se
+   * instala") la estrategia de texto completo devuelve puros articulos que no la
+   * nombran, y el artículo de Deno, que llega despues via `intitle:`, ya se habia
+   * quedado fuera del corte: el filtro de relevancia de abajo nunca lo veía y la
+   * busqueda devolvia "Juan VII Paleologo" (medido).
+   *
+   * Ordenar por "menciona la entidad" no basta, porque el homónimo tambien la
+   * menciona: "Rust in Peace" contains "Rust" y ganaba a "Rust (programming
+   * language)" (medido). Se ordena por cuatro niveles, y dentro de cada nivel se
+   * respeta el orden de llegada:
+   *
+   *   1. el titulo ES la entidad, sin calificador   "Deno", "PostgreSQL"
+   *   2. el titulo es la entidad + un calificador    "Rust (lenguaje de programacion)"
+   *   3. el titulo empieza por la entidad suelta     "Rust in Peace"
+   *   4. la entidad solo aparece en el texto
+   *
+   * El nivel 2 va antes que el 3 porque cuando Wikipedia titula "Rust (algo)" esta
+   * diciendo que ese "algo" es el Rust de la entidad; "Rust in Peace" en cambio es un
+   * titulo propio que casualmente empieza igual.
+   *
+   * Todo es local: no cuesta un solo request y solo reordena, nada se descarta.
+   */
+  const entities = candidates.map((c) => subjectOf(c))
+  const tier = (hit: WikiHit): number => {
+    const title = subjectOf(hit.title)
+    const [base, qualifier] = splitQualifier(title)
+    if (entities.includes(base) && qualifier === '') return 0
+    if (entities.includes(base)) return 1
+    if (entities.some((e) => base.startsWith(e))) return 2
+    const haystack = `${hit.title} ${hit.extract}`.toLowerCase()
+    return entities.some((e) => haystack.includes(e)) ? 3 : 4
+  }
+  // Array#sort es estable en V8: dentro de cada nivel se respeta el orden de llegada.
+  const ranked = [...pool].sort((a, b) => tier(a) - tier(b))
+
+  // Se pasan mas candidatos de los que se piden porque el ranking de arriba solo ordena
+// por parecido a la entidad, no descarta: un homonimo ("Rust in Peace") tambien la
+// menciona. El filtro de relevancia de abajo es quien lo descarta, y para eso tiene
+// que verlo. Sin este margen, "que es Deno y como se instala" se quedaba sin ningun
+// articulo sobre Deno (medido).
+return ranked.slice(0, limit * 2).map((hit) => ({
     title: hit.title,
     url: `https://${hit.lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, '_'))}`,
     snippet: clamp(hit.extract, 700),
@@ -322,6 +440,20 @@ const searchWikipedia: Source = async (query, limit, signal) => {
 // ---------------------------------------------------------------------------
 // Stack Overflow
 // ---------------------------------------------------------------------------
+
+/**
+ * Nota sobre el rate limit.
+ *
+ * La API de Stack Exchange limita por IP y las de datacenter estan compartidas, asi
+ * que devuelve HTTP 429 con facilidad: medido en 18 de 18 llamadas seguidas desde el
+ * egress de Cloudflare. En desarrollo, con la IP del casa, respondia bien.
+ *
+ * No se mitiga: no hay key gratuita que lo evite y pedirlo seria peor. El costo esta
+ * en que las consultas de codigo se quedan con una fuente menos, y ya se asume — el
+ * 429 viaja en `warnings` y el resto de fuentes sigue entregando. Si en algun momento
+ * responde 429 de forma sistematica, la opcion honesta es quitar la fuente, no
+ * disimularlo.
+ */
 
 type StackExchange = {
   items?: Array<{
@@ -763,33 +895,62 @@ function filterRelevant(query: string, results: WebResult[]): WebResult[] {
   const tokens = raw.filter((t) => !STOPWORDS.has(t.toLowerCase()))
 
   /**
-   * Entidades: con mayuscula y que no sea la primera palabra de la frase.
+   * Entidades: terminos con mayuscula.
    *
    * La posicion se mira sobre los tokens ORIGINALES, no sobre los ya filtrados de
    * palabras vacias: en "que es PostgreSQL", quitando "que" y "es", la entidad queda
-   * en el indice 0 y el filtro laencia de tratar como entidad (medido: el articulo
+   * en el indice 0 y el filtro la deja de tratar como entidad (medido: el articulo
    * de Wikipedia "Tilde" se colaba en los resultados).
+   *
+   * La primera palabra SI cuenta como entidad, y antes no contaba. La regla era
+   * "con mayuscula y que no sea la primera", pensada para el caso habitual en espanol
+   * donde la frase empieza por "que", "como" o "quien" — pero esas palabras ya estan
+   * en STOPWORDS, asi que la exclusion solo dejaba fuera a la entidad real cuando la
+   * consulta empieza directamente por ella. Medido sobre 15 consultas reales
+   * (incluidas las que el modelo hizo en produccion, que empiezan por "Rust ..."):
+   * sin esta correccion, "Rust 1.78 release notes" descartaba el resultado correcto
+   * por ser la entidad en posicion 0, y el relleno lo devolvia al final de la lista.
    */
   const entities = raw
-    .filter((t, i) => i > 0 && /^\p{Lu}/u.test(t) && !STOPWORDS.has(t.toLowerCase()))
+    .filter((t) => /^\p{Lu}/u.test(t) && !STOPWORDS.has(t.toLowerCase()))
     .map((t) => t.toLowerCase())
 
   if (entities.length === 0 && tokens.length < 2) return results
 
+  /**
+   * Si la consulta tiene entidad, se exige que aparezca.
+   *
+   * Antes la alternativa "coincide con 2 terminos" hacia de segunda a cualquier
+   * resultado que compartiera dos palabras sueltas con la consulta, incluso con la
+   * entidad presente y sin mencionarla. Medido: "que es Deno y como se instala"
+   * devolvia "Giovanni Verga", "Luis I de Hungria" y "Juan VII Paleologo" — todos
+   * pasaban por las palabras "se"/"instalar", ninguno era sobre Deno.
+   *
+   * La excepcion es cuando la entidad NO sobrevive al filtro en ningun sitio: ahi
+   * se acepta la coincidencia por terminos, porque no exigirla dejaria la busqueda
+   * vacia, que es peor que devolver algo mediocre.
+   */
   const kept: WebResult[] = []
   const dropped: WebResult[] = []
+  const byTerms: WebResult[] = []
   for (const r of results) {
     const haystack = `${r.title} ${r.snippet}`.toLowerCase()
-    const relevant =
-      entities.some((e) => haystack.includes(e)) ||
-      tokens.filter((t) => haystack.includes(t.toLowerCase())).length >= 2
-    ;(relevant ? kept : dropped).push(r)
+    const mentionsEntity = entities.some((e) => haystack.includes(e))
+    const termHits = tokens.filter((t) => haystack.includes(t.toLowerCase())).length
+    if (mentionsEntity) kept.push(r)
+    else if (termHits >= 2) byTerms.push(r)
+    else dropped.push(r)
   }
 
-  if (kept.length === 0) return results
-  // Relleno para que la busqueda no parezca vacia.
-  if (kept.length < 3) return kept.concat(dropped.slice(0, 3 - kept.length))
-  return kept
+  // La entidad manda: si hay articulos que la nombran, los demas solo entran por
+  // relleno al final, nunca por delante.
+  const pool = kept.length > 0 ? kept : byTerms.length > 0 ? byTerms : results
+
+  // Relleno para que la busqueda no parezca vacia: un unico resultado hace que la
+  // busqueda parezca fallida (medido: "ultima version estable de Rust" se quedaba con
+  // un solo articulo —el correcto— y el modelo no tenia con que contrastarlo).
+  if (pool.length < 3) return pool.concat(dropped.slice(0, 3 - pool.length))
+  return pool
 }
 
 /**
