@@ -122,8 +122,8 @@ export default function MessageBubble({ message, isStreaming }: Props) {
         className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5"
         style={{
           background: isUser
-            ? 'linear-gradient(135deg, #7c6af7, #a78bfa)'
-            : 'linear-gradient(135deg, #1a1a2e, #2d2b52)',
+            ? 'linear-gradient(135deg, #ff2e4d, #ff7a8c)'
+            : 'linear-gradient(135deg, #1c1c22, #3a1420)',
           border: isUser ? 'none' : '1px solid var(--border)',
         }}
       >
@@ -161,7 +161,7 @@ export default function MessageBubble({ message, isStreaming }: Props) {
           style={
             isUser
               ? {
-                  background: 'linear-gradient(135deg, #7c6af7, #6d5ce6)',
+                  background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)',
                   color: '#fff',
                 }
               : {

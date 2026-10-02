@@ -67,8 +67,8 @@ export default function ChatInput({ value, onChange, onSubmit, onStop, isLoading
         }}
         onFocus={(e) => {
           const el = e.currentTarget
-          el.style.border = '1px solid rgba(124,106,247,0.5)'
-          el.style.boxShadow = '0 0 0 3px rgba(124,106,247,0.1)'
+          el.style.border = '1px solid rgba(255,46,77,0.5)'
+          el.style.boxShadow = '0 0 0 3px rgba(255,46,77,0.1)'
         }}
         onBlur={(e) => {
           const el = e.currentTarget
@@ -133,7 +133,7 @@ export default function ChatInput({ value, onChange, onSubmit, onStop, isLoading
           )}
           style={
             !isLoading && value.trim() && !disabled
-              ? { background: 'linear-gradient(135deg, #7c6af7, #6d5ce6)' }
+              ? { background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)' }
               : isLoading
               ? {}
               : { background: 'var(--surface-3)' }

@@ -6,33 +6,43 @@
 @tailwind utilities;
 
 :root {
-  --surface-0: #0a0a0f;
-  --surface-1: #111118;
-  --surface-2: #1a1a24;
-  --surface-3: #222230;
-  --accent: #7c6af7;
-  --accent-muted: rgba(124, 106, 247, 0.15);
-  --accent-glow: rgba(124, 106, 247, 0.4);
-  --text-primary: #f0effe;
-  --text-secondary: #a9a7c4;
-  --text-muted: #6b698a;
-  --border: rgba(255, 255, 255, 0.07);
+  /* Tema "Red Singularity": negro profundo + carmesí. Sustituye la paleta
+     violeta anterior; el resto de la app consume estas variables. */
+  --surface-0: #08080b;
+  --surface-1: #101015;
+  --surface-2: #18181f;
+  --surface-3: #21212a;
+  --accent: #ff2e4d;
+  --accent-muted: rgba(255, 46, 77, 0.14);
+  --accent-glow: rgba(255, 46, 77, 0.45);
+  --text-primary: #f7eef0;
+  --text-secondary: #b9a7ac;
+  --text-muted: #7e6b71;
+  --border: rgba(255, 255, 255, 0.08);
   --font-geist: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  /* Fondo de toda la app, con un halo rojo sutil (efecto "neural"). */
+  --app-bg:
+    radial-gradient(1000px 620px at 85% -10%, rgba(255, 46, 77, 0.14), transparent 60%),
+    radial-gradient(820px 520px at 0% 110%, rgba(255, 46, 77, 0.08), transparent 60%),
+    var(--surface-0);
 }
 
 .light {
-  --surface-0: #fafafa;
-  --surface-1: #f4f4f8;
-  --surface-2: #ebebf2;
-  --surface-3: #e0e0ea;
-  --accent: #5b4fcf;
-  --accent-muted: rgba(91, 79, 207, 0.1);
-  --accent-glow: rgba(91, 79, 207, 0.3);
-  --text-primary: #12111f;
-  --text-secondary: #4a4868;
-  --text-muted: #6b698a;
-  --border: rgba(0, 0, 0, 0.15);
+  --surface-0: #fbf7f8;
+  --surface-1: #f6eef0;
+  --surface-2: #eee2e4;
+  --surface-3: #e2d2d6;
+  --accent: #d11a3c;
+  --accent-muted: rgba(209, 26, 60, 0.1);
+  --accent-glow: rgba(209, 26, 60, 0.28);
+  --text-primary: #1a1013;
+  --text-secondary: #5d474d;
+  --text-muted: #7e6b71;
+  --border: rgba(0, 0, 0, 0.14);
+  --app-bg:
+    radial-gradient(1000px 600px at 85% -10%, rgba(209, 26, 60, 0.08), transparent 60%),
+    var(--surface-0);
 }
 
 * {
@@ -50,7 +60,8 @@ html {
 }
 
 body {
-  background: var(--surface-0);
+  background: var(--app-bg);
+  background-attachment: fixed;
   height: 100dvh;
   overflow: hidden;
 }
@@ -104,7 +115,7 @@ body {
   background: var(--surface-3);
   padding: 0.15em 0.4em;
   border-radius: 4px;
-  color: #c4b5fd;
+  color: var(--accent);
 }
 
 .prose-chat pre {

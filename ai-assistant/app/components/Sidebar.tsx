@@ -77,7 +77,7 @@ export default function Sidebar({
           <div className="flex items-center gap-2">
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #7c6af7, #6d5ce6)' }}
+              style={{ background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)' }}
             >
               <Sparkles size={14} color="#fff" />
             </div>
@@ -111,7 +111,7 @@ export default function Sidebar({
             style={{
               background: 'var(--accent-muted)',
               color: 'var(--accent)',
-              border: '1px solid rgba(124,106,247,0.2)',
+              border: '1px solid rgba(255,46,77,0.2)',
             }}
           >
             <Plus size={15} />
@@ -164,7 +164,7 @@ export default function Sidebar({
                           ? 'var(--surface-2)'
                           : 'transparent',
                       border: activeId === conv.id
-                        ? '1px solid rgba(124,106,247,0.2)'
+                        ? '1px solid rgba(255,46,77,0.2)'
                         : '1px solid transparent',
                     }}
                   >

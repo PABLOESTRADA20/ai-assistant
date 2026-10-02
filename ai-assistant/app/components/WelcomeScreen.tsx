@@ -66,7 +66,7 @@ export default function WelcomeScreen({ onPrompt }: Props) {
               position: 'absolute',
               inset: 0,
               borderRadius: '1rem',
-              background: 'linear-gradient(135deg, #7c6af7, #6d5ce6)',
+              background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)',
               opacity: isActive ? 0.4 : 0,
               transform: isActive ? 'scale(1.4)' : 'scale(1)',
               filter: 'blur(12px)',
@@ -76,8 +76,8 @@ export default function WelcomeScreen({ onPrompt }: Props) {
           <div
             className="w-16 h-16 rounded-2xl flex items-center justify-center relative"
             style={{
-              background: 'linear-gradient(135deg, #7c6af7 0%, #6d5ce6 100%)',
-              boxShadow: isActive ? '0 8px 40px rgba(124,106,247,0.7)' : '0 8px 32px rgba(124,106,247,0.4)',
+              background: 'linear-gradient(135deg, #ff2e4d 0%, #c81e3c 100%)',
+              boxShadow: isActive ? '0 8px 40px rgba(255,46,77,0.7)' : '0 8px 32px rgba(255,46,77,0.4)',
               transition: 'box-shadow 0.4s ease',
             }}
           >
@@ -121,7 +121,7 @@ export default function WelcomeScreen({ onPrompt }: Props) {
           className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-200 hover:opacity-80 cursor-pointer"
           style={{
             background: isActive ? 'var(--accent-muted)' : 'var(--surface-2)',
-            border: `1px solid ${isActive ? 'rgba(124,106,247,0.4)' : 'var(--border)'}`,
+            border: `1px solid ${isActive ? 'rgba(255,46,77,0.4)' : 'var(--border)'}`,
             color: isActive ? 'var(--accent)' : 'var(--text-muted)',
           }}
         >
@@ -145,9 +145,9 @@ export default function WelcomeScreen({ onPrompt }: Props) {
             <button
               key={i}
               onClick={() => onPrompt(s.text)}
-              className="text-left p-4 rounded-2xl transition-all duration-200 cursor-pointer group hover:shadow-[0_4px_16px_rgba(124,106,247,0.15)] active:opacity-80"
+              className="text-left p-4 rounded-2xl transition-all duration-200 cursor-pointer group hover:shadow-[0_4px_16px_rgba(255,46,77,0.15)] active:opacity-80"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(124,106,247,0.4)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,46,77,0.4)' }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
             >
               <div className="flex items-center gap-2 mb-2">

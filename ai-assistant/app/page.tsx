@@ -494,9 +494,9 @@ export default function Home() {
 
   if (authState === 'checking' || (authState === 'ready' && initialLoading)) {
     return (
-      <div className="flex h-dvh items-center justify-center" style={{ background: 'var(--surface-0)' }}>
+      <div className="flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-xl" style={{ background: 'linear-gradient(135deg, #7c6af7, #6d5ce6)', animation: 'pulse 1.5s infinite' }} />
+          <div className="w-8 h-8 rounded-xl" style={{ background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)', animation: 'pulse 1.5s infinite' }} />
           <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando conversaciones...</span>
         </div>
       </div>
@@ -508,7 +508,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden" style={{ background: 'var(--surface-0)' }}>
+    <div className="flex h-dvh overflow-hidden" style={{ background: 'var(--app-bg)' }}>
       <Sidebar
         conversations={conversations}
         activeId={activeId}

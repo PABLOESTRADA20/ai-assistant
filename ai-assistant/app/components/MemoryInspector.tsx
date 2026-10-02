@@ -300,7 +300,7 @@ export default function MemoryInspector({ open, onClose }: Props) {
               onClick={runSearch}
               disabled={loading}
               className="px-3 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 disabled:opacity-40"
-              style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(124,106,247,0.2)' }}
+              style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(255,46,77,0.2)' }}
             >
               Buscar
             </button>

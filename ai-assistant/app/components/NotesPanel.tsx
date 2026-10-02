@@ -294,7 +294,7 @@ export default function NotesPanel({ open, onClose }: Props) {
                 onClick={save}
                 disabled={saving || !title.trim()}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition hover:opacity-80 disabled:opacity-40"
-                style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(124,106,247,0.2)' }}
+                style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(255,46,77,0.2)' }}
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Guardar
@@ -343,7 +343,7 @@ export default function NotesPanel({ open, onClose }: Props) {
               <button
                 onClick={startCreate}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80"
-                style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(124,106,247,0.2)' }}
+                style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(255,46,77,0.2)' }}
               >
                 <Plus size={12} />
                 Nueva

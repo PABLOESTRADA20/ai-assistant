@@ -39,7 +39,7 @@ export default function LoginScreen({ onSuccess }: Props) {
   return (
     <div
       className="flex h-dvh items-center justify-center px-4"
-      style={{ background: 'var(--surface-0)' }}
+      style={{ background: 'var(--app-bg)' }}
     >
       <form
         onSubmit={handleSubmit}
@@ -50,8 +50,8 @@ export default function LoginScreen({ onSuccess }: Props) {
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
             style={{
-              background: 'linear-gradient(135deg, #7c6af7 0%, #6d5ce6 100%)',
-              boxShadow: '0 8px 32px rgba(124,106,247,0.4)',
+              background: 'linear-gradient(135deg, #ff2e4d 0%, #c81e3c 100%)',
+              boxShadow: '0 8px 32px rgba(255,46,77,0.4)',
             }}
           >
             <ShieldCheck size={26} color="#fff" />
