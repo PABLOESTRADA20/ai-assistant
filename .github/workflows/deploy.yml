@@ -67,5 +67,6 @@ jobs:
         run: |
           echo "${{ secrets.DATABASE_URL }}" | npx wrangler secret put DATABASE_URL
           echo "${{ secrets.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY
-          # Sin claves de busqueda web: `web_search` usa DuckDuckGo + Wikipedia,
-          # que son gratuitos y no requieren API key. No agregar TAVILY_API_KEY.
+          # Sin claves de busqueda web: `web_search` consulta APIs keyless
+          # (Wikipedia, Stack Exchange, Hacker News, MDN y endoflife.date), que
+          # son gratuitas y no requieren API key.

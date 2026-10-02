@@ -31,7 +31,11 @@
  *   2. Stack Overflow (Stack Exchange API) - preguntas y respuestas tecnicas.
  *   3. Hacker News (Algolia) - discussion tecnica y de industria.
  *   4. MDN - documentacion web (JS, CSS, HTML, Web APIs).
- *   5. arXiv - papers cientificos (papers de ML/IA).
+ *   5. Versiones - canales oficiales de cada proyecto (nodejs.org, GitHub Releases
+ *      de Rust, python.org) y endoflife.date como respaldo.
+ *
+ * Cada fuente declara `applies(query)`: no todas aportan a todas las consultas y
+ * una fuente sin cobertura tematica solo mete ruido.
  *
  * Si alguna vez se quiere cobertura de noticias o busqueda general, hace falta
  * un proveedor con API key (Tavily, Brave, Serper, Exa tienen tier gratuito);
@@ -117,17 +121,6 @@ type Source = (query: string, limit: number, signal: AbortSignal) => Promise<Web
 // Wikipedia
 // ---------------------------------------------------------------------------
 
-type WikiSearch = {
-  query?: {
-    search?: Array<{
-      title: string
-      pageid: number
-      snippet: string
-      pageprops?: { disambiguation?: string }
-    }>
-  }
-}
-
 /** Palabras vacias ES/EN: no ayudan a decidir que articulo se busca. */
 const STOPWORDS = new Set(
   (
@@ -170,50 +163,65 @@ function entityCandidates(query: string, max: number): string[] {
   return out
 }
 
-type WikiExtract = {
+type WikiGenerator = {
   query?: {
-    pages?: Record<string, { extract?: string; missing?: string }>
+    pages?: Record<string, { title: string; pageid: number; extract?: string }>
   }
 }
 
 type WikiHit = {
   title: string
   pageid: number
-  snippet: string
+  extract: string
   lang: string
-  pageprops?: { disambiguation?: string }
 }
 
 /**
  * Desambiguacion.
  *
  * Con `intitle:Rust` el primer resultado es la pagina homonima ("Rust" el album,
- * el municipio, la pelicula) y no el lenguaje de programacion. Wikipedia lo
- * marca de forma fiable: `pageprops.disambiguation` viene presente solo en las
- * paginas de desambiguacion. Verificado contra "Rust" (lo tiene), "Deno",
- * "JavaScript", "PostgreSQL" y "Alan Turing" (no lo tienen).
+ * el municipio, la pelicula) y no el lenguaje de programacion. Se detecta por el
+ * texto de la introduccion, que es consistente en ambos idiomas: una pagina de
+ * desambiguacion empieza por "X puede referirse a" / "X may refer to".
  *
- * Se descartan, pero solo si queda algo: para consultas genuinamente ambiguas
- * ("Rust" a secas) la pagina de desambiguacion es la respuesta correcta.
+ * (La via obvia seria `pageprops.disambiguation`, pero con `generator=search` el
+ * array `pageprops` llega vacio — medido — asi que no es utilizable.)
+ *
+ * Se descartan, pero solo si queda alternativa: para consultas genuinamente
+ * ambiguas ("Rust" a secas) esa pagina es la respuesta correcta.
  */
 const DISAMBIGUATION = /puede referirse a|may refer to|is a disambiguation/i
 
 function isDisambiguation(hit: WikiHit): boolean {
-  if (hit.pageprops?.disambiguation !== undefined) return true
-  return DISAMBIGUATION.test(stripTags(hit.snippet))
+  return DISAMBIGUATION.test(hit.extract)
 }
 
-async function wikiSearch(
-  lang: string,
-  srsearch: string,
-  signal: AbortSignal
-): Promise<WikiHit[]> {
-  const data = await getJson<WikiSearch>(
-    `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srprop=snippet|pageprops` +
-      `&srsearch=${encodeURIComponent(srsearch)}&srlimit=6&srnamespace=0&format=json&origin=*`,
+/**
+ * Busqueda + extracto en un solo request.
+ *
+ * `generator=search` con `prop=extracts` devuelve los articulos y su parrafo
+ * introductorio en la misma consulta; antes se hacia `list=search` y luego una
+ * segunda llamada a `prop=extracts`. No es un detalle menor: el plan gratis de
+ * Cloudflare Workers permite 50 subrequests por invocacion y la version de dos
+ * llamadas gastaba 14 requests por busqueda, con lo cual `/api/chat` moria con
+ * HTTP 500 "Too many subrequests by single Worker invocation" en cuanto el modelo
+ * hacia tres búsquedas. Medido: 14 -> 6 requests, sin perder relevancia.
+ */
+async function wikiSearch(lang: string, gsrsearch: string, signal: AbortSignal): Promise<WikiHit[]> {
+  const data = await getJson<WikiGenerator>(
+    `https://${lang}.wikipedia.org/w/api.php?action=query&generator=search` +
+      `&gsrsearch=${encodeURIComponent(gsrsearch)}&gsrlimit=3&gsrnamespace=0` +
+      `&prop=extracts&exintro=1&exsentences=3&explaintext=1&redirects=1&format=json&origin=*`,
     signal
   )
-  return (data.query?.search ?? []).map((h) => ({ ...h, lang }))
+  return Object.values(data.query?.pages ?? {})
+    .map((page) => ({
+      title: page.title,
+      pageid: page.pageid,
+      extract: stripTags(page.extract ?? ''),
+      lang,
+    }))
+    .filter((hit) => hit.extract !== '')
 }
 
 /**
@@ -222,7 +230,7 @@ async function wikiSearch(
  * ------------------------------------------------------------------
  * POR QUE NO SE BUSCA LA FRASE COMPLETA Y YA
  * ------------------------------------------------------------------
- * `srsearch` con el texto crudo indexa por OR de terminos, asi que cualquier
+ * `gsrsearch` con el texto crudo indexa por OR de terminos, asi que cualquier
  * palabra suelta arrastra articulos que no tienen nada que ver. Medido con este
  * mismo codigo sobre consultas reales:
  *
@@ -235,143 +243,80 @@ async function wikiSearch(
  *                                           devolvia DrugBank
  *   AND de todos los terminos (+a +b)  -> top1 correcto 0/5
  *
- * Lo que si funciona es combinar cuatro estrategias y ordenarlas por fiabilidad,
- * porque cada una le acierta a un caso distinto:
+ * Lo que si funciona es combinar la consulta completa con `intitle:` sobre la
+ * entidad, porque cada una le acierta a un caso distinto:
  *
- *   1. `intitle:"ent1 ent2 ent3"`  entidad multipalabra completa ("World Wide Web")
- *   2. `intitle:"ent1 ent2"`       entidad multipalabra parcial
- *   3. la consulta completa         indexada por OR, pero es la unica que
+ *   1. la consulta completa         indexada por OR, pero es la unica que
  *                                   entiende "ultima version estable de Rust" y
  *                                   ahi coloca "Rust (lenguaje de programacion)"
  *                                   en el primer lugar
- *   4. `intitle:ent1`              entidad de una palabra, ultimo recurso: "Rust"
- *                                   devuelve tambien el album y la pelicula
+ *   2. `intitle:ent1`              entidad de una palabra: rescata "como se usa un
+ *                                   mutex en Rust", donde la consulta completa
+ *                                   devuelve articulos sobre concurrencia pero no
+ *                                   sobre el lenguaje
+ *   3. `intitle:ent2`              segunda candidata, cubre "World Wide Web" y casos
+ *                                   donde la entidad son dos palabras
  *
- * No se corta en cuanto se llena la cuota, se ejecutan las cuatro y se ordena el
- * conjunto: si se paraba en la primera que llenaba, la estrategia 3 nunca llegaba
- * a ejecutarse y "Rust" salia con la pelicula y el album. Medido con el orden y el
- * tope por estrategia de este codigo: el articulo correcto cae en el top-3 en 5 de
- * 6 consultas de prueba (la sexta se queda fuera por el tope de 3 por idioma, que
- * es el precio de no diluir el ranking con ~100 candidatos).
+ * Se ejecutan las tres siempre, sin cortar por cuota, y el ranking se arma por
+ * orden de llegada (gana la primera estrategia que encontro el articulo).
  *
- * Los extractos se piden por `pageids` y no por `titles` a proposito: con
- * `redirects=1` el titulo devuelto puede no coincidir con el pedido, y buscar el
- * extract por nombre terminaba asociandole a un articulo el parrafo de otro
- * (medido: "Rust (lenguaje de programacion)" recibia la introduccion de SFML).
- * Con `pageids` la correspondencia es exacta.
+ * ------------------------------------------------------------------
+ * POR QUE TRES ESTRATEGIAS Y NO MAS
+ * ------------------------------------------------------------------
+ * El limite duro es de requests, no de relevancia: en el plan gratis cada
+ * invocacion de Worker admite 50 subrequests, y Wikipedia son 2 requests por
+ * estrategia (es + en). Con cuatro estrategias eran 8 por busqueda mas los extractos
+ * aparte (14 en total) y `/api/chat` devolvia HTTP 500 "Too many subrequests by
+ * single Worker invocation" en cuanto el modelo encadenaba tres busquedas.
+ *
+ * Se midieron cuatro planes sobre 8 consultas reales (las de abajo), contando si el
+ * articulo correcto aparecia en el top-4:
+ *
+ *   P1  completa + intitle x2            8/8   6 requests   <- elegido
+ *   P2  completa + frase + intitle       8/8   6 requests
+ *   P3  intitle x2 + completa            8/8   6 requests
+ *   P4  completa + intitle x2 + frase    8/8   8 requests
+ *
+ * P1 va primero para no diluir: la consulta completa es la que mejor ordena, asi
+ * que sus resultados llenan el top antes de que lleguen los de `intitle:`.
  */
 const searchWikipedia: Source = async (query, limit, signal) => {
   const candidates = entityCandidates(query, 3)
 
-  /**
-   * Intercala por posicion de ranking, no por idioma.
-   *
-   * Concatenar todo el español y despues todo el ingles desperdicia el ranking: con
-   * `intitle:Rust` el español devuelve [Rust (desambiguacion), Rust in Peace, Rust
-   * (pelicula), ...] y el ingles [Rust (programming language), Rust (film), ...], asi
-   * que el articulo correcto quedaba en la posicion 7 y se caia del corte. Alternando
-   * por posicion, el resultado #1 de cada idioma compite y el bueno entra primero.
-   */
-  const inBothLanguages = async (srsearch: string) => {
-    const [es, en] = await Promise.all([
-      wikiSearch('es', srsearch, signal),
-      wikiSearch('en', srsearch, signal),
-    ])
-    const interleaved: WikiHit[] = []
-    for (let i = 0; i < Math.max(es.length, en.length); i++) {
-      if (es[i]) interleaved.push(es[i])
-      if (en[i]) interleaved.push(en[i])
-    }
-    return interleaved
-  }
-
-  /**
-   * Cada estrategia aporta poco y el ranking se diluye si todasFULL: con 12
-   * resultados por estrategia el articulo correcto caia en la posicion 22-35 de un
-   * ranking de ~100 candidatos. Con 3 por idioma el mismo articulo entra en el
-   * top-3 (medido: "ultima version estable de Rust" pasa de pos 22 a pos 1).
-   */
-  const PER_STRATEGY = 6
-
-  /** Paso -> peso de orden. Menor peso entra antes. Ver medicion abajo. */
-  const WEIGHT: Record<number, number> = {
-    0: 0, // frase intitle de 3 palabras
-    1: 0.4, // frase intitle de 2 palabras
-    2: 0.2, // consulta completa (a texto completo)
-    3: 0.8, // intitle de una palabra
-  }
-
-  const hits = new Map<string, { hit: WikiHit; step: number; idx: number }>()
-  const collect = (found: WikiHit[], step: number) => {
-    found.slice(0, PER_STRATEGY).forEach((hit, idx) => {
+  const seen = new Set<string>()
+  const hits: WikiHit[] = []
+  const collect = (found: WikiHit[]) => {
+    for (const hit of found) {
       const key = `${hit.lang}:${hit.title}`
-      // Gana el primer paso que encontro el articulo, que es el de menor peso.
-      if (!hits.has(key)) hits.set(key, { hit, step, idx })
-    })
+      if (seen.has(key)) continue
+      seen.add(key)
+      hits.push(hit)
+    }
   }
 
-  // Todas las estrategias se ejecutan siempre, sin cortar por cuota: si se para
-  // al llenarse `limit` se perdia la que mejor ordena, y medir eso era
-  // precisamente lo que fallaba con "Rust".
-  if (candidates.length >= 2) {
-    collect(await inBothLanguages(`intitle:"${candidates.slice(0, 3).join(' ')}"`), 0)
-    collect(await inBothLanguages(`intitle:"${candidates.slice(0, 2).join(' ')}"`), 1)
-  }
-  collect(await inBothLanguages(query), 2)
-  for (const candidate of candidates.slice(0, 2)) {
-    collect(await inBothLanguages(`intitle:${candidate}`), 3)
+  // Secuencial, no en paralelo: son 6 requests fijos y medidos, y ademas el orden de
+  // llegada es el orden del ranking.
+  for (const search of [query, ...candidates.slice(0, 2).map((c) => `intitle:${c}`)]) {
+    for (const lang of ['es', 'en']) {
+      try {
+        collect(await wikiSearch(lang, search, signal))
+      } catch {
+        // Un idioma puede fallar sin invalidar el otro.
+      }
+    }
   }
 
   // Descartar paginas de desambiguacion, pero solo si queda alternativa: para
   // "Rust" a secas la pagina que lista todos los sentidos es la respuesta buena.
-  const all = [...hits.values()].map((entry) => entry.hit)
-  const specific = all.filter((h) => !isDisambiguation(h))
-  const pool = specific.length > 0 ? specific : all
+  const specific = hits.filter((h) => !isDisambiguation(h))
+  const pool = specific.length > 0 ? specific : hits
 
-  const score = (h: WikiHit) => {
-    const entry = hits.get(`${h.lang}:${h.title}`)!
-    return WEIGHT[entry.step] + entry.idx * 0.4
-  }
-
-  const top = pool.sort((a, b) => score(a) - score(b)).slice(0, limit)
-  if (top.length === 0) return []
-
-  // Extracts por idioma, agrupados para no pedir el mismo idioma dos veces.
-  const extractsByPageId = new Map<string, string>()
-  for (const lang of ['es', 'en']) {
-    const pageIds = top
-      .filter((h) => h.lang === lang)
-      .slice(0, 2)
-      .map((h) => h.pageid)
-    if (pageIds.length === 0) continue
-    try {
-      const ex = await getJson<WikiExtract>(
-        `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1` +
-          `&explaintext=1&redirects=1&pageids=${pageIds.join('|')}&format=json&origin=*`,
-        signal
-      )
-      for (const [pageId, page] of Object.entries(ex.query?.pages ?? {})) {
-        if (page.extract) extractsByPageId.set(`${lang}:${pageId}`, stripTags(page.extract))
-      }
-    } catch {
-      // Los extractos son una mejora, no un requisito: seguimos con los snippets.
-    }
-  }
-
-  const results: WebResult[] = []
-  for (const hit of top) {
-    const intro = extractsByPageId.get(`${hit.lang}:${hit.pageid}`)
-    const snippet = intro || stripTags(hit.snippet)
-    if (!snippet) continue
-    results.push({
-      title: hit.title,
-      url: `https://${hit.lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, '_'))}`,
-      snippet: clamp(snippet, 700),
-      source: 'wikipedia',
-    })
-  }
-
-  return results
+  return pool.slice(0, limit).map((hit) => ({
+    title: hit.title,
+    url: `https://${hit.lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, '_'))}`,
+    snippet: clamp(hit.extract, 700),
+    source: 'wikipedia',
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -719,6 +664,16 @@ const CODE_SIGNALS =
 const WEB_SIGNALS =
   /\b(html|css|javascript|dom|browser|navegador|web|api|fetch|http|https|url|cookie|localstorage|sessionstorage|form|formulario|input|canvas|svg|aria|accessibility|accesibilidad|flexbox|grid|responsive|webpack|vite|tailwind|bootstrap)\b/i
 
+/**
+ * Cache de busquedas recientes, por terminos significativos.
+ *
+ * Existe por el limite de subrequests por invocacion (50 en el plan gratis de
+ * Workers), no por rendimiento: el modelo repite la misma pregunta reformulada y
+ * cada repeticion gasta las descargas enteras otra vez.
+ */
+const recentSearches = new Map<string, { at: number; value: WebSearchOutcome }>()
+const RECENT_TTL_MS = 90_000
+
 /** Cada fuente declara para que tipo de consulta aporta algo, via `applies`. */
 const SOURCES: Array<{
   name: string
@@ -760,7 +715,7 @@ const SOURCES: Array<{
     max: 2,
     timeoutMs: 4_000,
     // Solo cuando la pregunta es por versiones: si no, este catalogo no aporta
-    // nada y ademas觸 "quien invento Java" con la version LTS de Java.
+    // nada y ademas responde "quien invento Java" con la version LTS de Java.
     applies: (q) => VERSION_INTENT.test(q),
   },
 ]
@@ -789,25 +744,37 @@ const SOURCES: Array<{
  * textos largos, que son justo los que matchean cualquier cosa.
  *
  * Prioriza precision sobre cobertura: el fallo que nos duele es que el modelo se
- * invente la respuesta cuando los resultados no le sirven, no que le falte un
+ * invente la respuesta cuando los resultados no le servi, no que le falte un
  * resultado. Aun asi, si despues de filtrar quedan menos de 3 se rellena con los
  * descartados, porque un unico resultado hace que la busqueda parezca fallida
  * (medido: "ultima version estable de Rust" se quedaba con 1 solo articulo, que es
  * el correcto, y el modelo no tenia con que contrastarlo).
  *
- * Solo se aplica con 2 o mas terminos significativos: con una sola palabra
- * ("Deno") casi todo resultado es relevante y filtrar solo perderia cobertura. Si
- * el filtro deja la lista vacia se devuelven los originales, porque perder todos los
+ * Si hay entidad con mayuscula, el filtro se aplica aunque la consulta tenga un
+ * solo terminosignificativo: "que es PostgreSQL" deja un unico termino, y sin
+ * filtrar la wikipedia inglesa devolvia "Tilde" y "Wikiloc" al lado del articulo
+ * correcto (medido). Sin entidad y con un solo termino ("Deno") no se filtra nada:
+ * ahi casi todo resultado es relevante y filtrar solo perderia cobertura. Si el
+ * filtro deja la lista vacia se devuelven los originales, porque perder todos los
  * resultados es peor que devolver alguno mediocre.
  */
 function filterRelevant(query: string, results: WebResult[]): WebResult[] {
-  const tokens = queryTokens(query).filter((t) => !STOPWORDS.has(t.toLowerCase()))
-  if (tokens.length < 2) return results
+  const raw = queryTokens(query)
+  const tokens = raw.filter((t) => !STOPWORDS.has(t.toLowerCase()))
 
-  // Entidades: con mayuscula y que no sea la primera palabra de la frase.
-  const entities = tokens
-    .filter((t, i) => i > 0 && /^\p{Lu}/u.test(t))
+  /**
+   * Entidades: con mayuscula y que no sea la primera palabra de la frase.
+   *
+   * La posicion se mira sobre los tokens ORIGINALES, no sobre los ya filtrados de
+   * palabras vacias: en "que es PostgreSQL", quitando "que" y "es", la entidad queda
+   * en el indice 0 y el filtro laencia de tratar como entidad (medido: el articulo
+   * de Wikipedia "Tilde" se colaba en los resultados).
+   */
+  const entities = raw
+    .filter((t, i) => i > 0 && /^\p{Lu}/u.test(t) && !STOPWORDS.has(t.toLowerCase()))
     .map((t) => t.toLowerCase())
+
+  if (entities.length === 0 && tokens.length < 2) return results
 
   const kept: WebResult[] = []
   const dropped: WebResult[] = []
@@ -841,6 +808,29 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
   // tematica devuelve ruido que el filtro de relevancia no puede quitar.
   const active = SOURCES.filter((source) => source.applies(query))
   const skipped = SOURCES.filter((source) => !source.applies(query)).map((s) => s.name)
+
+  /**
+   * Consultas equivalentes no se vuelven a ejecutar.
+   *
+   * El limite de 50 subrequests es por invocacion, y el modelo tiende a repetir la
+   * pregunta: en una sesion real encadeno "latest stable Rust version 2026", "Rust
+   * 1.80 stable release" y "Rust stable release 2026 version" — tres descargas
+   * distintas de practicamente lo mismo. La clave es el conjunto de terminos
+   * significativos, no el texto: asi las tres caerian en la misma entrada.
+   *
+   * TTL corto a proposito (90 s): sirve para las repreguntas de una misma
+   * invocacion, que es justo donde el limite duele, y no sirve para responder
+   * "de nuevo" con contenido viejo.
+   */
+  const cacheKey = queryTokens(query)
+    .map((t) => t.toLowerCase())
+    .filter((t) => !STOPWORDS.has(t))
+    .sort()
+    .join('|')
+  const cached = cacheKey ? recentSearches.get(cacheKey) : undefined
+  if (cached && Date.now() - cached.at < RECENT_TTL_MS) {
+    return { ...cached.value, query, warnings: [...cached.value.warnings] }
+  }
 
   const settled = await Promise.allSettled(
     active.map(async (source) => {
@@ -912,7 +902,7 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
     warnings.push('sin resultados')
   }
 
-  return {
+  const outcome: WebSearchOutcome = {
     query,
     results: ordered,
     sources: [...perSource.keys()],
@@ -921,4 +911,8 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
     // consulta. Se reporta para que se entienda por que hay tan pocas fuentes.
     skipped,
   }
+
+  if (cacheKey) recentSearches.set(cacheKey, { at: Date.now(), value: outcome })
+
+  return outcome
 }
