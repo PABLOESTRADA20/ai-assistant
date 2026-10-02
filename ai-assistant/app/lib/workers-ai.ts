@@ -7,6 +7,11 @@
  * se normaliza el stream a formato OpenAI para reutilizar el mismo camino que
  * Groq. Se usa el binding (no el endpoint REST) porque no exige ningún token
  * extra: el `AI` ya está configurado en `wrangler.jsonc`.
+ *
+ * Extra: los modelos de razonamiento (DeepSeek R1) mandan su cadena de
+ * pensamiento dentro de `response`, envuelta en ` thinking ... `. Al
+ * usuario solo debe llegarle la respuesta final, así que se filtra ese bloque
+ * aunque llegue troceado entre chunks.
  */
 
 type AiBinding = {
@@ -21,6 +26,89 @@ function sseChunk(content: string): Uint8Array {
   )
 }
 
+const OPEN_TAGS = [' thinking', '<reasoning>']
+const CLOSE_TAGS = ['', '</reasoning>']
+const MAX_TAG = Math.max(...[...OPEN_TAGS, ...CLOSE_TAGS].map((t) => t.length))
+
+/**
+ * Descarta el bloque de razonamiento de un stream de texto. Mantiene un buffer
+ * para detectar etiquetas partidas entre chunks y solo emite el texto visible.
+ */
+class ThinkFilter {
+  private pending = ''
+  private inThink = false
+  private started = false
+
+  constructor(private readonly emit: (text: string) => void) {}
+
+  push(text: string) {
+    this.pending += text
+    this.process(false)
+  }
+
+  end() {
+    this.process(true)
+  }
+
+  private indexOfAny(tags: string[]): number {
+    let best = -1
+    for (const tag of tags) {
+      const i = this.pending.indexOf(tag)
+      if (i >= 0 && (best < 0 || i < best)) best = i
+    }
+    return best
+  }
+
+  private flushVisible(text: string) {
+    if (!text) return
+    if (!this.started) {
+      text = text.replace(/^\s+/, '')
+      if (!text) return
+      this.started = true
+    }
+    this.emit(text)
+  }
+
+  private process(end: boolean) {
+    for (;;) {
+      if (this.inThink) {
+        const idx = this.indexOfAny(CLOSE_TAGS)
+        if (idx < 0) {
+          if (end) {
+            this.pending = ''
+            return
+          }
+          // Conserva solo la cola que podría ser una etiqueta de cierre parcial.
+          this.pending = this.pending.slice(-(MAX_TAG - 1))
+          return
+        }
+        const tag = CLOSE_TAGS.find((t) => this.pending.startsWith(t, idx))!
+        this.pending = this.pending.slice(idx + tag.length)
+        this.inThink = false
+        continue
+      }
+
+      const idx = this.indexOfAny(OPEN_TAGS)
+      if (idx < 0) {
+        if (end) {
+          this.flushVisible(this.pending)
+          this.pending = ''
+          return
+        }
+        if (this.pending.length <= MAX_TAG - 1) return
+        this.flushVisible(this.pending.slice(0, this.pending.length - (MAX_TAG - 1)))
+        this.pending = this.pending.slice(-(MAX_TAG - 1))
+        return
+      }
+
+      const tag = OPEN_TAGS.find((t) => this.pending.startsWith(t, idx))!
+      this.flushVisible(this.pending.slice(0, idx))
+      this.pending = this.pending.slice(idx + tag.length)
+      this.inThink = true
+    }
+  }
+}
+
 export function normalizeToOpenAiSse(raw: unknown): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder()
   const source = raw as ReadableStream<Uint8Array>
@@ -28,6 +116,7 @@ export function normalizeToOpenAiSse(raw: unknown): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = source.getReader()
+      const filter = new ThinkFilter((text) => controller.enqueue(sseChunk(text)))
       let buffer = ''
 
       const handleLine = (line: string) => {
@@ -43,10 +132,10 @@ export function normalizeToOpenAiSse(raw: unknown): ReadableStream<Uint8Array> {
           const cf = typeof parsed.response === 'string' ? parsed.response : ''
           const oa = parsed.choices?.[0]?.delta?.content
           const text = cf || (typeof oa === 'string' ? oa : '')
-          if (text) controller.enqueue(sseChunk(text))
+          if (text) filter.push(text)
         } catch {
           // No era JSON: texto plano emitido tal cual (algunos modelos no usan SSE).
-          controller.enqueue(sseChunk(payload))
+          filter.push(payload)
         }
       }
 
@@ -60,6 +149,7 @@ export function normalizeToOpenAiSse(raw: unknown): ReadableStream<Uint8Array> {
           for (const line of lines) handleLine(line)
         }
         if (buffer) handleLine(buffer)
+        filter.end()
       } catch (err) {
         console.error('Workers AI stream error:', err)
       } finally {

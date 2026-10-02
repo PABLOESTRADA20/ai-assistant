@@ -346,14 +346,25 @@ export async function POST(req: NextRequest) {
     // el razonamiento y devuelve content vacio -> el usuario ve un stream sin
     // texto. Por eso, si no llega nada de contenido, se reintentaIndicandole que
     // las herramientas no estan disponibles y que responda con lo que sepa.
+    // Aviso para modelos sin herramientas (DeepSeek/Workers AI): el SYSTEM_PROMPT
+    // lista tools que en este modo no existen, así que se lo decimos explícitamente.
+    const NO_TOOLS_NOTICE =
+      'AVISO: en esta respuesta no tenes herramientas disponibles. ' +
+      'No intentes usarlas ni las menciones. Responde directamente con lo que ' +
+      'sepas, y si la pregunta requiere informacion actual que no tenes, ' +
+      'dilo con claridad en vez de quedarte en silencio.'
+
     const streamSimple = async (messages: typeof allMessages): Promise<Response> => {
       // DeepSeek gratis (Workers AI) va por el binding, no por fetch. El stream
       // ya viene normalizado a SSE estilo OpenAI, así el drenado de abajo no cambia.
       if (isWorkersAiModel(model)) {
+        const withNotice = messages.some((m) => m.content === NO_TOOLS_NOTICE)
+          ? messages
+          : [...messages, { role: 'system', content: NO_TOOLS_NOTICE }]
         try {
           const stream = await workersAiChatStream(
             model,
-            messages,
+            withNotice,
             config.max_tokens,
             config.temperature,
           )
@@ -372,12 +383,6 @@ export async function POST(req: NextRequest) {
         temperature: config.temperature,
       }, 3, provider)
     }
-
-    const NO_TOOLS_NOTICE =
-      'AVISO: en esta respuesta no tenes herramientas disponibles. ' +
-      'No intentes usarlas ni las menciones. Responde directamente con lo que ' +
-      'sepas, y si la pregunta requiere informacion actual que no tenes, ' +
-      'dilo con claridad en vez de quedarte en silencio.'
 
     const groqRes = await streamSimple(allMessages)
 
