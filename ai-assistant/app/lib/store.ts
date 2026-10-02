@@ -1,7 +1,8 @@
 import { Conversation, Message } from '@/app/types'
+import { apiFetch } from './auth-client'
 
 export async function getConversations(): Promise<Conversation[]> {
-  const res = await fetch('/api/conversations')
+  const res = await apiFetch('/api/conversations')
   if (!res.ok) return []
   const data = await res.json()
   return data.map((c: Conversation) => ({
@@ -20,7 +21,7 @@ export async function saveConversations(_conversations: Conversation[]) {
 }
 
 export async function createConversation(model: string): Promise<Conversation> {
-  const res = await fetch('/api/conversations', {
+  const res = await apiFetch('/api/conversations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
@@ -39,7 +40,7 @@ export async function createConversation(model: string): Promise<Conversation> {
 }
 
 export async function updateConversation(id: string, data: Partial<{ title: string; messages: Message[] }>): Promise<Conversation> {
-  const res = await fetch(`/api/conversations/${id}`, {
+  const res = await apiFetch(`/api/conversations/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -58,7 +59,7 @@ export async function updateConversation(id: string, data: Partial<{ title: stri
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/conversations/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Error al eliminar conversación')
 }
 

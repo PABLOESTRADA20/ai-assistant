@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { callGroqWithTools, groqFetch } from '@/app/lib/tools'
+import { requireAuth } from '@/app/lib/auth'
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -271,6 +272,9 @@ async function rememberTurn(apiKey: string, userContent: string): Promise<void> 
 }
 
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   try {
     const body = await req.json()
     const { messages, model = DEFAULT_MODEL, conversationId } = body

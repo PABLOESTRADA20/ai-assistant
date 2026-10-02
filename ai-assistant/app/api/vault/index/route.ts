@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/app/lib/auth'
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   try {
     const { getVaultIndex } = await import('@/app/lib/vault-index')
     const index = getVaultIndex(true)

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/app/lib/auth'
 
 export async function POST(req: Request) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   try {
     const body = await req.json()
     const { query, limit = 8, minSimilarity = 0 } = body

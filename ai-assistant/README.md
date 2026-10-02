@@ -39,6 +39,8 @@ DATABASE_URL=postgres://usuario:pass@host-pooler.neon.tech/aria
 CLOUDFLARE_API_TOKEN=tu_token_workers_ai
 CLOUDFLARE_ACCOUNT_ID=tu_account_id
 VAULT_PATH=C:\Users\pablo\OneDrive\Documentos\Cerebro tt
+# Opcional pero recomendado: protege la URL publica con una clave de acceso
+ARIA_ACCESS_TOKEN=una-clave-larga-y-secreta
 ```
 
 ```
@@ -87,11 +89,19 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `CLOUDFLARE_API_TOKEN` | Token con permiso Workers AI (embeddings) | ✅ |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
+| `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. Sin ella, la URL es pública | recomendada |
 
-> **Búsqueda web sin API key**: `web_search` consulta DuckDuckGo (endpoint HTML)
-> y Wikipedia, ambos gratuitos y sin clave. No hace falta contratar ni configurar
-> Tavily/Brave/Serper. Si algún día se quiere un proveedor con SLA, se agrega la
-> variable y se extiende `app/lib/web-search.ts`.
+> **Búsqueda web sin API key**: `web_search` usa **Firecrawl keyless** (SERP real
+> y noticias) más APIs gratuitas y sin clave (Wikipedia, Stack Exchange, Hacker
+> News, MDN, endoflife.date y GitHub Releases). Es opcional definir
+> `FIRECRAWL_API_KEY` (tier gratis de 1.000 créditos/mes) para subir el límite
+> keyless por IP. El detalle de fuentes está en `app/lib/web-search.ts`.
+
+> **Control de acceso**: sin `ARIA_ACCESS_TOKEN` cualquiera con la URL puede
+> gastar la cuota de Groq y leer/escribir conversaciones y memorias. Para
+> activarlo, define el secret del Worker (`wrangler secret put ARIA_ACCESS_TOKEN`
+> o el secret homónimo de GitHub) y la app pedirá la clave en el navegador (se
+> guarda en `localStorage`, se envía en cada petición).
 
 ## Características
 
@@ -107,6 +117,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - Confirmación al eliminar
 - Diseño responsive
 - **Tool calls visibles en la UI** — tarjetas colapsables con args y resultado (persistidos en DB)
+- **Acceso protegido por clave** — si `ARIA_ACCESS_TOKEN` está definido, la API exige `Authorization: Bearer` y el cliente muestra login; la clave se guarda solo en el navegador
 - **Exportar conversaciones a Markdown** — botón en el header
 - **Índice del vault Obsidian** — indexación automática al iniciar (`.aria-index.json`)
 - **Búsqueda semántica real (pgvector)** — embeddings `bge-m3` vía Workers AI (1024 dims), indexados en las tablas `VaultNote` y `Memory`; el mismo modelo en local y en producción
@@ -119,10 +130,10 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 
 1. **Neon**: crea el proyecto, copia las dos conexiones (pooled `DATABASE_URL` + directa `DATABASE_URL_UNPOOLED`).
 2. **Cloudflare**: el Worker se llama `ai-assistant`; expone el binding `AI` (Workers AI) para los embeddings.
-3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY`.
-4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY`. Opcional: `FIRECRAWL_API_KEY` y `ARIA_ACCESS_TOKEN`.
+4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Opcionales: `FIRECRAWL_API_KEY`, `ARIA_ACCESS_TOKEN`.
 
-El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` ×2.
+El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
 
 Pruebas locales del mismo entorno: `npm run preview` (Worker en workerd).
 

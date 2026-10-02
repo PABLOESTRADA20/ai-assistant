@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { requireAuth } from '@/app/lib/auth'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   const { id } = await params
   try {
     const conversation = await prisma.conversation.findUnique({
@@ -18,6 +22,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   const { id } = await params
   try {
     const body = await req.json()
@@ -55,6 +62,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   const { id } = await params
   try {
     await prisma.conversation.delete({ where: { id } })

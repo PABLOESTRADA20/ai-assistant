@@ -78,3 +78,10 @@ jobs:
           if [ -n "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
             echo "${{ secrets.FIRECRAWL_API_KEY }}" | npx wrangler secret put FIRECRAWL_API_KEY
           fi
+          # Control de acceso. Si ARIA_ACCESS_TOKEN esta definido (aqui o con
+          # `wrangler secret put`), toda la API exige `Authorization: Bearer`.
+          # Sin el, la app queda abierta: la URL es publica y cualquiera podria
+          # gastar la cuota de Groq y leer/escribir conversaciones.
+          if [ -n "${{ secrets.ARIA_ACCESS_TOKEN }}" ]; then
+            echo "${{ secrets.ARIA_ACCESS_TOKEN }}" | npx wrangler secret put ARIA_ACCESS_TOKEN
+          fi

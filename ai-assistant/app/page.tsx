@@ -17,6 +17,13 @@ import {
   deleteConversation,
   generateTitle,
 } from './lib/store'
+import LoginScreen from './components/LoginScreen'
+import {
+  apiFetch,
+  fetchAuthRequired,
+  getToken,
+  UNAUTHORIZED_EVENT,
+} from './lib/auth-client'
 
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -24,6 +31,7 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [authState, setAuthState] = useState<'checking' | 'needed' | 'ready'>('checking')
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingTools, setStreamingTools] = useState<ToolInvocation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -31,19 +39,52 @@ export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const abortRef = useRef<AbortController | null>(null)
 
-  // Load conversations from API
+  // Comprobar si la app pide clave y, si hay una guardada, validarla antes de
+  // cargar nada. Evita mostrar conversaciones o lanzar peticiones a ciegas.
   useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const required = await fetchAuthRequired()
+      if (cancelled) return
+      if (!required) {
+        setAuthState('ready')
+        return
+      }
+      if (!getToken()) {
+        setAuthState('needed')
+        return
+      }
+      const res = await apiFetch('/api/conversations')
+      if (cancelled) return
+      setAuthState(res.ok ? 'ready' : 'needed')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Si una peticion posterior recibe 401, volver al login.
+  useEffect(() => {
+    const onUnauthorized = () => setAuthState('needed')
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [])
+
+  // Load conversations from API once authenticated
+  useEffect(() => {
+    if (authState !== 'ready') return
+
     getConversations().then((stored) => {
       setConversations(stored)
       if (stored.length > 0) {
-        setActiveId(stored[0].id)
+        setActiveId((prev) => prev ?? stored[0].id)
       }
       setInitialLoading(false)
     })
 
     // Pre-index the Obsidian vault on startup (best-effort)
-    fetch('/api/vault/index', { method: 'GET' }).catch(() => {})
-  }, [])
+    apiFetch('/api/vault/index', { method: 'GET' }).catch(() => {})
+  }, [authState])
 
   // Apply theme
   useEffect(() => {
@@ -148,12 +189,15 @@ export default function Home() {
     try {
       abortRef.current = new AbortController()
 
-      const res = await fetch('/api/chat', {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: apiMessages, model, conversationId: convId }),
         signal: abortRef.current.signal,
       })
+
+      // 401: apiFetch ya limpio el token y la app volvio al login.
+      if (res.status === 401) return
 
       if (!res.ok) {
         const err = await res.json()
@@ -296,12 +340,14 @@ export default function Home() {
 
     try {
       abortRef.current = new AbortController()
-      const res = await fetch('/api/chat', {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: apiMessages, model: activeConversation.model, conversationId: convId }),
         signal: abortRef.current.signal,
       })
+
+      if (res.status === 401) return
 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
@@ -413,7 +459,7 @@ export default function Home() {
     URL.revokeObjectURL(url)
   }
 
-  if (initialLoading) {
+  if (authState === 'checking' || (authState === 'ready' && initialLoading)) {
     return (
       <div className="flex h-dvh items-center justify-center" style={{ background: 'var(--surface-0)' }}>
         <div className="flex flex-col items-center gap-3">
@@ -422,6 +468,10 @@ export default function Home() {
         </div>
       </div>
     )
+  }
+
+  if (authState === 'needed') {
+    return <LoginScreen onSuccess={() => setAuthState('ready')} />
   }
 
   return (

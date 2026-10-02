@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { requireAuth } from '@/app/lib/auth'
 
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   try {
     const conversations = await prisma.conversation.findMany({
       orderBy: { updatedAt: 'desc' },
@@ -16,6 +20,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   try {
     const body = await req.json()
     const { model = DEFAULT_MODEL } = body

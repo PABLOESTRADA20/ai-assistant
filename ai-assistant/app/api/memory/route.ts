@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/app/lib/auth'
 
 export async function GET(req: Request) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   const url = new URL(req.url)
   const type = url.searchParams.get('type') || undefined
   const category = url.searchParams.get('category') || undefined
@@ -19,6 +23,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = requireAuth(req)
+  if (denied) return denied
+
   try {
     const body = await req.json()
     const { type, category, content, importance, confidence, tags, source } = body
