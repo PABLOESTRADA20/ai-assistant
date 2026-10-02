@@ -11,12 +11,16 @@ export async function GET(req: Request) {
   const minImportance = url.searchParams.get('minImportance')
     ? Number(url.searchParams.get('minImportance'))
     : undefined
-  const limit = Number(url.searchParams.get('limit') || 20)
+  const includeCompressed = url.searchParams.get('includeCompressed') === 'true'
+  const limit = Math.min(Number(url.searchParams.get('limit') || 50), 200)
 
   try {
-    const { searchMemories } = await import('@/app/lib/memory')
-    const memories = await searchMemories({ type, category, minImportance, limit })
-    return NextResponse.json({ memories, total: memories.length })
+    const { searchMemories, getMemoryStats } = await import('@/app/lib/memory')
+    const [memories, stats] = await Promise.all([
+      searchMemories({ type, category, minImportance, limit, includeCompressed }),
+      getMemoryStats(),
+    ])
+    return NextResponse.json({ memories, total: memories.length, stats })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

@@ -76,6 +76,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `npm run db:studio` | Abrir Prisma Studio |
 | `npm run db:reindex` | Regenerar embeddings del vault en pgvector |
 | `npm run db:smoke` | Smoke test del sistema de memoria |
+| `npm run db:brain` | Smoke test del cerebro: memoria de trabajo, refuerzo, edición y consolidación |
 | `npm run preview` | Build OpenNext + preview local en workerd |
 | `npm run deploy` | Build OpenNext + deploy a Cloudflare Workers |
 
@@ -127,7 +128,9 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **Exportar conversaciones a Markdown** — botón en el header
 - **Índice del vault Obsidian** — indexación automática al iniciar (`.aria-index.json`)
 - **Búsqueda semántica real (pgvector)** — embeddings `bge-m3` vía Workers AI (1024 dims), indexados en las tablas `VaultNote` y `Memory`; el mismo modelo en local y en producción
-- **Memoria de ARIA** — long-term/factual (tabla `Memory` con `vector(1024)`), dedupe por coseno, working memory (`SessionContext` con TTL), extracción automática de preferencias/hechos por turno y retrieval inyectado en el prompt
+- **Memoria de ARIA** — long-term/factual (tabla `Memory` con `vector(1024)`), dedupe por coseno, extracción automática de preferencias/hechos por turno y retrieval inyectado en el prompt
+- **Memoria viva** — memoria de trabajo aislada por conversación e inyectada en el prompt (hilo de temas), refuerzo de los recuerdos que se usan (sube importancia/confianza), y consolidación/olvido automático: los recuerdos viejos y poco importantes se archivan y dejan de recuperarse; los ya olvidados se purgan y los contextos de sesión caducados se limpian
+- **Inspector de memoria** — panel lateral para ver, buscar (búsqueda semántica), editar, añadir, archivar/olvidar recuerdos y lanzar la consolidación a mano; muestra estadísticas (total, preferencias, hechos, importancia media)
 - **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory
 - **Rate limiting nativo** — límite por ruta con el binding `ratelimits` de Workers (chat 20/min, dictado 15/min) como red de seguridad si la clave se filtra
 
@@ -152,15 +155,16 @@ ai-assistant/
 │   ├── api/
 │   │   ├── chat/route.ts            # Chat con Groq (streaming + memoria)
 │   │   ├── conversations/           # CRUD de conversaciones
-│   │   ├── memory/                  # CRUD + búsqueda semántica de memoria
+│   │   ├── memory/                  # CRUD + búsqueda semántica + consolidación de memoria
 │   │   └── vault/index/route.ts     # Indexar vault (solo local)
-│   ├── components/                  # UI components
+│   ├── components/                  # UI components (incl. MemoryInspector.tsx)
 │   ├── hooks/useTTS.ts              # Hook de TTS
 │   ├── lib/
 │   │   ├── prisma.ts               # Cliente Prisma (adapter Neon)
+│   │   ├── background.ts           # ctx.waitUntil() para tareas tras responder
 │   │   ├── llm-embed.ts            # Embeddings bge-m3 (Workers AI bind/REST)
 │   │   ├── embeddings.ts           # Reindex + búsqueda coseno pgvector (vault)
-│   │   ├── memory.ts               # Memoria long-term + working memory
+│   │   ├── memory.ts               # Memoria long-term + working memory + consolidación
 │   │   ├── memory-extract.ts       # Extracción de memorias (Groq + heurístico)
 │   │   ├── vault-index.ts          # Índice de archivos del vault (TF-IDF fallback)
 │   │   └── store.ts                # API helpers

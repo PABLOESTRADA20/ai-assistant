@@ -32,6 +32,29 @@ export interface AIModel {
   badge: string
 }
 
+export interface MemoryRecord {
+  id: string
+  type: string
+  category: string
+  content: string
+  importance: number
+  confidence: number
+  tags: string[]
+  source: string
+  isCompressed: boolean
+  createdAt: string
+  similarity?: number
+}
+
+export interface MemoryStats {
+  total: number
+  compressed: number
+  byType: Record<string, number>
+  byCategory: Record<string, number>
+  avgImportance: number
+  updatedAt: string
+}
+
 export const AVAILABLE_MODELS: AIModel[] = [
   {
     id: 'openai/gpt-oss-120b',

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, MessageSquare, Trash2, Sparkles, X, Sun, Moon, Search } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, Sparkles, X, Sun, Moon, Search, Brain } from 'lucide-react'
 import { Conversation } from '@/app/types'
 import clsx from 'clsx'
 
@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void
   theme: 'dark' | 'light'
   onToggleTheme: () => void
+  onOpenMemory: () => void
 }
 
 function timeAgo(date: Date): string {
@@ -38,6 +39,7 @@ export default function Sidebar({
   onClose,
   theme,
   onToggleTheme,
+  onOpenMemory,
 }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -193,10 +195,22 @@ export default function Sidebar({
         </div>
 
         <div
-          className="p-4"
+          className="p-3"
           style={{ borderTop: '1px solid var(--border)' }}
         >
-          <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+          <button
+            onClick={onOpenMemory}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-80"
+            style={{
+              background: 'var(--surface-2)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <Brain size={15} style={{ color: 'var(--accent)' }} />
+            Memoria de ARIA
+          </button>
+          <p className="text-xs text-center mt-3" style={{ color: 'var(--text-muted)' }}>
             ARIA v1.0 · Powered by Groq
           </p>
         </div>

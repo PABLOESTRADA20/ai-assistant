@@ -3,6 +3,7 @@ import { prisma } from '@/app/lib/prisma'
 import { callGroqWithTools, groqFetch } from '@/app/lib/tools'
 import { requireAuth } from '@/app/lib/auth'
 import { rateLimit } from '@/app/lib/rate-limit'
+import { registerBackground } from '@/app/lib/background'
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -242,10 +243,14 @@ function buildContextMessages(
   ]
 }
 
-async function rememberTurn(apiKey: string, userContent: string): Promise<void> {
+async function rememberTurn(
+  apiKey: string,
+  userContent: string,
+  conversationId?: string | null,
+): Promise<void> {
   try {
     const { extractMemories, heuristicExtract } = await import('@/app/lib/memory-extract')
-    const { createMemory, getContext, setContext } = await import('@/app/lib/memory')
+    const { createMemory, updateWorkingMemory } = await import('@/app/lib/memory')
 
     let facts = await extractMemories(apiKey, userContent)
     if (facts.length === 0) facts = heuristicExtract(userContent)
@@ -262,11 +267,8 @@ async function rememberTurn(apiKey: string, userContent: string): Promise<void> 
       }).catch(() => {})
     }
 
-    // Working memory: mantener una lista corta de temas recientes de la sesión
-    const ctx = (await getContext<{ topics: string[] }>('session')) ?? { topics: [] }
-    const topic = userContent.replace(/\s+/g, ' ').trim().slice(0, 80)
-    ctx.topics = [...new Set([topic, ...ctx.topics])].slice(0, 8)
-    await setContext('session', ctx, 60)
+    // Memoria de trabajo: hilo corto de temas recientes, aislado por conversacion.
+    await updateWorkingMemory(conversationId, userContent)
   } catch (err) {
     console.error('Memory extraction failed:', err)
   }
@@ -309,23 +311,27 @@ export async function POST(req: NextRequest) {
     }
 
     // Extracción de memoria del turno en segundo plano (no bloquea la respuesta).
-    // OBLIGATORIO registrarlo con ctx.waitUntil(): si el promise queda suelto se
-    // resuelve en el contexto de un request posterior y workerd lo cancela
-    // ("Cannot perform I/O on behalf of a different request" -> HTTP 1101),
-    // además de corromper el cliente Prisma compartido.
+    // `registerBackground` lo registra con ctx.waitUntil() para que workerd no lo
+    // cancele al terminar el request (lo que además corrompería el cliente Prisma).
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (lastUserMsg?.content) {
-      const task = rememberTurn(apiKey, lastUserMsg.content)
-      let registered = false
-      try {
-        const { getCloudflareContext } = await import('@opennextjs/cloudflare')
-        const { ctx } = await getCloudflareContext({ async: true })
-        ctx.waitUntil(task)
-        registered = true
-      } catch {
-        // Fuera del runtime de Cloudflare (scripts locales): fire-and-forget.
-      }
-      if (!registered) void task
+      await registerBackground(rememberTurn(apiKey, lastUserMsg.content, conversationId))
+    }
+
+    // Memoria de trabajo de esta conversación: hilo reciente de temas. Antes se
+    // escribía pero nunca se leía; ahora se inyecta para dar continuidad.
+    let workingBlock: string[] | null = null
+    try {
+      const { getWorkingMemory } = await import('@/app/lib/memory')
+      const wm = await getWorkingMemory(conversationId)
+      if (wm && wm.topics.length > 0) workingBlock = wm.topics.slice(0, 5)
+    } catch { /* memoria de trabajo no disponible */ }
+
+    // Mantenimiento perezoso: una fracción de los turnos revisa si toca
+    // consolidar. El propio guard evita repetirlo más de una vez al día.
+    if (Math.random() < 0.05) {
+      const { maybeConsolidate } = await import('@/app/lib/memory')
+      await registerBackground(maybeConsolidate())
     }
 
     // Build context-aware message list (summary + recent messages)
@@ -346,6 +352,7 @@ export async function POST(req: NextRequest) {
 
     // Retrieve relevant memories so ARIA has context about the user
     let memoryBlock: string[] | null = null
+    let injectedMemoryIds: string[] = []
     if (lastUserMsg?.content) {
       try {
         const { searchSemanticMemories, searchMemories } = await import('@/app/lib/memory')
@@ -362,6 +369,7 @@ export async function POST(req: NextRequest) {
           memoryBlock = items.map(
             (m) => `- [${m.type}/${m.category} · importancia ${m.importance}] ${m.content}`
           )
+          injectedMemoryIds = items.map((m) => m.id)
         }
       } catch { /* memory unavailable, continue without it */ }
     }
@@ -373,8 +381,19 @@ export async function POST(req: NextRequest) {
         ? [{ role: 'system', content: `[Memoria de ARIA sobre el usuario — usa estos datos solo cuando aporten contexto relevante, sin mencionar que vienen de la memoria salvo que el usuario lo pregunte:]` },
            { role: 'system', content: memoryBlock.join('\n') }]
         : []),
+      ...(workingBlock
+        ? [{ role: 'system', content: `[Memoria de trabajo de esta conversación — hilo reciente. Sirve para mantener continuidad; no lo menciones explícitamente:]` },
+           { role: 'system', content: workingBlock.map((t) => `- ${t}`).join('\n') }]
+        : []),
       ...contextMessages,
     ]
+
+    // Refuerza de fondo los recuerdos que acaban de usarse para responder, para
+    // que el olvido por antigüedad no se lleve lo que sí resulta útil.
+    if (injectedMemoryIds.length > 0) {
+      const { reinforceMemories } = await import('@/app/lib/memory')
+      await registerBackground(reinforceMemories(injectedMemoryIds))
+    }
 
     // Check if we should use tool calling (skip for simple/fast models to save latency)
     const useTools = model !== CHEAP_MODEL

@@ -8,6 +8,7 @@ import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
 import ChatInput from './components/ChatInput'
 import ModelSelector from './components/ModelSelector'
+import MemoryInspector from './components/MemoryInspector'
 
 import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
 import {
@@ -35,6 +36,7 @@ export default function Home() {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingTools, setStreamingTools] = useState<ToolInvocation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const abortRef = useRef<AbortController | null>(null)
@@ -486,7 +488,10 @@ export default function Home() {
         onClose={() => setSidebarOpen(false)}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        onOpenMemory={() => setMemoryOpen(true)}
       />
+
+      <MemoryInspector open={memoryOpen} onClose={() => setMemoryOpen(false)} />
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
         <header
