@@ -102,7 +102,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `RESEND_API_KEY` | API key de Resend para enviar correo | para correo |
 | `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
 | `EMAIL_ALLOWED_TO` | Lista blanca de destinatarios separada por comas | no |
-| `GITHUB_TOKEN` | Token fine-grained de GitHub (solo `Contents: read` e `Issues: read`) para leer repos privados y subir el límite a 5.000 peticiones/hora. Sin él, solo repos públicos y 60/hora | para GitHub privado |
+| `GITHUB_TOKEN` | Token fine-grained de GitHub (solo `Contents: read` e `Issues: read`; en CI se guarda como el secret `ARIA_GITHUB_TOKEN`) para leer repos privados, **listar tus repositorios en el selector** y subir el límite a 5.000 peticiones/hora. Sin él, solo repos públicos y 60/hora | para GitHub privado |
 
 > **Búsqueda web sin API key**: `web_search` usa **Firecrawl keyless** (SERP real
 > y noticias) más APIs gratuitas y sin clave (Wikipedia, Stack Exchange, Hacker
@@ -121,6 +121,16 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 > tier gratis de 2.000 transcripciones/día). Si Groq falla se intenta **Workers
 > AI Whisper** (dentro de las 10.000 neuronas/día). No se guarda ningún audio: se
 > transcribe en memoria y se descarta.
+
+> **GitHub con token (repos privados + selector)**: crea un token
+> **fine-grained** en <https://github.com/settings/tokens?type=beta> con permisos
+> de **solo lectura** (`Metadata: Read`, `Contents: Read`, `Issues: Read`) y
+> marca los repositorios que quieras que ARIA pueda leer. Guárdalo como secret
+> **`ARIA_GITHUB_TOKEN`** del repositorio en GitHub (el nombre `GITHUB_TOKEN`
+> está reservado por Actions) o directamente en el Worker con
+> `wrangler secret put GITHUB_TOKEN`. Con él, el panel **GitHub** muestra
+> **«Ver mis repositorios»** para elegirlos de una lista (públicos y privados) y
+> el límite sube de 60 a 5.000 peticiones/hora. ARIA sigue siendo de solo lectura.
 
 ## Características
 
@@ -148,7 +158,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **WhatsApp (API oficial de Meta)** — ARIA recibe y responde mensajes por el webhook `/api/whatsapp/webhook`. Cada número tiene su propia conversación (visible en el sidebar) y comparte el mismo cerebro (memoria, herramientas). Firma `X-Hub-Signature-256` verificada.
 - **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
 - **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
-- **GitHub (solo lectura)** — botón **GitHub** en el header para agregar repos (`owner/repo` o la URL). ARIA los lee (`github_repo_overview`, `github_list_files`, `github_read_file`, `github_list_issues`) y te propone cómo arreglar bugs, issues y deuda técnica. **Nunca escribe** en GitHub: nada de issues ni PRs. Con `GITHUB_TOKEN` (fine-grained, solo lectura) accede a repos privados.
+- **GitHub (solo lectura)** — botón **GitHub** en el header para agregar repos (`owner/repo` o la URL). Con `GITHUB_TOKEN` (fine-grained, solo lectura) además aparece **«Ver mis repositorios»**, que lista tus repos (públicos y privados) con buscador para agregarlos con un clic. ARIA los lee (`github_repo_overview`, `github_list_files`, `github_read_file`, `github_list_issues`) y te propone cómo arreglar bugs, issues y deuda técnica. **Nunca escribe** en GitHub: nada de issues ni PRs.
 - **Auto-cambio de modelo** — si el modelo elegido agota su cuota (Groq: tokens/día; Workers AI: neuronas/día), ARIA reintenta la misma pregunta con el siguiente modelo disponible y te avisa con un banner. Así una respuesta no se queda sin salir porque un modelo se quedó sin cupo.
 - **Carpeta ARIA (notas + Obsidian)** — botón **Notas** en el header. ARIA puede guardar, listar y leer notas (`save_cloud_note`, `list_cloud_notes`, `read_cloud_note`) y tú las editas en el panel. Viven en la base de datos (tabla `Note`) a propósito: el Worker **no puede** escribir en el disco del PC, así que así funcionan desde el celular sin tener el ordenador encendido. El botón **Exportar a Obsidian (.zip)** descarga un `.md` por nota (con frontmatter) listo para descomprimir dentro del vault.
 - **Núcleo compartido** — `app/lib/aria-core.ts` centraliza prompt, memoria y contexto; el chat web, WhatsApp y el correo usan exactamente el mismo cerebro.

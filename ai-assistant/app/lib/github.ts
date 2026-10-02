@@ -341,6 +341,80 @@ export async function listIssues(input: string, state = 'open'): Promise<string>
   })
 }
 
+/* --------------------------- selector de repos --------------------------- */
+
+export interface GithubRepoSummary {
+  repo: string
+  description: string | null
+  private: boolean
+  language: string | null
+  defaultBranch: string
+  pushedAt: string | null
+}
+
+export interface BrowseReposResult {
+  ok: boolean
+  tokenConfigured: boolean
+  repos: GithubRepoSummary[]
+  error?: string
+  truncated?: boolean
+}
+
+/**
+ * Lista los repositorios del usuario autenticado.
+ *
+ * La API anónima de GitHub no sabe "cuáles son tus repos", así que esto exige
+ * `GITHUB_TOKEN`. Con un token fine-grained de solo lectura aparecen tanto los
+ * públicos como los privados a los que el token tenga acceso, y el usuario
+ * puede elegir de una lista en vez de escribir `owner/repo` a mano.
+ */
+export async function listMyRepos(query = '', limit = 100): Promise<BrowseReposResult> {
+  if (!hasGithubToken()) {
+    return {
+      ok: false,
+      tokenConfigured: false,
+      repos: [],
+      error:
+        'Para listar tus repositorios hace falta GITHUB_TOKEN. ' +
+        'Configura un token fine-grained de solo lectura (Contents: Read, Issues: Read, Metadata: Read).',
+    }
+  }
+
+  const perPage = 100
+  const res = await ghFetch(
+    `/user/repos?per_page=${perPage}&sort=pushed&direction=desc&affiliation=owner%2Ccollaborator%2Corganization_member`,
+  )
+  if (!res.ok) {
+    return { ok: false, tokenConfigured: true, repos: [], error: describeError(res.status, res.data) }
+  }
+
+  const items = (Array.isArray(res.data) ? res.data : []) as Record<string, unknown>[]
+  const q = query.trim().toLowerCase()
+  const repos = items
+    .map((r) => ({
+      repo: typeof r.full_name === 'string' ? r.full_name : '',
+      description: typeof r.description === 'string' ? r.description : null,
+      private: r.private === true,
+      language: typeof r.language === 'string' ? r.language : null,
+      defaultBranch: typeof r.default_branch === 'string' ? r.default_branch : 'main',
+      pushedAt: typeof r.pushed_at === 'string' ? r.pushed_at : null,
+    }))
+    .filter((r) => r.repo)
+    .filter((r) =>
+      q
+        ? r.repo.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q)
+        : true,
+    )
+    .slice(0, limit)
+
+  return {
+    ok: true,
+    tokenConfigured: true,
+    repos,
+    truncated: items.length >= perPage,
+  }
+}
+
 function decodeBase64(b64: string): string {
   const binary = atob(b64.replace(/\s/g, ''))
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
