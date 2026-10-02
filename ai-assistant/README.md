@@ -12,7 +12,7 @@ Asistente de IA conversacional con Next.js 15, React, TypeScript, Tailwind CSS, 
 - **Deploy**: Cloudflare Workers vía `@opennextjs/cloudflare`
 - **Markdown**: react-markdown + react-syntax-highlighter
 - **TTS**: Web Speech API (SpeechSynthesis)
-- **Voice Input**: Web Speech API (SpeechRecognition)
+- **Dictado por voz (STT)**: Groq Whisper `large-v3-turbo` en el servidor (grabado con `MediaRecorder`), con fallback a Workers AI Whisper y, si el navegador no soporta grabación, a la Web Speech API
 
 ## Inicio rápido
 
@@ -103,6 +103,12 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 > o el secret homónimo de GitHub) y la app pedirá la clave en el navegador (se
 > guarda en `localStorage`, se envía en cada petición).
 
+> **Dictado por voz**: el audio se graba en el navegador y se manda a
+> `/api/transcribe`, que lo pasa a **Groq Whisper** (usa la misma `GROQ_API_KEY`;
+> tier gratis de 2.000 transcripciones/día). Si Groq falla se intenta **Workers
+> AI Whisper** (dentro de las 10.000 neuronas/día). No se guarda ningún audio: se
+> transcribe en memoria y se descarta.
+
 ## Características
 
 - Streaming en tiempo real (SSE)
@@ -112,7 +118,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - Markdown + syntax highlighting
 - Tema oscuro/claro
 - Text-to-speech
-- Entrada por voz
+- **Dictado por voz que funciona en cualquier navegador** — graba con `MediaRecorder` y transcribe con Groq Whisper `large-v3-turbo` (gratis: 2.000 transcripciones/día); fallback a Workers AI Whisper y a la Web Speech API. El texto se añade a lo que ya hayas escrito (antes lo reemplazaba)
 - Atajos de teclado (Ctrl+N, Escape)
 - Confirmación al eliminar
 - Diseño responsive
@@ -123,6 +129,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **Búsqueda semántica real (pgvector)** — embeddings `bge-m3` vía Workers AI (1024 dims), indexados en las tablas `VaultNote` y `Memory`; el mismo modelo en local y en producción
 - **Memoria de ARIA** — long-term/factual (tabla `Memory` con `vector(1024)`), dedupe por coseno, working memory (`SessionContext` con TTL), extracción automática de preferencias/hechos por turno y retrieval inyectado en el prompt
 - **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory
+- **Rate limiting nativo** — límite por ruta con el binding `ratelimits` de Workers (chat 20/min, dictado 15/min) como red de seguridad si la clave se filtra
 
 ## Despliegue (Cloudflare Workers)
 

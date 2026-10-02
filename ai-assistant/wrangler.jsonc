@@ -20,5 +20,20 @@
   ],
   "ai": {
     "binding": "AI"
-  }
+  },
+  // Limites por ruta (binding nativo de Workers, GA desde 2025). Son una red de
+  // seguridad por si la clave de acceso se filtra: sin esto, cualquiera con el
+  // token podria vaciar la cuota diaria de Groq en minutos.
+  "ratelimits": [
+    {
+      "name": "CHAT_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      "name": "TRANSCRIBE_RATE_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 15, "period": 60 }
+    }
+  ]
 }
