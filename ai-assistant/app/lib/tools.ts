@@ -682,6 +682,7 @@ export async function callGroqWithTools(
   model: string,
   maxTokens: number,
   temperature: number,
+  forceSearch = false,
 ): Promise<{ stream: ReadableStream; toolCalls: ToolCallRecord[]; hitRoundLimit: boolean }> {
   const finalMessages: GroqMessage[] = [...messages]
   const toolCalls: ToolCallRecord[] = []
@@ -691,16 +692,56 @@ export async function callGroqWithTools(
   // tier, alargando la respuesta a 25-70s sin llegar a contenido final.
   const MAX_TOOL_ROUNDS = 3
 
+  /**
+   * `web_search` obligatorio en la primera ronda.
+   *
+   * Con `tool_choice: 'auto'` el modelo decide, y decide no buscar. Medido: con
+   * "Busca en la web como se instala Deno" respondio de memoria con
+   * `tool_calls: 0`, inventandose el comando. El SYSTEM_PROMPT ya le dice que use las
+   * herramientas, pero son instrucciones blandas y en la practica pierde: cuando el
+   * modelo "ya sabe" la respuesta, escribirla le sale mas barato que pedirla.
+   *
+   * Por eso el detonante no es el prompt sino el mensaje del usuario: cuando pide
+   * buscar explicitamente, se fuerza. Aqui no se decide que lo haya pedido, eso lo
+   * hace `wantsWebSearch` en la ruta.
+   *
+   * El forzado a veces no lo respeta, y no es raro: medido 2 de 4 intentos correctos
+   * en `openai/gpt-oss-120b`, que responde la pregunta en texto plano y Groq lo
+   * rechaza con HTTP 400 `tool_use_failed` ("Tool choice is required, but model did
+   * not call a tool"). Es el mismo error estocastico que ya se reintentaba dentro de
+   * `groqFetch`, pero aqui sale por la via del `tool_choice`. Con 2 reintentos la
+   * probabilidad de fallo completo baja a ~25%, y si aun asi falla lo captura el
+   * paso siguiente.
+   */
+  let searched = !forceSearch
+
   while (toolCallCount < MAX_TOOL_ROUNDS) {
-    const res = await groqFetch(apiKey, {
+    const body = {
       model,
       messages: finalMessages,
       tools: TOOL_DEFINITIONS,
-      tool_choice: 'auto',
+      tool_choice: searched
+        ? ('auto' as const)
+        : ({ type: 'function', function: { name: 'web_search' } } as const),
       stream: false,
       max_tokens: maxTokens,
       temperature,
-    })
+    }
+
+    let res: Response
+    try {
+      // El forzado lleva 2 reintentos y no 3 porque cada intento es un 400 que no
+      // aporta nada: con el rate limit de 8000 TPM, insistir de mas sale peor que
+      // aceptar un 'auto' sin busqueda.
+      res = await groqFetch(apiKey, body, searched ? 3 : 2)
+    } catch (error) {
+      const detail = String(error instanceof Error ? error.message : error)
+      if (searched || !/HTTP 400|tool_use_failed|invalid/i.test(detail)) throw error
+      // El modelo no admite el forzado: se sigue con decision propia.
+      console.warn(`tool_choice forzado rechazado, reintentando en auto: ${detail}`)
+      searched = true
+      continue
+    }
 
     const data = await res.json()
     const choice = data.choices?.[0]
@@ -741,6 +782,10 @@ export async function callGroqWithTools(
     }
 
     toolCallCount++
+
+    // La busqueda forzada ya se hizo: a partir de aqui manda 'auto' para no gastar
+    // una ronda entera repitiendo la obligacion.
+    searched = true
   }
 
   // Now stream the final response with the full context.

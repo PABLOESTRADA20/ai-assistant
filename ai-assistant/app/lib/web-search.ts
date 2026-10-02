@@ -73,9 +73,15 @@ const HTML_ENTITIES: Record<string, string> = {
   '&nbsp;': ' ',
 }
 
+/**
+ * El hexadecimal faltaba y es justo el que usa Hacker News: sus comentarios vienen
+ * con `&#x2F;` en cada barra de URL, asi que el texto llegaba al modelo con
+ * "https:&#x2F;&#x2F;news.ycombinator.com..." y comillas sin cerrar.
+ */
 function decodeEntities(text: string): string {
   return text
     .replace(/&(?:amp|lt|gt|quot|#x27|#39|apos|nbsp);/g, (m) => HTML_ENTITIES[m] ?? m)
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
 }
 
@@ -444,15 +450,18 @@ return ranked.slice(0, limit * 2).map((hit) => ({
 /**
  * Nota sobre el rate limit.
  *
- * La API de Stack Exchange limita por IP y las de datacenter estan compartidas, asi
- * que devuelve HTTP 429 con facilidad: medido en 18 de 18 llamadas seguidas desde el
- * egress de Cloudflare. En desarrollo, con la IP del casa, respondia bien.
+ * La API de Stack Exchange limita por IP y las de datacenter estan compartidas. La
+ * respuestas no es siempre la misma, y eso importa: medido alternando
+ * `HTTP 429` y `HTTP 400`, ambos por throttling (el 400 es el `error_id 502` de
+ * Stack Exchange, no un parametro mal formado). En 18 de 18 llamadas seguidas desde
+ * el egress de Cloudflare fallo. En desarrollo, con la IP de casa, respondia bien.
  *
- * No se mitiga: no hay key gratuita que lo evite y pedirlo seria peor. El costo esta
- * en que las consultas de codigo se quedan con una fuente menos, y ya se asume — el
- * 429 viaja en `warnings` y el resto de fuentes sigue entregando. Si en algun momento
- * responde 429 de forma sistematica, la opcion honesta es quitar la fuente, no
- * disimularlo.
+ * No se arregla: no hay key gratuita que lo evite. Lo que si se puede es no seguir
+ * pagando por el. Cada intento fallido gasta uno de los 50 subrequests de la
+ * invocacion y devuelve 0 resultados, o sea que es el peor gasto posible — por eso
+ * `applies` hace un corte de circuito tras un fallo (ver
+ * `stackOverflowThrottled`). Cuando la cuota del datacenter se restablece, la fuente
+ * vuelve sola sin tocar el codigo.
  */
 
 type StackExchange = {
@@ -467,23 +476,47 @@ type StackExchange = {
   }>
 }
 
-const searchStackOverflow: Source = async (query, limit, signal) => {
-  const data = await getJson<StackExchange>(
-    `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance` +
-      `&q=${encodeURIComponent(query)}&site=stackoverflow&filter=withbody` +
-      `&pagesize=${limit}`,
-    signal
-  )
+/** Cuanto aguanta el corte de circuito antes de volver a intentarlo. */
+const STACKOVERFLOW_BREAKER_MS = 30 * 60_000
+let stackOverflowBlockedUntil = 0
 
-  return (data.items ?? []).slice(0, limit).map((item) => ({
-    title: stripTags(item.title),
-    url: item.link,
-    snippet: clamp(
-      stripTags(item.body ?? '') || `puntaje ${item.score}, ${item.answer_count} respuestas`,
-      600
-    ),
-    source: 'stackoverflow',
-  }))
+/**
+ * Si la ultima llamada fue throttled, la fuente se salta entera.
+ *
+ * El corte es global a la fuente, no por consulta: el limite es de IP, asi que un
+ * termino distinto tampoco va a pasar.
+ */
+function stackOverflowThrottled(): boolean {
+  return Date.now() < stackOverflowBlockedUntil
+}
+
+const searchStackOverflow: Source = async (query, limit, signal) => {
+  try {
+    const data = await getJson<StackExchange>(
+      `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance` +
+        `&q=${encodeURIComponent(query)}&site=stackoverflow&filter=withbody` +
+        `&pagesize=${limit}`,
+      signal
+    )
+    // Un OK borra el corte: la cuota se libero.
+    stackOverflowBlockedUntil = 0
+
+    return (data.items ?? []).slice(0, limit).map((item) => ({
+      title: stripTags(item.title),
+      url: item.link,
+      snippet: clamp(
+        stripTags(item.body ?? '') || `puntaje ${item.score}, ${item.answer_count} respuestas`,
+        600
+      ),
+      source: 'stackoverflow',
+    }))
+  } catch (error) {
+    const detail = String(error instanceof Error ? error.message : error)
+    if (/HTTP (400|429)/.test(detail)) {
+      stackOverflowBlockedUntil = Date.now() + STACKOVERFLOW_BREAKER_MS
+    }
+    throw error
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -501,23 +534,45 @@ type HnAlgolia = {
   }>
 }
 
+/**
+ * Solo `story`, nunca `comment`.
+ *
+ * Antes se pedian las dos y la API devolvia comentarios como si fueran resultados.
+ * Medido con "que es Deno": de 6 resultados, 3 fueron comentarios sobre_party_,
+ * xenofobia y matrimonio del mismo sexo, con "deno" apareciendo de pasada en el cuerpo.
+ * El motivo es que la busqueda es de texto completo, asi que cualquier hilo donde se
+ * mencione la palabra qualify.
+ *
+ * Un comentario no sirve como fuente por dos razones concretas:
+ *   - No tiene titulo. El que se synthesize con `comment_text.slice(0, 80)` sale a
+ *     medias, con la frase cortada y sin punto, y es lo que el modelo leeria.
+ *   - No es citable como afirmacion. Es la opinion de alguien en un hilo, sin
+ *     contexto ni fecha, que es exactamente lo que hace que el modelo invente.
+ *
+ * Un filtro por longitud minima se probo antes y no sirvio de nada: los comentarios
+ * de ruido tambien son largos, algunos de 1.500 caracteres. El problema no era la
+ * extension sino el tipo de documento, asi que el corte va en la consulta.
+ *
+ * Lo que se pierde es la señal "la industria comenta esto", que tampoco era
+ * accionable: sin forma de citar un comentario no hay nada que responder con el.
+ */
 const searchHackerNews: Source = async (query, limit, signal) => {
   const data = await getJson<HnAlgolia>(
     `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}` +
-      `&tags=(story,comment)&hitsPerPage=${limit}`,
+      `&tags=story&hitsPerPage=${limit}`,
     signal
   )
 
   const results: WebResult[] = []
   for (const hit of data.hits ?? []) {
     if (results.length >= limit) break
-    const title = hit.title ?? hit.comment_text?.slice(0, 80)
-    if (!title) continue
+    if (!hit.title) continue
+
     const hnId = (hit as { objectID?: string }).objectID
-    const snippet = stripTags(hit.story_text ?? hit.comment_text ?? '') ||
-      `${hit.points ?? 0} puntos, ${hit.num_comments ?? 0} comentarios`
+    const body = stripTags(hit.story_text ?? '')
+    const snippet = body || `${hit.points ?? 0} puntos, ${hit.num_comments ?? 0} comentarios`
     results.push({
-      title: clamp(stripTags(title), 160),
+      title: clamp(stripTags(hit.title), 160),
       url: hit.url ?? `https://news.ycombinator.com/item?id=${hnId ?? ''}`,
       snippet: clamp(snippet, 600),
       source: 'hackernews',
@@ -757,6 +812,163 @@ const searchVersions: Source = async (query, limit, signal) => {
 }
 
 // ---------------------------------------------------------------------------
+// Changelogs (GitHub Releases)
+// ---------------------------------------------------------------------------
+
+/**
+ * Notas de version reales, que es lo que faltaba.
+ *
+ * Sin esto el modelo se inventaba el contenido de un release: preguntando por las
+ * novedades de Rust 1.99.0 contesto "Generic Associated Types (GAT) stabilisation",
+ * un texto plausible pero falso — las fuentes disponibles solo dean el numero de
+ * version. Con el cuerpo del release ya no hay nada que inventar.
+ *
+ * GitHub responde sin token (60 req/h por IP) y `releases/latest` trae el `body`
+ * completo: para Rust son 11.351 caracteres de cambios reales, para Deno 2.677.
+ *
+ * Limitaciones, dichas sin rodeos:
+ *   - El limite de 60/h es por IP y las de datacenter estan compartidas. Se mitiga
+ *     con la cache de 10 min de modulo y porque solo se consulta cuando la pregunta
+ *     es por versiones, no en cada busqueda. Si se agota, el 429 viaja en `warnings`.
+ *   - Solo hay repositorio para los proyectos con GitHub. Node.js tambien, pero su
+ *     release notes estan en el repo y no en el blog: se cita el que corresponda.
+ */
+const RELEASE_SOURCES: Array<{
+  match: string[]
+  repo: string
+  project: string
+}> = [
+  { match: ['rust', 'rustlang', 'rust-lang'], repo: 'rust-lang/rust', project: 'Rust' },
+  { match: ['deno'], repo: 'denoland/deno', project: 'Deno' },
+  { match: ['nodejs', 'node'], repo: 'nodejs/node', project: 'Node.js' },
+  { match: ['typescript'], repo: 'microsoft/TypeScript', project: 'TypeScript' },
+  { match: ['python', 'cpython'], repo: 'python/cpython', project: 'Python' },
+  { match: ['go', 'golang'], repo: 'golang/go', project: 'Go' },
+  { match: ['docker'], repo: 'docker/cli', project: 'Docker' },
+  { match: ['react'], repo: 'facebook/react', project: 'React' },
+  { match: ['django'], repo: 'django/django', project: 'Django' },
+  { match: ['flask'], repo: 'pallets/flask', project: 'Flask' },
+  { match: ['fastapi'], repo: 'fastapi/fastapi', project: 'FastAPI' },
+  { match: ['vue'], repo: 'vuejs/core', project: 'Vue' },
+  { match: ['django-rest-framework'], repo: 'encode/django-rest-framework', project: 'DRF' },
+  { match: ['postgres', 'postgresql'], repo: 'postgres/postgres', project: 'PostgreSQL' },
+  { match: ['sqlite'], repo: 'sqlite/sqlite', project: 'SQLite' },
+]
+
+type GithubRelease = {
+  tag_name?: string
+  name?: string
+  published_at?: string
+  html_url?: string
+  body?: string
+}
+
+/**
+ * El body de un release es markdown con anchors, badges y listas de PR.
+ *
+ * Se limpia a texto plano porque el modelo lo lee como contexto, no como documento:
+ * los badges de CI no aportan nada y los `https:/` rotos de los enlaces pegados en
+ * las URLs solo gastan tokens (Rust viene con PRs https:/github...).
+ */
+function releaseNotes(body: string): string {
+  return stripTags(
+    body
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/^\s*[-=*_#]{3,}\s*$/gm, ' ')
+      .replace(/https:\/\/github\.com\S+/g, ' ')
+  )
+}
+
+/** Frases que delatan que el body no habla de la pregunta. */
+const RELEASE_NOISE =
+  /^\s*(full changelog|see the (full )?changelog|changelog|what'?s changed|installation|how to (install|use)|docker|workflow ci|ci\b|build\b|deps|dependabot|chore|no changes)\b/i
+
+/**
+ * El body de un release arranca con las secciones que importan; el resto es
+ * boilerplate que se repite en cada version y no ayuda a responder.
+ *
+ * Se corta en la tercera linea en blanco: para Rust, "Language / Cargo / Library /
+ * Stabilized APIs" esta al principio y "Builds & Artifacts" al final. Para un
+ * proyecto sin estructura de secciones el cuerpo entero cabe en esehueco.
+ */
+function topSections(body: string): string {
+  const paragraphs = body.split(/\n{2,}/).filter((p) => p.trim() !== '')
+  const kept: string[] = []
+  let blanks = 0
+  for (const p of paragraphs) {
+    if (RELEASE_NOISE.test(p.trim())) continue
+    kept.push(p.trim())
+    if (!/^\s*[-*+] |^\s*\d+\./m.test(p)) {
+      // Parrafo que no es una lista: cuenta como frontera de seccion.
+      blanks++
+      if (blanks >= 3) break
+    }
+    if (kept.length >= 12) break
+  }
+  return kept.join('\n')
+}
+
+const searchReleases: Source = async (query, limit, signal) => {
+  const tokens = queryTokens(query)
+    .map((t) => t.toLowerCase())
+    .filter((t) => !STOPWORDS.has(t) && !VERSION_INTENT.test(t))
+
+  const results: WebResult[] = []
+  for (const token of tokens) {
+    if (results.length >= limit) break
+    const source = RELEASE_SOURCES.find((s) =>
+      s.match.some((m) => m === token || (token.length >= 5 && m.startsWith(token)))
+    )
+    if (!source) continue
+
+    try {
+      const data = await getCachedJson<GithubRelease>(
+        `https://api.github.com/repos/${source.repo}/releases/latest`,
+        signal
+      )
+      const body = releaseNotes(data.body ?? '')
+      if (body === '') continue
+
+      const tag = data.name || data.tag_name || ''
+      const when = data.published_at?.slice(0, 10)
+      const facts = [`Notas de la version ${tag}`.trim()]
+      if (when) facts.push(`publicada el ${when}`)
+
+      /**
+       * `name` ya trae el proyecto en algunos repos ("Rust 1.99.0"), asi que
+       * anteponer el nombre del proyecto duplicaba: "Rust Rust 1.99.0".
+       */
+      const label = tag.toLowerCase().includes(source.project.toLowerCase())
+        ? tag
+        : `${source.project} ${tag}`
+
+      results.push({
+        title: `${label} — notas de la version`.trim(),
+        url: data.html_url ?? `https://github.com/${source.repo}/releases`,
+        snippet: clamp(`${facts.join(', ')}.\n\n${topSections(body)}`, 1200),
+        source: 'releases',
+      })
+    } catch (error) {
+      /**
+       * Se propaga en vez de tragarselo, pero sin abortar la busqueda.
+       *
+       * GitHub sin token son 60 req/h por IP y las de datacenter estan
+       * compartidas, asi que el 429 es esperable. Propagarlo hacia que
+       * `searchWeb` lo metiera en `warnings` y se viera, que es justo lo que
+       * hacia falta para saber que la fuente no estaba entregando. `versiones` sigue
+       * dando el numero de version, que es lo esencial.
+       */
+      const detail = String(error instanceof Error ? error.message : error)
+      throw new Error(detail === 'HTTP 429' ? 'GitHub: HTTP 429 (60/h por IP)' : detail)
+    }
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // arXiv (papers) - DESACTIVADO
 // ---------------------------------------------------------------------------
 // Se probo y se descarto. Su API keyless (`export.arxiv.org/api/query`) respondio
@@ -806,6 +1018,30 @@ const WEB_SIGNALS =
 const recentSearches = new Map<string, { at: number; value: WebSearchOutcome }>()
 const RECENT_TTL_MS = 90_000
 
+/**
+ * Senal de que la pregunta es por novedades de una version.
+ *
+ * Distinta de `VERSION_INTENT` a proposito: ahi basta con que aparezca un numero
+ * ("Rust 1.78 release notes"), que es justo el caso donde las notas de la version
+ * SI interesan. Aqui se exige ademas que se pregunte por el contenido del release
+ * —"novedades", "cambios", "release notes", "qué trae"— porque si solo se busca el
+ * numero, la respuesta son dos lineas y el changelog completo es ruido.
+ */
+/**
+ * El usuario pregunta por el CONTENIDO de una release, no por su numero.
+ *
+ * Se aplica sola, sin cruzarla con `VERSION_INTENT`: "que novedades trae Deno
+ * changelog" no contiene ni un numero ni la palabra "version", asi que exigir las dos
+ * cosas dejaba la fuente apagada justo en el caso que la pediria (medido: cero notas
+ * de version para esa consulta). "Changelog" y "release notes" ya son senal
+ * suficiente por si solas.
+ *
+ * "cambios" queda fuera a proposito: es ambiguo ("cambios en este archivo") y solo no
+ * distingue un changelog de una pregunta por cualquier otra cosa.
+ */
+const RELEASE_INTENT =
+  /\b(release notes?|changelog|notas? de (la )?(version|release)|novedades|nuevas? (funciones|caracter[ií]sticas)|what'?s new|que (trae|incluye)|breaking changes?)\b/i
+
 /** Cada fuente declara para que tipo de consulta aporta algo, via `applies`. */
 const SOURCES: Array<{
   name: string
@@ -820,9 +1056,18 @@ const SOURCES: Array<{
     run: searchStackOverflow,
     max: 4,
     timeoutMs: 5_000,
-    applies: (q) => CODE_SIGNALS.test(q),
+    // El corte de circuito evita el gasto, no el fallo: si la IP del datacenter
+    // esta throttled la fuente se salta sin gastar un subrequest.
+    applies: (q) => CODE_SIGNALS.test(q) && !stackOverflowThrottled(),
   },
   { name: 'wikipedia', run: searchWikipedia, max: 4, timeoutMs: 7_000, applies: () => true },
+  {
+    name: 'releases',
+    run: searchReleases,
+    max: 2,
+    timeoutMs: 4_000,
+    applies: (q) => RELEASE_INTENT.test(q),
+  },
   {
     name: 'hackernews',
     run: searchHackerNews,
@@ -1024,24 +1269,53 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
     }
   }
 
-  // Las versiones van primero, sin round-robin: si la pregunta es "¿cual es la
-  // ultima version de X?" ese es el dato que se busca, y enterrado en la posicion
-  // 5 el modelo lo pasa por alto y contesta de memoria (medido: dio 1.78.0).
+  // `versiones` y `releases` van primero, sin round-robin. Si la pregunta es "¿cual
+  // es la ultima version de X?" ese es el dato que se busca, y enterrado en la
+  // posicion 5 el modelo lo pasa por alto y contesta de memoria (medido: dio
+  // 1.78.0). Las notas de la version van antes que el numero: si la pregunta pide
+  // novedades, el changelog es la respuesta y el numero es el contexto.
+  //
+  // Cada una agota sus resultados antes de pasar a la siguiente: si se metieran en un
+  // unico bucle round-robin, la de versiones (2 resultados) dejaria a las notas para
+  // la posicion 2 o 3, que es donde el modelo deja de leerlas.
+  const PRIORITY = ['releases', 'versiones']
   const ordered: WebResult[] = []
   const cursors = new Map<string, number>()
   const seenUrls = new Set<string>()
+  const seenTitles = new Set<string>()
 
   const take = (item: WebResult) => {
     // Deduplicar por URL canonica (sin esquema ni barra final).
     const key = item.url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase()
     if (seenUrls.has(key)) return
     seenUrls.add(key)
+
+    /**
+     * Deduplicar por contenido, entre idiomas.
+     *
+     * Wikipedia se consulta en español e ingles, asi que el mismo articulo vuelve dos
+     * veces con URL distintas y la de-duplicacion por URL no lo nota. Medido: "Alan
+     * Turing biography" devolvia el mismo texto en es y en, y "que es Deno" repetia
+     * "Deno (software)" dos veces. Son dos huecos de 6 y dos bloques de texto
+     * identico para el modelo.
+     *
+     * Se descarta el duplicado, no el par, y sin comparar el cuerpo: las diferencias
+     * entre la version en español y la inglesa suelen ser de redaccion, no de
+     * contenido, asi que basta con el titulo. Cuando los titulos difieren ("Rust" vs
+     * "Rust (lenguaje de programacion)") se conservan los dos, que es lo correcto.
+     */
+    const titleKey = item.title.toLowerCase().replace(/\s+/g, ' ')
+    if (seenTitles.has(titleKey)) return
+    seenTitles.add(titleKey)
+
     ordered.push(item)
   }
 
-  for (const item of perSource.get('versiones') ?? []) {
-    if (ordered.length >= limit) break
-    take(item)
+  for (const name of PRIORITY) {
+    for (const item of perSource.get(name) ?? []) {
+      if (ordered.length >= limit) break
+      take(item)
+    }
   }
 
   // Intercalado round-robin del resto: sop, wiki, hn, sop, wiki, hn...
@@ -1049,7 +1323,7 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
   while (ordered.length < limit && progressed) {
     progressed = false
     for (const [name, results] of perSource) {
-      if (name === 'versiones' || ordered.length >= limit) continue
+      if (PRIORITY.includes(name) || ordered.length >= limit) continue
       const at = cursors.get(name) ?? 0
       const item = results[at]
       if (!item) continue

@@ -53,6 +53,11 @@ You have access to tools that let you search the web, search notes in the user's
 
 Always try to use these tools when they would improve your answer. When you use web_search, cite your sources.
 
+## When the user asks you to search
+If the user explicitly asks you to search, look something up, check online, or find recent information, you MUST call web_search before answering — even if you believe you already know the answer. Your memory of versions, commands, and APIs goes stale, and a confident wrong answer is worse than a slower right one. Answering from memory without searching when asked to search is a failure.
+
+After searching, base your answer on what the results actually say. If the results do not contain the detail you were about to give, say that it is not in the sources instead of filling the gap from memory. Never invent release notes, version numbers, or command syntax.
+
 Always aim to be the best engineer and teacher you can be.`
 
 const MODEL_CONFIG: Record<string, { max_tokens: number; temperature: number }> = {
@@ -64,6 +69,88 @@ const MODEL_CONFIG: Record<string, { max_tokens: number; temperature: number }> 
 const MAX_VISIBLE_MESSAGES = 8
 const CHEAP_MODEL = 'openai/gpt-oss-20b'
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
+
+/**
+ * El usuario pide buscar en la web, de forma explicita.
+ *
+ * Es lo que activa el `tool_choice` forzado de la primera ronda. Medido el problema:
+ * con "Busca en la web como se instala Deno" el modelo respondio de memoria con
+ * `tool_calls: 0` y se invento el comando de instalacion. Con "auto" el prompt no
+ * basta, porque al modelo le sale mas barato escribir lo que "ya sabe" que ir a
+ * pedirlo.
+ *
+ * Se divide en dos senales a proposito, porque tienen niveles distintos de confianza:
+ *
+ *   - `LOOKS_LIKE_ORDER`: "busca", "investiga", "googlea", "search the web". Aqui el
+ *     usuario pide una accion, no una respuesta, y no hay excepcion razonable.
+ *   - `WANTS_CURRENT`: "noticias", "ultima version", "lo que hay de nuevo", "how is
+ *     X today". Aqui el modelo casi siempre deberia buscar, pero la palabra puede
+ *     aparecer en otro sentido ("el estado actual de mi base de datos" no es una
+ *     busqueda web), asi que se exige ademas un sintagma, no una palabra suelta.
+ *
+ * El corte por longitud de la ultima intervencion va en la decision de abajo: si el
+ * mensaje es enorme (un log pegado, un archivo entero) casi seguro no es una peticion
+ * de busqueda aunque contenga la palabra, y forzarla gastaria una ronda.
+ */
+const LOOKS_LIKE_ORDER =
+  /\b(busca|buscar|buscame|busqueda|investiga|investigar|googlea|googlear|search (?:the )?(?:web|internet)|look ?up|look for|find (?:me )?(?:online|on the web|information)|check online|verifica online)\b/i
+
+const WANTS_CURRENT =
+  /\b(noticias|news|actualidad|ultima vers[ió]n|ultimo lanzamiento|lo (?:ultimo|m[áa]s reciente)|novedades|que hay de nuevo|que trae|release notes?|changelog|how (?:is|are) .{1,20} (?:today|now these days)|estado actual|currently (?:is|are) (?:supported|available|maintained)|still (?:supported|maintained|available))\b/i
+
+/**
+ * "estado actual" es casi siempre peticion de web, salvo cuando lo que se
+ * describe es del usuario.
+ *
+ * "Como esta el estado actual de Python en cuanto a soporte" es una busqueda; "que
+ * es el estado actual de mi base de datos" no lo es, porque el estado de la base de
+ * datos del usuario no esta en internet. La diferencia esta en el sujeto, no en la
+ * palabra, asi que se busca el sintagma con "mi"/"mis" pegado.
+ */
+const OWN_THING = /\b(?:mi|mis|el|la)\s+(?:\w+\s+){0,2}(?:base de datos|proyecto|app|aplicacion|servidor|server|repo|repositorio|codigo|archivo|carpeta|cuenta|cr[ée]dito)/i
+
+/**
+ * "busca en el vault / en mis notas" no es una busqueda web.
+ *
+ * El verbo es el mismo y por eso `LOOKS_LIKE_ORDER` lo dispara, pero la peticion es
+ * para `search_vault`, que lee el vault local y no gasta subrequests. Forzar aqui
+ * `web_search` haria las dos cosas y ademas responderia con Wikipedia en vez de con
+ * las notas del usuario, que es justo lo que pidio.
+ *
+ * Se comprueba antes de cualquier otra senal porque es el caso mas especifico.
+ */
+const WANTS_VAULT =
+  /\b(?:en|sobre)\s+(?:mi|el|las|los)\s+(?:vault|notas|biblioteca|carpeta)\b|\b(?:vault|biblioteca)\b\s*(?:de\s+notas)?\s*[,?]|notas\s+(?:que\s+)?(?:tengo|guard[eé]|hay|sobre)/i
+
+/**
+ * Decide si la ultima intervencion pide buscar.
+ *
+ * Se mira solo la ultima intervencion del usuario, no el historial: si hace tres
+ * mensajes pidio una busqueda y ahora pregunta otra cosa, forzar seria molestar.
+ */
+function wantsWebSearch(messages: { role: string; content: string }[]): boolean {
+  const last = [...messages].reverse().find((m) => m.role === 'user')
+  if (!last?.content) return false
+
+  const text = last.content.trim()
+
+  // El vault local no es la web: va primero y corta todo lo demas.
+  if (WANTS_VAULT.test(text)) return false
+  // El estado de algo del usuario no se busca en internet.
+  if (OWN_THING.test(text)) return false
+
+  // Un log o un bloque de codigo pegado no es una peticion de busqueda, aunque
+  // contenga "search" en un nombre de funcion. Sin este tope, pegar un archivo de
+  // 500 lineas quemaba una de las 3 rondas.
+  if (text.length > 1200) return false
+  // Si es casi todo codigo, tampoco: aqui lo que se quiere es que lo arregle.
+  const codeFence = (text.match(/```/g) ?? []).length
+  if (codeFence >= 2) return false
+
+  if (LOOKS_LIKE_ORDER.test(text)) return true
+  // "WANTS_CURRENT" exige sintagma completo, asi que basta con una vez.
+  return WANTS_CURRENT.test(text)
+}
 
 async function generateSummary(apiKey: string, messages: { role: string; content: string }[]): Promise<string> {
   const text = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n')
@@ -230,12 +317,17 @@ export async function POST(req: NextRequest) {
 
     if (useTools) {
       try {
+        const forceSearch = wantsWebSearch(contextMessages)
+        if (forceSearch) {
+          console.log('Busqueda web forzada: el usuario la pide explicitamente')
+        }
         const { stream, toolCalls, hitRoundLimit } = await callGroqWithTools(
           apiKey,
           allMessages,
           model,
           config.max_tokens,
           config.temperature,
+          forceSearch,
         )
 
         const encoder = new TextEncoder()
