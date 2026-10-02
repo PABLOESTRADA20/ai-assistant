@@ -71,6 +71,62 @@ const CHEAP_MODEL = 'openai/gpt-oss-20b'
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 
 /**
+ * Traduce un error de Groq a algo que el usuario pueda entender.
+ *
+ * Antes devolvia el JSON crudo de Groq con su status. Medido en produccion: al
+ * agotarse la cuota diaria devolvia HTTP 500 con el `error_id` de Groq dentro, que
+ * es un problema doble:
+ *
+ *   - El status era incorrecto. Un rate limit es 429, no un fallo del servidor. Con
+ *     500 el cliente lo trata como error irrecuperable y no reintenta, cuando lo
+ *     correcto es esperar y volver a intentarlo.
+ *   - El mensaje era inaccionable. Decir "Rate limit reached for model
+ *     openai/gpt-oss-120b ... Limit 200000, Used 198478" no le dice al usuario nada
+ *     de lo que pueda hacer, y encima filtra nombres de modelo y de organizacion.
+ *
+ * Los dos limites del free tier que se toparon en produccion, ambos reales:
+ *   - 8.000 TPM (por minuto)
+ *   - 200.000 TPD (por dia), que es el que mas duele: se agota en unas horas de uso
+ *     real y no se recupera hasta el dia siguiente.
+ */
+function groqErrorResponse(status: number, errText: string): Response {
+  const isRateLimit = status === 429 || /rate limit|rate_limit_exceeded/i.test(errText)
+
+  if (isRateLimit) {
+    const perDay = /tokens per day|TPD/i.test(errText)
+    // Groq incluye "Please try again in Xs" cuando sabe cuanto hay que esperar.
+    const wait = errText.match(/try again in ([\d.]+)\s*m?([smh])?/i)
+    let espera = ''
+    if (wait) {
+      const n = Number(wait[1])
+      const unit = wait[2]?.toLowerCase() ?? 's'
+      if (Number.isFinite(n)) {
+        const mins = unit === 'm' ? n : unit === 'h' ? n * 60 : n / 60
+        espera = ` Groq indica esperar unos ${mins < 1 ? Math.ceil(n) + ' s' : Math.ceil(mins) + ' min'}.`
+      }
+    }
+
+    return Response.json(
+      {
+        error: perDay
+          ? 'Se agoto la cuota diaria de ARIA (limite gratuito de Groq: 200.000 tokens al dia).' +
+              espera +
+              ' Se recupera a medianoche. Mientras tanto no puedo responder.'
+          : 'Se alcanzo el limite de peticiones de ARIA por minuto. Vuelve a intentarlo en un momento.',
+        code: perDay ? 'quota_daily' : 'rate_limit',
+      },
+      { status: 429, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
+  console.error(`Groq ${status}: ${errText.slice(0, 400)}`)
+  return Response.json(
+    { error: 'ARIA no pudo completar la peticion. Intentalo de nuevo en un momento.', code: 'upstream_error' },
+    { status: 502, headers: { 'Content-Type': 'application/json' } },
+  )
+}
+
+/**
  * El usuario pide buscar en la web, de forma explicita.
  *
  * Es lo que activa el `tool_choice` forzado de la primera ronda. Medido el problema:
@@ -455,6 +511,34 @@ export async function POST(req: NextRequest) {
           },
         })
       } catch (err) {
+        /**
+         * Un rate limit no se arregla cayendo a simple mode.
+         *
+         * El fallback existe para cuando el tool-calling falla pero una peticion
+         * simple si puede salir. Con la cuota agotada no es el caso: simple mode
+         * haria exactamente la misma llamada y receberia el mismo 429. Medido: la
+         * respuesta tardaba 62 s en devolver el error, porque cada uno de los dos
+         * caminos iba hacia 3 reintentos con backoff contra un limite que no se iba
+         * a recuperar.
+         *
+         * Ademas, el usuario recibia el error sin ninguna informacion util, porque
+         * el mensaje de Groq se perdia en el `console.error`. Ahora se responde de
+         * inmediato con el motivo y cuando se recupera.
+         */
+        const detail = String(err instanceof Error ? err.message : err)
+        if (/rate limit|rate_limit_exceeded|429/i.test(detail)) {
+          console.error('Rate limit durante tool calling:', detail.slice(0, 300))
+          const perDay = /tokens per day|TPD/i.test(detail)
+          return Response.json(
+            {
+              error: perDay
+                ? 'Se agoto la cuota diaria de ARIA (limite gratuito de Groq: 200.000 tokens al dia). Se recupera a medianoche.'
+                : 'Se alcanzo el limite de peticiones de ARIA por minuto. Intentalo en unos segundos.',
+              code: perDay ? 'quota_daily' : 'rate_limit',
+            },
+            { status: 429, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
         console.error('Tool calling error, falling back to simple mode:', err)
         // Fall through to simple mode below
       }
@@ -486,10 +570,7 @@ export async function POST(req: NextRequest) {
 
     if (!groqRes.ok) {
       const errText = await groqRes.text()
-      return new Response(JSON.stringify({ error: `Groq API error: ${errText}` }), {
-        status: groqRes.status,
-        headers: { 'Content-Type': 'application/json' },
-      })
+      return groqErrorResponse(groqRes.status, errText)
     }
 
     const encoder = new TextEncoder()

@@ -58,6 +58,20 @@ export async function groqFetch(
 
     const toolUseFailed = errText.includes('"tool_use_failed"')
 
+    /**
+     * Cuota diaria agotada: no se reintenta, se propaga.
+     *
+     * El 429 del free tier tiene dos causas distintas y solo una se puede reintentar:
+     * TPM (8.000 por minuto) se recupera en segundos, TPD (200.000 por dia) no se
+     * recupera hasta el dia siguiente. Groq lo dice en el mensaje, y reintentar contra
+     * el TPD es gastar 3 reintentos y hasta 12 s de backoff para recibir el mismo
+     * error. Medido en produccion: 62 s hasta devolver el error al usuario.
+     */
+    const dailyExhausted = /tokens per day|TPD/i.test(errText)
+    if (dailyExhausted) {
+      throw new Error(`Groq API error: ${errText}`)
+    }
+
     const retryable = res.status === 429 || res.status >= 500 || toolUseFailed
     if (!retryable || attempt === maxRetries) {
       throw new Error(`Groq API error: ${errText}`)
