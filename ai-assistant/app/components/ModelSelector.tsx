@@ -36,7 +36,7 @@ export default function ModelSelector({ value, onChange }: Props) {
         }}
       >
         <Cpu size={13} style={{ color: 'var(--accent)' }} />
-        <span className="font-medium text-xs">{current.name}</span>
+        <span className="font-medium text-xs hidden sm:inline">{current.name}</span>
         <ChevronDown
           size={12}
           className="transition-transform duration-200"
@@ -46,7 +46,7 @@ export default function ModelSelector({ value, onChange }: Props) {
 
       {open && (
         <div
-          className="absolute top-full mt-2 left-0 w-64 rounded-2xl overflow-hidden z-50 animate-fade-in"
+          className="absolute top-full mt-2 right-0 w-64 max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden z-50 animate-fade-in"
           style={{
             background: 'var(--surface-2)',
             border: '1px solid var(--border)',

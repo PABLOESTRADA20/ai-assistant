@@ -7,11 +7,11 @@ Asistente de IA conversacional con Next.js 15, React, TypeScript, Tailwind CSS, 
 - **Frontend**: Next.js 15, React 18, Tailwind CSS 3, TypeScript
 - **Backend**: Next.js API Routes, Prisma 7 ORM
 - **Base de datos**: Neon (PostgreSQL serverless) + pgvector (búsqueda semántica por embeddings)
-- **IA**: Groq API (Llama 3.3 70B, DeepSeek R1, Mixtral 8x7B, Llama 3.1 8B)
+- **IA**: Groq (`gpt-oss-120b`, `qwen3.8-27b`, `gpt-oss-20b`) + **DeepSeek R1 32B gratis** vía Cloudflare Workers AI
 - **Embeddings**: Cloudflare Workers AI `@cf/baai/bge-m3` (1024 dims), mismo modelo en local y en producción
 - **Deploy**: Cloudflare Workers vía `@opennextjs/cloudflare`
 - **Markdown**: react-markdown + react-syntax-highlighter
-- **TTS**: Web Speech API (SpeechSynthesis)
+- **TTS (voz de salida)**: Web Speech API (SpeechSynthesis), voz en español y modo "leer respuestas" automático
 - **Dictado por voz (STT)**: Groq Whisper `large-v3-turbo` en el servidor (grabado con `MediaRecorder`), con fallback a Workers AI Whisper y, si el navegador no soporta grabación, a la Web Speech API
 
 ## Inicio rápido
@@ -126,10 +126,10 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - Streaming en tiempo real (SSE)
 - Conversaciones persistentes en PostgreSQL
 - Búsqueda en sidebar
-- 4 modelos de IA seleccionables
+- 5 modelos de IA seleccionables (incl. DeepSeek R1 gratis)
 - Markdown + syntax highlighting
 - Tema oscuro/claro
-- Text-to-speech
+- **Voz de salida (TTS)** — botón "Escuchar" en cada mensaje y modo **Voz** en el header: ARIA lee sus respuestas en voz alta (voz en español; en iOS se desbloquea con el primer gesto)
 - **Dictado por voz que funciona en cualquier navegador** — graba con `MediaRecorder` y transcribe con Groq Whisper `large-v3-turbo` (gratis: 2.000 transcripciones/día); fallback a Workers AI Whisper y a la Web Speech API. El texto se añade a lo que ya hayas escrito (antes lo reemplazaba)
 - Atajos de teclado (Ctrl+N, Escape)
 - Confirmación al eliminar
@@ -148,6 +148,27 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
 - **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
 - **Núcleo compartido** — `app/lib/aria-core.ts` centraliza prompt, memoria y contexto; el chat web, WhatsApp y el correo usan exactamente el mismo cerebro.
+
+## Modelos e IA gratis (DeepSeek)
+
+En el selector del header puedes elegir:
+
+| Modelo | Proveedor | Cuota gratis | Herramientas |
+|--------|-----------|--------------|--------------|
+| GPT-OSS 120B | Groq | 200.000 tokens/día | ✅ |
+| Qwen 3.8 27B | Groq | 200.000 tokens/día | ✅ |
+| GPT-OSS 20B | Groq | 200.000 tokens/día | ✅ (modo rápido) |
+| **DeepSeek R1 32B** | **Cloudflare Workers AI** | **10.000 neuronas/día** | ❌ (solo razonamiento) |
+
+DeepSeek se sirve con el **binding `AI`** que ya estaba configurado para los embeddings: **no hace falta ninguna API key nueva**. Al ser un modelo de razonamiento no admite function calling, así que en ese modo ARIA responde sin herramientas (web, vault, abrir apps…). Úsalo como alternativa gratuita cuando se agote la cuota de Groq o para preguntas que pidan razonamiento profundo; eso sí, su cuota gratuita es mucho más pequeña que la de Groq.
+
+## Usar desde el móvil (PWA)
+
+La app es responsive y además **instalable**: en el navegador del móvil, "Añadir a pantalla de inicio" abre ARIA a pantalla completa (manifest + iconos + `viewport-fit=cover`, con las zonas seguras del notch respetadas).
+
+- El dictado por voz y la lectura en voz alta funcionan en el móvil; con el botón **Voz** del header ARIA lee cada respuesta al terminarla.
+- Si defines `ARIA_ACCESS_TOKEN`, en el móvil tendrás que introducir la clave una vez (se guarda en ese navegador).
+- El agente local de "abrir apps en tu PC" **no** funciona desde el móvil (`127.0.0.1` sería el propio teléfono). Para eso usa ARIA en el PC.
 
 ## WhatsApp
 
@@ -229,7 +250,7 @@ Pruebas locales del mismo entorno: `npm run preview` (Worker en workerd).
 ai-assistant/
 ├── app/
 │   ├── api/
-│   │   ├── chat/route.ts            # Chat con Groq (streaming + memoria)
+│   │   ├── chat/route.ts            # Chat con Groq/Workers AI (streaming + memoria)
 │   │   ├── conversations/           # CRUD de conversaciones
 │   │   ├── memory/                  # CRUD + búsqueda semántica + consolidación de memoria
 │   │   ├── whatsapp/webhook/route.ts # Webhook de WhatsApp Cloud API (Meta)
@@ -245,6 +266,8 @@ ai-assistant/
 │   │   ├── email.ts                # Envío de correo (Resend)
 │   │   ├── local-agent.ts          # Cliente del agente local (abrir apps)
 │   │   ├── llm-embed.ts            # Embeddings bge-m3 (Workers AI bind/REST)
+│   │   ├── providers.ts            # Registro de proveedores (Groq / Workers AI)
+│   │   ├── workers-ai.ts           # DeepSeek gratis vía binding AI (SSE normalizado)
 │   │   ├── embeddings.ts           # Reindex + búsqueda coseno pgvector (vault)
 │   │   ├── memory.ts               # Memoria long-term + working memory + consolidación
 │   │   ├── memory-extract.ts       # Extracción de memorias (Groq + heurístico)
@@ -253,6 +276,7 @@ ai-assistant/
 │   ├── types/index.ts              # Types + modelos disponibles
 │   ├── globals.css                 # Estilos globales
 │   ├── layout.tsx                  # Layout raíz
+│   ├── manifest.ts                 # Manifest PWA (instalable en móvil)
 │   └── page.tsx                    # Página principal
 ├── local-agent/                    # Agente local que abre apps en tu PC
 │   ├── aria-local-agent.mjs        # Servidor HTTP en 127.0.0.1:8787

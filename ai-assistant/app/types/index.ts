@@ -74,4 +74,10 @@ export const AVAILABLE_MODELS: AIModel[] = [
     description: 'Ultra rápido • Respuestas simples',
     badge: '⚡ Rápido',
   },
+  {
+    id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+    name: 'DeepSeek R1 32B',
+    description: 'Razonamiento profundo • gratis (Cloudflare)',
+    badge: '🐋 Gratis',
+  },
 ]

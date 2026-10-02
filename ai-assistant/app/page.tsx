@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { Menu, RefreshCw, Download } from 'lucide-react'
+import { Menu, RefreshCw, Download, Volume2, VolumeX } from 'lucide-react'
 
 import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
 import ChatInput from './components/ChatInput'
 import ModelSelector from './components/ModelSelector'
 import MemoryInspector from './components/MemoryInspector'
+import { useTTS } from './hooks/useTTS'
 
 import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
@@ -41,7 +42,10 @@ export default function Home() {
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [localAgent, setLocalAgent] = useState<boolean | null>(null)
+  const [autoSpeak, setAutoSpeak] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
+  const { speak, stop: stopSpeech, prime } = useTTS()
 
   // Comprobar si la app pide clave y, si hay una guardada, validarla antes de
   // cargar nada. Evita mostrar conversaciones o lanzar peticiones a ciegas.
@@ -94,6 +98,14 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
   }, [theme])
+
+  // Preferencia de voz: persistente entre recargas.
+  useEffect(() => {
+    setAutoSpeak(localStorage.getItem('aria_autospeak') === '1')
+  }, [])
+  useEffect(() => {
+    localStorage.setItem('aria_autospeak', autoSpeak ? '1' : '0')
+  }, [autoSpeak])
 
   // Detectar si el agente local está corriendo (para abrir apps en el PC).
   // Se revalida cada 30 s por si el usuario lo arranca o lo cierra.
@@ -184,6 +196,8 @@ export default function Home() {
   const handleSubmit = useCallback(async () => {
     const content = input.trim()
     if (!content || isLoading) return
+    // Gesto del usuario (clic/Enter) → desbloquea la voz en iOS antes del fetch.
+    if (autoSpeak) prime()
 
     let convId = activeId
     let existingMessages: Message[] = []
@@ -310,6 +324,9 @@ export default function Home() {
           })
         )
       }
+
+      // Voz: se lee la respuesta final (no el streaming, que sería entrecortado).
+      if (autoSpeak && accumulated.trim()) speak(accumulated)
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
         if (streamingContent || streamingTools.length > 0) {
@@ -353,7 +370,7 @@ export default function Home() {
       setStreamingTools([])
       abortRef.current = null
     }
-  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, runLocalTool])
+  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, runLocalTool, autoSpeak, prime, speak])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -363,6 +380,7 @@ export default function Home() {
     if (!activeConversation || isLoading) return
     const msgs = activeConversation.messages
     if (msgs.length < 2) return
+    if (autoSpeak) prime()
 
     const trimmed = msgs.slice(0, -1)
     const convId = activeConversation.id
@@ -447,6 +465,8 @@ export default function Home() {
           })
         )
       }
+
+      if (autoSpeak && accumulated.trim()) speak(accumulated)
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') console.error(err)
     } finally {
@@ -454,11 +474,18 @@ export default function Home() {
       setStreamingContent('')
       setStreamingTools([])
     }
-  }, [activeConversation, isLoading, runLocalTool])
+  }, [activeConversation, isLoading, runLocalTool, autoSpeak, prime, speak])
 
   const handleSuggestion = (text: string) => {
     setInput(text)
   }
+
+  const toggleAutoSpeak = useCallback(() => {
+    const next = !autoSpeak
+    setAutoSpeak(next)
+    if (next) prime()
+    else stopSpeech()
+  }, [autoSpeak, prime, stopSpeech])
 
   const handleExportMarkdown = () => {
     if (!activeConversation) return
@@ -540,7 +567,7 @@ export default function Home() {
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
         <header
-          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0 safe-top"
           style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}
         >
           <div className="flex items-center gap-3">
@@ -573,6 +600,23 @@ export default function Home() {
               />
               <span className="hidden sm:inline">Agente local</span>
             </button>
+            <button
+              onClick={toggleAutoSpeak}
+              title={
+                autoSpeak
+                  ? 'Voz activada: ARIA lee sus respuestas en voz alta'
+                  : 'Leer las respuestas en voz alta'
+              }
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
+              style={{
+                color: autoSpeak ? 'var(--accent)' : 'var(--text-muted)',
+                background: autoSpeak ? 'var(--accent-muted)' : 'var(--surface-2)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              {autoSpeak ? <Volume2 size={12} /> : <VolumeX size={12} />}
+              <span className="hidden sm:inline">Voz</span>
+            </button>
             {activeConversation && activeConversation.messages.length >= 2 && (
               <button
                 onClick={handleRegenerate}
@@ -581,7 +625,7 @@ export default function Home() {
                 style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
               >
                 <RefreshCw size={12} />
-                Regenerar
+                <span className="hidden sm:inline">Regenerar</span>
               </button>
             )}
             {activeConversation && activeConversation.messages.length > 0 && (
@@ -592,7 +636,7 @@ export default function Home() {
                 style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
               >
                 <Download size={12} />
-                Exportar
+                <span className="hidden sm:inline">Exportar</span>
               </button>
             )}
             <ModelSelector value={model} onChange={setModel} />
@@ -609,7 +653,7 @@ export default function Home() {
         />
 
         <div
-          className="flex-shrink-0 px-4 pb-4 pt-3"
+          className="flex-shrink-0 px-4 pt-3 safe-bottom"
           style={{ background: 'var(--surface-1)', borderTop: '1px solid var(--border)' }}
         >
           <div className="max-w-3xl mx-auto">

@@ -55,6 +55,11 @@ body {
   overflow: hidden;
 }
 
+/* Móvil con notch: `viewportFit: cover` deja el contenido bajo la barra de
+   estado. Estas utilidades rellenan solo la zona segura (0 en escritorio). */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

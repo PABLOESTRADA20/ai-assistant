@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { callGroqWithTools, groqFetch } from '@/app/lib/tools'
+import { providerForModel, isWorkersAiModel, GROQ, type Provider } from '@/app/lib/providers'
+import { workersAiChatStream } from '@/app/lib/workers-ai'
 import { requireAuth } from '@/app/lib/auth'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
@@ -34,7 +36,23 @@ import {
  *   - 200.000 TPD (por dia), que es el que mas duele: se agota en unas horas de uso
  *     real y no se recupera hasta el dia siguiente.
  */
-function groqErrorResponse(status: number, errText: string): Response {
+function groqErrorResponse(status: number, errText: string, provider: Provider = GROQ): Response {
+  // Workers AI (DeepSeek gratis) no comparte los códigos de Groq: el fallo más
+  // común es quedarse sin las 10.000 neuronas/día del plan Free.
+  if (provider.id === 'workers-ai') {
+    const neurons = /neuron/i.test(errText)
+    console.error(`Workers AI ${status}: ${errText.slice(0, 400)}`)
+    return Response.json(
+      {
+        error: neurons
+          ? 'Se agotó la cuota diaria gratuita de Workers AI (10.000 neuronas/día). Se recupera a medianoche UTC; mientras tanto prueba con un modelo de Groq.'
+          : 'DeepSeek (Workers AI) no pudo responder ahora mismo. Prueba de nuevo o cambia a un modelo de Groq.',
+        code: neurons ? 'quota_daily' : 'upstream_error',
+      },
+      { status: neurons ? 429 : 502, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
   const isRateLimit = status === 429 || /rate limit|rate_limit_exceeded/i.test(errText)
 
   if (isRateLimit) {
@@ -89,13 +107,18 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const apiKey = process.env.GROQ_API_KEY
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'GROQ_API_KEY no configurada' }), {
+    const provider = providerForModel(model)
+    // Clave del proveedor que responde el chat. Workers AI va por binding (sin clave).
+    const apiKey = (provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : '') ?? ''
+    if (provider.apiKeyEnv && !apiKey) {
+      return new Response(JSON.stringify({ error: `${provider.apiKeyEnv} no configurada` }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       })
     }
+    // Groq sigue siendo el cerebro auxiliar (extracción de memoria y resumen).
+    // Si no está configurado, esas tareas best-effort simplemente se saltan.
+    const groqKey = process.env.GROQ_API_KEY
 
     // Contexto compartido (resumen + memoria del usuario + memoria de trabajo).
     // Es el mismo cerebro que usan WhatsApp y el correo.
@@ -107,8 +130,8 @@ export async function POST(req: NextRequest) {
     // Extracción de memoria del turno en segundo plano (no bloquea la respuesta).
     // `registerBackground` lo registra con ctx.waitUntil() para que workerd no lo
     // cancele al terminar el request (lo que además corrompería el cliente Prisma).
-    if (lastUserMsg?.content) {
-      await registerBackground(rememberTurn(apiKey, lastUserMsg.content, conversationId))
+    if (groqKey && lastUserMsg?.content) {
+      await registerBackground(rememberTurn(groqKey, lastUserMsg.content, conversationId))
     }
 
     // Mantenimiento perezoso: una fracción de los turnos revisa si toca
@@ -119,9 +142,9 @@ export async function POST(req: NextRequest) {
     }
 
     // If messages were truncated but no summary exists yet, generate one
-    if (messages.length > MAX_VISIBLE_MESSAGES && !summary) {
+    if (groqKey && messages.length > MAX_VISIBLE_MESSAGES && !summary) {
       const oldMessages = messages.slice(0, -MAX_VISIBLE_MESSAGES)
-      const newSummary = await generateSummary(apiKey, oldMessages)
+      const newSummary = await generateSummary(groqKey, oldMessages)
       if (newSummary && conversationId) {
         await prisma.conversation.update({
           where: { id: conversationId },
@@ -138,7 +161,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if we should use tool calling (skip for simple/fast models to save latency)
-    const useTools = model !== CHEAP_MODEL
+    // Workers AI (DeepSeek) es de razonamiento y no soporta tools: va por simple mode.
+    const useTools = provider.supportsTools && model !== CHEAP_MODEL
 
     if (useTools) {
       try {
@@ -153,6 +177,8 @@ export async function POST(req: NextRequest) {
           config.max_tokens,
           config.temperature,
           forceSearch,
+          undefined,
+          provider,
         )
 
         const encoder = new TextEncoder()
@@ -320,14 +346,32 @@ export async function POST(req: NextRequest) {
     // el razonamiento y devuelve content vacio -> el usuario ve un stream sin
     // texto. Por eso, si no llega nada de contenido, se reintentaIndicandole que
     // las herramientas no estan disponibles y que responda con lo que sepa.
-    const streamSimple = (messages: typeof allMessages): Promise<Response> =>
-      groqFetch(apiKey, {
+    const streamSimple = async (messages: typeof allMessages): Promise<Response> => {
+      // DeepSeek gratis (Workers AI) va por el binding, no por fetch. El stream
+      // ya viene normalizado a SSE estilo OpenAI, así el drenado de abajo no cambia.
+      if (isWorkersAiModel(model)) {
+        try {
+          const stream = await workersAiChatStream(
+            model,
+            messages,
+            config.max_tokens,
+            config.temperature,
+          )
+          return new Response(stream, { status: 200 })
+        } catch (err) {
+          const detail = String(err instanceof Error ? err.message : err)
+          console.error('Workers AI error:', detail)
+          return Response.json({ error: detail }, { status: 502 })
+        }
+      }
+      return groqFetch(apiKey, {
         model,
         messages,
         stream: true,
         max_tokens: config.max_tokens,
         temperature: config.temperature,
-      })
+      }, 3, provider)
+    }
 
     const NO_TOOLS_NOTICE =
       'AVISO: en esta respuesta no tenes herramientas disponibles. ' +
@@ -339,7 +383,7 @@ export async function POST(req: NextRequest) {
 
     if (!groqRes.ok) {
       const errText = await groqRes.text()
-      return groqErrorResponse(groqRes.status, errText)
+      return groqErrorResponse(groqRes.status, errText, provider)
     }
 
     const encoder = new TextEncoder()

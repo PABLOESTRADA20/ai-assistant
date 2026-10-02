@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c6af7"/>
+      <stop offset="100%" stop-color="#6d5ce6"/>
+    </linearGradient>
+  </defs>
+  <!-- Fondo a sangre: la zona segura "maskable" es el círculo central del 80%. -->
+  <rect width="512" height="512" fill="url(#g)"/>
+  <text x="256" y="330" font-size="200" fill="#ffffff" text-anchor="middle"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="700">A</text>
+</svg>

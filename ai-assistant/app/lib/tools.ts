@@ -1,4 +1,6 @@
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
+import { GROQ, type Provider } from '@/app/lib/providers'
+
+const GROQ_API = GROQ.apiUrl!
 
 /**
  * `fetch` a Groq reintentando ante rate limits (HTTP 429).
@@ -25,9 +27,11 @@ const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
 export async function groqFetch(
   apiKey: string,
   body: unknown,
-  maxRetries = 3
+  maxRetries = 3,
+  provider: Provider = GROQ
 ): Promise<Response> {
   const MAX_BACKOFF_MS = 12_000
+  const apiUrl = provider.apiUrl ?? GROQ_API
 
   let lastResponse: Response | null = null
   let lastError: unknown = null
@@ -35,11 +39,12 @@ export async function groqFetch(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let res: Response
     try {
-      res = await fetch(GROQ_API, {
+      res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          ...(provider.headers ?? {}),
         },
         body: JSON.stringify(body),
       })
@@ -67,14 +72,14 @@ export async function groqFetch(
      * el TPD es gastar 3 reintentos y hasta 12 s de backoff para recibir el mismo
      * error. Medido en produccion: 62 s hasta devolver el error al usuario.
      */
-    const dailyExhausted = /tokens per day|TPD/i.test(errText)
+    const dailyExhausted = /tokens per day|TPD|free-models-per-day|per day|daily limit|neurons/i.test(errText)
     if (dailyExhausted) {
-      throw new Error(`Groq API error: ${errText}`)
+      throw new Error(`${provider.label} API error: ${errText}`)
     }
 
     const retryable = res.status === 429 || res.status >= 500 || toolUseFailed
     if (!retryable || attempt === maxRetries) {
-      throw new Error(`Groq API error: ${errText}`)
+      throw new Error(`${provider.label} API error: ${errText}`)
     }
 
     const headerHint = Number(res.headers.get('retry-after'))
@@ -92,14 +97,14 @@ export async function groqFetch(
       : Math.min(Math.max(hintMs + 500, 1000 * 2 ** attempt), MAX_BACKOFF_MS)
 
     console.warn(
-      `Groq ${res.status}${toolUseFailed ? ' tool_use_failed' : ''}, reintento ${attempt + 1}/${maxRetries} en ${backoff}ms (${errText.slice(0, 120)})`
+      `${provider.label} ${res.status}${toolUseFailed ? ' tool_use_failed' : ''}, reintento ${attempt + 1}/${maxRetries} en ${backoff}ms (${errText.slice(0, 120)})`
     )
     await new Promise((r) => setTimeout(r, backoff))
   }
 
   // Solo se llega aqui por error de red en el ultimo intento.
-  if (lastResponse) throw new Error(`Groq API error ${lastResponse.status}`)
-  throw lastError instanceof Error ? lastError : new Error('Groq API error')
+  if (lastResponse) throw new Error(`${provider.label} API error ${lastResponse.status}`)
+  throw lastError instanceof Error ? lastError : new Error(`${provider.label} API error`)
 }
 
 export interface ToolCall {
@@ -791,6 +796,8 @@ export async function callGroqWithTools(
    * agente local), así que allí se excluye.
    */
   allowedTools?: string[],
+  /** Proveedor del modelo (Groq por defecto). Permite enrutar a otro gateway. */
+  provider: Provider = GROQ,
 ): Promise<{ stream: ReadableStream; toolCalls: ToolCallRecord[]; hitRoundLimit: boolean }> {
   const toolDefinitions = allowedTools
     ? TOOL_DEFINITIONS.filter((t) => allowedTools.includes(t.function.name))
@@ -848,7 +855,7 @@ export async function callGroqWithTools(
       // El forzado lleva 2 reintentos y no 3 porque cada intento es un 400 que no
       // aporta nada: con el rate limit de 8000 TPM, insistir de mas sale peor que
       // aceptar un 'auto' sin busqueda.
-      res = await groqFetch(apiKey, body, searched ? 3 : 2)
+      res = await groqFetch(apiKey, body, searched ? 3 : 2, provider)
     } catch (error) {
       const detail = String(error instanceof Error ? error.message : error)
       if (searched || !/HTTP 400|tool_use_failed|invalid/i.test(detail)) throw error
@@ -930,7 +937,7 @@ export async function callGroqWithTools(
     stream: true,
     max_tokens: maxTokens,
     temperature,
-  })
+  }, 3, provider)
 
   return { stream: streamRes.body!, toolCalls, hitRoundLimit }
 }
