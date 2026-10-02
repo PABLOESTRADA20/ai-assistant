@@ -11,6 +11,7 @@ import ModelSelector from './components/ModelSelector'
 import MemoryInspector from './components/MemoryInspector'
 
 import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
+import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
 import {
   getConversations,
   createConversation,
@@ -39,6 +40,7 @@ export default function Home() {
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [localAgent, setLocalAgent] = useState<boolean | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   // Comprobar si la app pide clave y, si hay una guardada, validarla antes de
@@ -92,6 +94,45 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
   }, [theme])
+
+  // Detectar si el agente local está corriendo (para abrir apps en el PC).
+  // Se revalida cada 30 s por si el usuario lo arranca o lo cierra.
+  useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      const ok = await checkLocalAgent()
+      if (!cancelled) setLocalAgent(ok)
+    }
+    check()
+    const id = setInterval(check, 30_000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [])
+
+  // `open_app` lo ejecuta el navegador contra el agente local, no el servidor.
+  const runLocalTool = useCallback(async (tool: ToolInvocation, events: ToolInvocation[]) => {
+    if (tool.name !== 'open_app') return
+    const app = typeof tool.args.app === 'string' ? tool.args.app : ''
+    const target = typeof tool.args.args === 'string' ? tool.args.args : undefined
+
+    let result = await openAppLocally(app, target)
+
+    // El agente pide un token que la app aún no tiene: se lo pedimos una vez y
+    // lo guardamos en el navegador (sin recompilar).
+    if (!result.ok && result.needsToken && typeof window !== 'undefined') {
+      const token = window.prompt('El agente local exige un token. Pega el ARIA_LOCAL_TOKEN:')
+      if (token?.trim()) {
+        saveLocalToken(token)
+        result = await openAppLocally(app, target)
+      }
+    }
+
+    tool.result = result.message
+    tool.status = result.ok ? 'done' : 'error'
+    setStreamingTools([...events])
+  }, [])
 
   const activeConversation = conversations.find((c) => c.id === activeId) || null
 
@@ -226,13 +267,15 @@ export default function Home() {
             try {
               const parsed = JSON.parse(data)
               if (parsed.type === 'tool_call') {
-                toolEvents.push({
+                const tool: ToolInvocation = {
                   name: parsed.tool?.name || '',
                   args: parsed.tool?.args || {},
                   result: parsed.tool?.result,
                   status: parsed.tool?.status === 'error' ? 'error' : 'done',
-                })
+                }
+                toolEvents.push(tool)
                 setStreamingTools([...toolEvents])
+                void runLocalTool(tool, toolEvents)
                 continue
               }
               if (parsed.content) {
@@ -310,7 +353,7 @@ export default function Home() {
       setStreamingTools([])
       abortRef.current = null
     }
-  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools])
+  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, runLocalTool])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -368,13 +411,15 @@ export default function Home() {
             try {
               const parsed = JSON.parse(data)
               if (parsed.type === 'tool_call') {
-                toolEvents.push({
+                const tool: ToolInvocation = {
                   name: parsed.tool?.name || '',
                   args: parsed.tool?.args || {},
                   result: parsed.tool?.result,
                   status: parsed.tool?.status === 'error' ? 'error' : 'done',
-                })
+                }
+                toolEvents.push(tool)
                 setStreamingTools([...toolEvents])
+                void runLocalTool(tool, toolEvents)
                 continue
               }
               if (parsed.content) { accumulated += parsed.content; setStreamingContent(accumulated) }
@@ -409,7 +454,7 @@ export default function Home() {
       setStreamingContent('')
       setStreamingTools([])
     }
-  }, [activeConversation, isLoading])
+  }, [activeConversation, isLoading, runLocalTool])
 
   const handleSuggestion = (text: string) => {
     setInput(text)
@@ -512,6 +557,22 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={async () => setLocalAgent(await checkLocalAgent())}
+              title={
+                localAgent
+                  ? 'Agente local conectado: ARIA puede abrir apps en tu PC'
+                  : 'Agente local desconectado: ARIA no puede abrir apps en tu PC. Arráncalo con: node local-agent/aria-local-agent.mjs'
+              }
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
+              style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: localAgent ? '#34d399' : '#6b7280' }}
+              />
+              <span className="hidden sm:inline">Agente local</span>
+            </button>
             {activeConversation && activeConversation.messages.length >= 2 && (
               <button
                 onClick={handleRegenerate}

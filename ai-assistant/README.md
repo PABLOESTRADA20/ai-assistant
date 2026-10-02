@@ -77,6 +77,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `npm run db:reindex` | Regenerar embeddings del vault en pgvector |
 | `npm run db:smoke` | Smoke test del sistema de memoria |
 | `npm run db:brain` | Smoke test del cerebro: memoria de trabajo, refuerzo, edición y consolidación |
+| `npm run agent` | Arranca el agente local que abre apps en tu PC (`local-agent/`) |
 | `npm run preview` | Build OpenNext + preview local en workerd |
 | `npm run deploy` | Build OpenNext + deploy a Cloudflare Workers |
 
@@ -91,6 +92,16 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
 | `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. Sin ella, la URL es pública | recomendada |
+| `NEXT_PUBLIC_ARIA_LOCAL_AGENT` | URL del agente local que abre apps (por defecto `http://127.0.0.1:8787`) | no |
+| `NEXT_PUBLIC_ARIA_LOCAL_TOKEN` | Token que el navegador envía al agente local. Debe coincidir con `ARIA_LOCAL_TOKEN` del agente | no |
+| `WHATSAPP_TOKEN` | Token permanente de la app de Meta (WhatsApp Cloud API) | para WhatsApp |
+| `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business | para WhatsApp |
+| `WHATSAPP_VERIFY_TOKEN` | Cadena inventada por ti para verificar el webhook | para WhatsApp |
+| `WHATSAPP_APP_SECRET` | App secret de Meta, para validar la firma del webhook | recomendada |
+| `WHATSAPP_ALLOWED_NUMBERS` | Lista blanca de teléfonos separada por comas | no |
+| `RESEND_API_KEY` | API key de Resend para enviar correo | para correo |
+| `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
+| `EMAIL_ALLOWED_TO` | Lista blanca de destinatarios separada por comas | no |
 
 > **Búsqueda web sin API key**: `web_search` usa **Firecrawl keyless** (SERP real
 > y noticias) más APIs gratuitas y sin clave (Wikipedia, Stack Exchange, Hacker
@@ -133,6 +144,71 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **Inspector de memoria** — panel lateral para ver, buscar (búsqueda semántica), editar, añadir, archivar/olvidar recuerdos y lanzar la consolidación a mano; muestra estadísticas (total, preferencias, hechos, importancia media)
 - **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory
 - **Rate limiting nativo** — límite por ruta con el binding `ratelimits` de Workers (chat 20/min, dictado 15/min) como red de seguridad si la clave se filtra
+- **WhatsApp (API oficial de Meta)** — ARIA recibe y responde mensajes por el webhook `/api/whatsapp/webhook`. Cada número tiene su propia conversación (visible en el sidebar) y comparte el mismo cerebro (memoria, herramientas). Firma `X-Hub-Signature-256` verificada.
+- **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
+- **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
+- **Núcleo compartido** — `app/lib/aria-core.ts` centraliza prompt, memoria y contexto; el chat web, WhatsApp y el correo usan exactamente el mismo cerebro.
+
+## WhatsApp
+
+ARIA usa la **WhatsApp Cloud API oficial de Meta** (gratis hasta ~1.000 conversaciones de servicio/mes). No usa librerías no oficiales como Baileys: necesitan un proceso 24/7 y pueden banear el número.
+
+1. Crea una app en [developers.facebook.com](https://developers.facebook.com) y añade el producto **WhatsApp**.
+2. Consigue un **número dedicado** (no puede ser uno que ya uses en WhatsApp) y su **Phone number ID**.
+3. Crea un token permanente y copia el **App secret**.
+4. Define los secrets en Cloudflare:
+   ```bash
+   npx wrangler secret put WHATSAPP_TOKEN
+   npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
+   npx wrangler secret put WHATSAPP_VERIFY_TOKEN      # invéntate una cadena
+   npx wrangler secret put WHATSAPP_APP_SECRET
+   # opcional: restringe quién puede escribirle
+   npx wrangler secret put WHATSAPP_ALLOWED_NUMBERS   # ej. 34600111222,34600333444
+   ```
+5. En Meta, configura el webhook con:
+   - **Callback URL**: `https://<tu-worker>.workers.dev/api/whatsapp/webhook`
+   - **Verify token**: el mismo `WHATSAPP_VERIFY_TOKEN`.
+   - Suscríbete al campo **messages**.
+6. Escribe a ese número desde tu teléfono: ARIA crea una conversación titulada `WhatsApp <tu nombre>` que aparece en el sidebar.
+
+> La ruta del webhook **no** exige `ARIA_ACCESS_TOKEN` (Meta no puede enviarlo); la autenticidad se garantiza con la firma `X-Hub-Signature-256`. El procesamiento es asíncrono: se responde 200 a Meta al instante y ARIA contesta vía Graph API.
+
+## Correo
+
+ARIA puede **enviar** correo con [Resend](https://resend.com) (free tier: 3.000/mes, 100/día):
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+# opcional:
+npx wrangler secret put EMAIL_FROM          # p. ej. "ARIA <aria@tudominio.com>"
+npx wrangler secret put EMAIL_ALLOWED_TO     # p. ej. "tu@correo.com" (lista blanca)
+```
+
+Sin dominio propio puedes probar ya: Resend permite enviar desde `onboarding@resend.dev` **solo al correo de tu cuenta**. Con un dominio verificado (DNS con SPF/DKIM) cambia `EMAIL_FROM` a `ARIA <aria@tudominio.com>`.
+
+**Recibir** correo requiere Cloudflare Email Routing sobre un dominio propio y aún no está implementado (el código de entrada quedaría como un Worker de email). Si consigues un dominio, se puede añadir después con el mismo motor (`generateTextReply`).
+
+> Añade estos secrets también como **GitHub secrets** del repo para que el pipeline los publique en cada deploy.
+
+## Abrir aplicaciones en tu PC (agente local)
+
+Una web no puede lanzar apps de escritorio por sí sola y el Worker de Cloudflare no tiene acceso a tu ordenador. La solución es un pequeño agente que corre en tu máquina:
+
+```bash
+# 1. Configura el agente
+cp local-agent/.env.example local-agent/.env   # define ARIA_LOCAL_TOKEN
+
+# 2. Arranca el agente (deja la ventana abierta)
+npm run agent
+
+# 3. En .env.local (y secrets de GitHub para producción) define el mismo token:
+#    NEXT_PUBLIC_ARIA_LOCAL_TOKEN=el-mismo-token
+#    NEXT_PUBLIC_ARIA_LOCAL_AGENT=http://127.0.0.1:8787   # opcional
+```
+
+El header muestra un indicador verde cuando el agente está conectado. Pide en el chat: *"abre Spotify"*, *"abre VS Code"*, *"abre la carpeta Descargas"*, *"abre la calculadora"*. El agente escucha **solo en `127.0.0.1`** (no en la red) y exige el token; por defecto solo abre apps de su mapa, rutas existentes y URIs. Con `ARIA_ALLOW_ANY=1` permite cualquier ejecutable.
+
+> Si el agente exige token y la app no lo tiene configurado, al intentar abrir una app el navegador te lo pedirá y lo guardará en `localStorage` (así funciona también la versión desplegada, sin recompilar).
 
 ## Despliegue (Cloudflare Workers)
 
@@ -156,12 +232,18 @@ ai-assistant/
 │   │   ├── chat/route.ts            # Chat con Groq (streaming + memoria)
 │   │   ├── conversations/           # CRUD de conversaciones
 │   │   ├── memory/                  # CRUD + búsqueda semántica + consolidación de memoria
+│   │   ├── whatsapp/webhook/route.ts # Webhook de WhatsApp Cloud API (Meta)
 │   │   └── vault/index/route.ts     # Indexar vault (solo local)
 │   ├── components/                  # UI components (incl. MemoryInspector.tsx)
 │   ├── hooks/useTTS.ts              # Hook de TTS
 │   ├── lib/
 │   │   ├── prisma.ts               # Cliente Prisma (adapter Neon)
 │   │   ├── background.ts           # ctx.waitUntil() para tareas tras responder
+│   │   ├── aria-core.ts            # Núcleo compartido: prompt + memoria + contexto
+│   │   ├── aria-reply.ts           # Respuesta sin streaming (WhatsApp/correo)
+│   │   ├── whatsapp.ts             # Cloud API de Meta: verificación, parseo y envío
+│   │   ├── email.ts                # Envío de correo (Resend)
+│   │   ├── local-agent.ts          # Cliente del agente local (abrir apps)
 │   │   ├── llm-embed.ts            # Embeddings bge-m3 (Workers AI bind/REST)
 │   │   ├── embeddings.ts           # Reindex + búsqueda coseno pgvector (vault)
 │   │   ├── memory.ts               # Memoria long-term + working memory + consolidación
@@ -172,6 +254,9 @@ ai-assistant/
 │   ├── globals.css                 # Estilos globales
 │   ├── layout.tsx                  # Layout raíz
 │   └── page.tsx                    # Página principal
+├── local-agent/                    # Agente local que abre apps en tu PC
+│   ├── aria-local-agent.mjs        # Servidor HTTP en 127.0.0.1:8787
+│   └── .env.example                # Configuración del agente
 ├── prisma/
 │   ├── schema.prisma               # Schema de datos
 │   └── migrations/                 # Migraciones SQL

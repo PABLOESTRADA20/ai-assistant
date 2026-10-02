@@ -49,6 +49,11 @@ jobs:
       - name: Build (OpenNext for Cloudflare)
         env:
           NODE_ENV: production
+          # Variables públicas que se inlinean en el bundle del cliente. Si están
+          # vacías, el código usa los valores por defecto (agente local en
+          # http://127.0.0.1:8787, sin token).
+          NEXT_PUBLIC_ARIA_LOCAL_AGENT: ${{ secrets.NEXT_PUBLIC_ARIA_LOCAL_AGENT }}
+          NEXT_PUBLIC_ARIA_LOCAL_TOKEN: ${{ secrets.NEXT_PUBLIC_ARIA_LOCAL_TOKEN }}
         run: npx opennextjs-cloudflare build
 
       - name: Patch handler.mjs for native WASM import
@@ -84,4 +89,32 @@ jobs:
           # gastar la cuota de Groq y leer/escribir conversaciones.
           if [ -n "${{ secrets.ARIA_ACCESS_TOKEN }}" ]; then
             echo "${{ secrets.ARIA_ACCESS_TOKEN }}" | npx wrangler secret put ARIA_ACCESS_TOKEN
+          fi
+          # WhatsApp Cloud API (Meta). Sin estos secrets el webhook responde 200
+          # sin hacer nada, y ARIA no lee ni responde mensajes de WhatsApp.
+          if [ -n "${{ secrets.WHATSAPP_TOKEN }}" ]; then
+            echo "${{ secrets.WHATSAPP_TOKEN }}" | npx wrangler secret put WHATSAPP_TOKEN
+          fi
+          if [ -n "${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" ]; then
+            echo "${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" | npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
+          fi
+          if [ -n "${{ secrets.WHATSAPP_VERIFY_TOKEN }}" ]; then
+            echo "${{ secrets.WHATSAPP_VERIFY_TOKEN }}" | npx wrangler secret put WHATSAPP_VERIFY_TOKEN
+          fi
+          if [ -n "${{ secrets.WHATSAPP_APP_SECRET }}" ]; then
+            echo "${{ secrets.WHATSAPP_APP_SECRET }}" | npx wrangler secret put WHATSAPP_APP_SECRET
+          fi
+          if [ -n "${{ secrets.WHATSAPP_ALLOWED_NUMBERS }}" ]; then
+            echo "${{ secrets.WHATSAPP_ALLOWED_NUMBERS }}" | npx wrangler secret put WHATSAPP_ALLOWED_NUMBERS
+          fi
+          # Correo saliente vía Resend (free tier). Con RESEND_API_KEY y
+          # EMAIL_FROM, la herramienta send_email funciona.
+          if [ -n "${{ secrets.RESEND_API_KEY }}" ]; then
+            echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY
+          fi
+          if [ -n "${{ secrets.EMAIL_FROM }}" ]; then
+            echo "${{ secrets.EMAIL_FROM }}" | npx wrangler secret put EMAIL_FROM
+          fi
+          if [ -n "${{ secrets.EMAIL_ALLOWED_TO }}" ]; then
+            echo "${{ secrets.EMAIL_ALLOWED_TO }}" | npx wrangler secret put EMAIL_ALLOWED_TO
           fi

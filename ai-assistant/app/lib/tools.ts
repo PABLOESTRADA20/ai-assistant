@@ -242,6 +242,56 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      /**
+       * `open_app` no se ejecuta en el servidor: Cloudflare no puede alcanzar el
+       * PC del usuario. El servidor solo deja constancia de la intención y el
+       * navegador, al ver este tool_call, llama al agente local en 127.0.0.1.
+       */
+      name: 'open_app',
+      description:
+        'Open an application, program, file, folder or link on the user\'s OWN computer. ' +
+        'Only works in the ARIA web app and only while the local companion agent is ' +
+        'running on that machine. Use natural names ("Spotify", "Visual Studio Code", ' +
+        '"Bloc de notas", "Calculadora") or a URI scheme ("spotify:", "ms-settings:"). ' +
+        'It cannot launch apps on the server or on a remote machine.',
+      parameters: {
+        type: 'object',
+        properties: {
+          app: {
+            type: 'string',
+            description: 'App name, executable, file path or URI, e.g. "spotify", "notepad", "ms-settings:"',
+          },
+          args: {
+            type: 'string',
+            description: 'Optional argument passed to the app: a file/folder path or a URL to open with it.',
+          },
+        },
+        required: ['app'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'send_email',
+      description:
+        'Send an email on behalf of the user. Provide the recipient address, a subject and the ' +
+        'body as plain text. The user must have configured email sending (RESEND_API_KEY). ' +
+        'Confirm important content with the user before sending.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Recipient email address, or several separated by commas' },
+          subject: { type: 'string', description: 'Subject line' },
+          body: { type: 'string', description: 'Plain-text body of the email' },
+        },
+        required: ['to', 'subject', 'body'],
+      },
+    },
+  },
 ]
 
 export async function executeToolCall(toolCall: ToolCall): Promise<string> {
@@ -267,9 +317,47 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return semanticSearchVault(args.query)
     case 'recall_memory':
       return recallMemory(args.query)
+    case 'open_app':
+      return openApp(args.app, args.args)
+    case 'send_email':
+      return sendEmailTool(args.to, args.subject, args.body)
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` })
   }
+}
+
+/**
+ * Delegación al agente local.
+ *
+ * El Worker corre en el cloud de Cloudflare y no tiene forma de ejecutar nada en
+ * el PC del usuario. Lo único que puede hacer es devolver el resultado del tool
+ * y dejar que el cliente (que sí ve la lista de tool_calls del stream SSE) llame
+ * al agente local en `http://127.0.0.1:8787`. Ver `app/lib/local-agent.ts` y
+ * `local-agent/aria-local-agent.mjs`.
+ */
+async function openApp(app: string, target?: string): Promise<string> {
+  if (!app || typeof app !== 'string') {
+    return JSON.stringify({ error: 'Aplicación no válida' })
+  }
+  return JSON.stringify({
+    status: 'delegated_to_local_agent',
+    app,
+    target: target || null,
+    note:
+      'El navegador del usuario intentará abrirlo ahora con el agente local. ' +
+      'Responde que lo estás intentando o abriendo, NUNCA que ya se abrió: el ' +
+      'resultado depende de que el agente local esté corriendo en su equipo.',
+  })
+}
+
+async function sendEmailTool(to: string, subject: string, body: string): Promise<string> {
+  if (!to || !body) {
+    return JSON.stringify({ error: 'Faltan destinatario o cuerpo del correo' })
+  }
+  const { sendEmail } = await import('@/app/lib/email')
+  const result = await sendEmail({ to, subject: subject || '(sin asunto)', text: body })
+  if (!result.ok) return JSON.stringify({ error: result.message })
+  return JSON.stringify({ success: true, message: result.message, id: result.id })
 }
 
 async function getWeather(location: string): Promise<string> {
@@ -697,7 +785,20 @@ export async function callGroqWithTools(
   maxTokens: number,
   temperature: number,
   forceSearch = false,
+  /**
+   * Si se indica, solo se ofrecen estas herramientas. Útil para canales donde
+   * algunas no tienen sentido: `open_app` no puede funcionar por WhatsApp (no hay
+   * agente local), así que allí se excluye.
+   */
+  allowedTools?: string[],
 ): Promise<{ stream: ReadableStream; toolCalls: ToolCallRecord[]; hitRoundLimit: boolean }> {
+  const toolDefinitions = allowedTools
+    ? TOOL_DEFINITIONS.filter((t) => allowedTools.includes(t.function.name))
+    : TOOL_DEFINITIONS
+  // Si no se ofrece `web_search`, forzar la primera ronda contra esa herramienta
+  // haría que Groq rechace el request entero. En ese caso se decide en 'auto'.
+  const canForceSearch = toolDefinitions.some((t) => t.function.name === 'web_search')
+
   const finalMessages: GroqMessage[] = [...messages]
   const toolCalls: ToolCallRecord[] = []
   let toolCallCount = 0
@@ -727,13 +828,13 @@ export async function callGroqWithTools(
    * probabilidad de fallo completo baja a ~25%, y si aun asi falla lo captura el
    * paso siguiente.
    */
-  let searched = !forceSearch
+  let searched = !forceSearch || !canForceSearch
 
   while (toolCallCount < MAX_TOOL_ROUNDS) {
     const body = {
       model,
       messages: finalMessages,
-      tools: TOOL_DEFINITIONS,
+      tools: toolDefinitions,
       tool_choice: searched
         ? ('auto' as const)
         : ({ type: 'function', function: { name: 'web_search' } } as const),
