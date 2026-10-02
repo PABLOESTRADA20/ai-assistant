@@ -297,6 +297,76 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_repo_overview',
+      description:
+        'Get a read-only overview of a GitHub repository: description, language, stars, ' +
+        'open issues count, top-level files and the README. This is the best first step ' +
+        'when the user asks you to review a repo or suggest fixes. Read-only, never writes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+        },
+        required: ['repo'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_list_files',
+      description:
+        'List files and folders of a GitHub repository (read-only). Optionally restrict to a ' +
+        'path prefix to explore a subdirectory. Use it to locate the files worth reading.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          path: { type: 'string', description: 'Optional folder prefix, e.g. "src/components"' },
+          ref: { type: 'string', description: 'Optional branch, tag or commit SHA (default branch if omitted)' },
+        },
+        required: ['repo'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_read_file',
+      description:
+        'Read the full text content of a file in a GitHub repository (read-only). Use it after ' +
+        'github_list_files to inspect the code you are asked to review or fix.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          path: { type: 'string', description: 'File path inside the repo, e.g. "src/index.ts"' },
+          ref: { type: 'string', description: 'Optional branch, tag or commit SHA' },
+        },
+        required: ['repo', 'path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_list_issues',
+      description:
+        'List issues of a GitHub repository (read-only), newest first. Useful to propose fixes ' +
+        'or a plan for known bugs. Pull requests are excluded.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          state: { type: 'string', description: 'open, closed or all (default open)' },
+        },
+        required: ['repo'],
+      },
+    },
+  },
 ]
 
 export async function executeToolCall(toolCall: ToolCall): Promise<string> {
@@ -326,6 +396,14 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return openApp(args.app, args.args)
     case 'send_email':
       return sendEmailTool(args.to, args.subject, args.body)
+    case 'github_repo_overview':
+      return githubRepoOverview(args.repo)
+    case 'github_list_files':
+      return githubListFiles(args.repo, args.path, args.ref)
+    case 'github_read_file':
+      return githubReadFile(args.repo, args.path, args.ref)
+    case 'github_list_issues':
+      return githubListIssues(args.repo, args.state)
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` })
   }
@@ -363,6 +441,48 @@ async function sendEmailTool(to: string, subject: string, body: string): Promise
   const result = await sendEmail({ to, subject: subject || '(sin asunto)', text: body })
   if (!result.ok) return JSON.stringify({ error: result.message })
   return JSON.stringify({ success: true, message: result.message, id: result.id })
+}
+
+/* --------------------------- herramientas GitHub ------------------------- */
+
+/**
+ * Envoltorios de las herramientas de GitHub. Se cargan con import dinámico para
+ * no arrastrar Prisma a los caminos que no las usan, igual que el correo.
+ */
+async function githubRepoOverview(repo?: unknown): Promise<string> {
+  if (typeof repo !== 'string' || !repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.repoOverview(repo)
+}
+
+async function githubListFiles(repo?: unknown, prefix?: unknown, ref?: unknown): Promise<string> {
+  if (typeof repo !== 'string' || !repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.listFiles(
+    repo,
+    typeof prefix === 'string' ? prefix : '',
+    typeof ref === 'string' ? ref : undefined,
+  )
+}
+
+async function githubReadFile(repo?: unknown, filePath?: unknown, ref?: unknown): Promise<string> {
+  if (typeof repo !== 'string' || !repo.trim() || typeof filePath !== 'string') {
+    return JSON.stringify({ error: 'Faltan el repositorio o la ruta del archivo' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.readFile(repo, filePath, typeof ref === 'string' ? ref : undefined)
+}
+
+async function githubListIssues(repo?: unknown, state?: unknown): Promise<string> {
+  if (typeof repo !== 'string' || !repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.listIssues(repo, typeof state === 'string' ? state : 'open')
 }
 
 async function getWeather(location: string): Promise<string> {

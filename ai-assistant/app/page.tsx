@@ -2,17 +2,19 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { Menu, RefreshCw, Download, Volume2, VolumeX } from 'lucide-react'
+import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X } from 'lucide-react'
 
 import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
 import ChatInput from './components/ChatInput'
 import ModelSelector from './components/ModelSelector'
 import MemoryInspector from './components/MemoryInspector'
+import GithubRepos from './components/GithubRepos'
 import { useTTS } from './hooks/useTTS'
 
 import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
+import { streamChat, UnauthorizedError } from './lib/chat-client'
 import {
   getConversations,
   createConversation,
@@ -43,6 +45,8 @@ export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [localAgent, setLocalAgent] = useState<boolean | null>(null)
   const [autoSpeak, setAutoSpeak] = useState(false)
+  const [modelNotice, setModelNotice] = useState<string | null>(null)
+  const [githubOpen, setGithubOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
   const { speak, stop: stopSpeech, prime } = useTTS()
@@ -106,6 +110,13 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('aria_autospeak', autoSpeak ? '1' : '0')
   }, [autoSpeak])
+
+  // Aviso de auto-cambio de modelo: se oculta solo a los pocos segundos.
+  useEffect(() => {
+    if (!modelNotice) return
+    const id = setTimeout(() => setModelNotice(null), 9000)
+    return () => clearTimeout(id)
+  }, [modelNotice])
 
   // Detectar si el agente local está corriendo (para abrir apps en el PC).
   // Se revalida cada 30 s por si el usuario lo arranca o lo cierra.
@@ -246,73 +257,40 @@ export default function Home() {
     try {
       abortRef.current = new AbortController()
 
-      const res = await apiFetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages, model, conversationId: convId }),
+      const result = await streamChat({
+        messages: apiMessages,
+        model,
+        conversationId: convId ?? undefined,
         signal: abortRef.current.signal,
+        onContent: setStreamingContent,
+        onTool: (tool, all) => {
+          setStreamingTools([...all])
+          void runLocalTool(tool, all)
+        },
+        onFallback: (from, to) => {
+          const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
+          const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
+          setModelNotice(`🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`)
+        },
       })
 
-      // 401: apiFetch ya limpio el token y la app volvio al login.
-      if (res.status === 401) return
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error en la API')
-      }
-
-      const reader = res.body?.getReader()
-      const decoder = new TextDecoder()
-      let accumulated = ''
-      const toolEvents: ToolInvocation[] = []
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const text = decoder.decode(value)
-          const lines = text.split('\n')
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.type === 'tool_call') {
-                const tool: ToolInvocation = {
-                  name: parsed.tool?.name || '',
-                  args: parsed.tool?.args || {},
-                  result: parsed.tool?.result,
-                  status: parsed.tool?.status === 'error' ? 'error' : 'done',
-                }
-                toolEvents.push(tool)
-                setStreamingTools([...toolEvents])
-                void runLocalTool(tool, toolEvents)
-                continue
-              }
-              if (parsed.content) {
-                accumulated += parsed.content
-                setStreamingContent(accumulated)
-              }
-            } catch { /* skip malformed chunks */ }
-          }
-        }
-      }
+      if (result.switchedFrom) setModel(result.model)
 
       const assistantMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
-        content: accumulated,
+        content: result.content,
         createdAt: new Date(),
-        model,
-        tools: toolEvents.length > 0 ? toolEvents : undefined,
+        model: result.model,
+        tools: result.tools.length > 0 ? result.tools : undefined,
       }
 
       const finalMessages = [...updatedMessages, assistantMessage]
       try {
-        const updated = await updateConversation(convId!, { messages: finalMessages })
+        const updated = await updateConversation(convId!, {
+          messages: finalMessages,
+          model: result.model,
+        })
         setConversations((prev) =>
           prev.map((c) => (c.id === convId ? updated : c))
         )
@@ -326,8 +304,10 @@ export default function Home() {
       }
 
       // Voz: se lee la respuesta final (no el streaming, que sería entrecortado).
-      if (autoSpeak && accumulated.trim()) speak(accumulated)
+      if (autoSpeak && result.content.trim()) speak(result.content)
     } catch (err: unknown) {
+      // 401: apiFetch ya limpió el token y la app volvió al login.
+      if (err instanceof UnauthorizedError) return
       if (err instanceof Error && err.name === 'AbortError') {
         if (streamingContent || streamingTools.length > 0) {
           const partialMessage: Message = {
@@ -403,57 +383,33 @@ export default function Home() {
 
     try {
       abortRef.current = new AbortController()
-      const res = await apiFetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages, model: activeConversation.model, conversationId: convId }),
+      const result = await streamChat({
+        messages: apiMessages,
+        model: activeConversation.model,
+        conversationId: convId,
         signal: abortRef.current.signal,
+        onContent: setStreamingContent,
+        onTool: (tool, all) => {
+          setStreamingTools([...all])
+          void runLocalTool(tool, all)
+        },
+        onFallback: (from, to) => {
+          const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
+          const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
+          setModelNotice(`🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`)
+        },
       })
 
-      if (res.status === 401) return
-
-      const reader = res.body?.getReader()
-      const decoder = new TextDecoder()
-      let accumulated = ''
-      const toolEvents: ToolInvocation[] = []
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const text = decoder.decode(value)
-          for (const line of text.split('\n')) {
-            if (!line.startsWith('data: ')) continue
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.type === 'tool_call') {
-                const tool: ToolInvocation = {
-                  name: parsed.tool?.name || '',
-                  args: parsed.tool?.args || {},
-                  result: parsed.tool?.result,
-                  status: parsed.tool?.status === 'error' ? 'error' : 'done',
-                }
-                toolEvents.push(tool)
-                setStreamingTools([...toolEvents])
-                void runLocalTool(tool, toolEvents)
-                continue
-              }
-              if (parsed.content) { accumulated += parsed.content; setStreamingContent(accumulated) }
-            } catch { /* skip */ }
-          }
-        }
-      }
+      if (result.switchedFrom) setModel(result.model)
 
       const assistantMessage: Message = {
-        id: uuidv4(), role: 'assistant', content: accumulated, createdAt: new Date(), model: activeConversation.model,
-        tools: toolEvents.length > 0 ? toolEvents : undefined,
+        id: uuidv4(), role: 'assistant', content: result.content, createdAt: new Date(), model: result.model,
+        tools: result.tools.length > 0 ? result.tools : undefined,
       }
 
       const finalMessages = [...trimmed, assistantMessage]
       try {
-        const updated = await updateConversation(convId, { messages: finalMessages })
+        const updated = await updateConversation(convId, { messages: finalMessages, model: result.model })
         setConversations((prev) =>
           prev.map((c) => (c.id === convId ? updated : c))
         )
@@ -466,8 +422,9 @@ export default function Home() {
         )
       }
 
-      if (autoSpeak && accumulated.trim()) speak(accumulated)
+      if (autoSpeak && result.content.trim()) speak(result.content)
     } catch (err) {
+      if (err instanceof UnauthorizedError) return
       if (err instanceof Error && err.name !== 'AbortError') console.error(err)
     } finally {
       setIsLoading(false)
@@ -565,6 +522,8 @@ export default function Home() {
 
       <MemoryInspector open={memoryOpen} onClose={() => setMemoryOpen(false)} />
 
+      <GithubRepos open={githubOpen} onClose={() => setGithubOpen(false)} />
+
       <div className="flex flex-col flex-1 min-w-0 h-full">
         <header
           className="flex items-center justify-between px-4 py-3 flex-shrink-0 safe-top"
@@ -639,9 +598,38 @@ export default function Home() {
                 <span className="hidden sm:inline">Exportar</span>
               </button>
             )}
+            <button
+              onClick={() => setGithubOpen(true)}
+              title="Repositorios de GitHub que ARIA puede leer y revisar"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
+              style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            >
+              <Github size={12} />
+              <span className="hidden sm:inline">GitHub</span>
+            </button>
             <ModelSelector value={model} onChange={setModel} />
           </div>
         </header>
+
+        {modelNotice && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 text-xs flex-shrink-0"
+            style={{
+              background: 'var(--accent-muted)',
+              color: 'var(--accent)',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <span className="flex-1">{modelNotice}</span>
+            <button
+              onClick={() => setModelNotice(null)}
+              className="hover:opacity-70"
+              aria-label="Cerrar aviso"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
 
         <ChatContainer
           messages={activeConversation?.messages || []}

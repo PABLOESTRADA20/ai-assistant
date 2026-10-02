@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, FileText, BookOpen, Wrench, Calculator, Clock, ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Search, FileText, BookOpen, Wrench, Calculator, Clock, ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2, Github } from 'lucide-react'
 import { ToolInvocation } from '@/app/types'
 import clsx from 'clsx'
 
@@ -12,9 +12,18 @@ const TOOL_ICONS: Record<string, { icon: typeof Search; label: string }> = {
   save_note: { icon: FileText, label: 'Guardar nota' },
   calculate: { icon: Calculator, label: 'Cálculo' },
   get_time: { icon: Clock, label: 'Hora' },
+  github_repo_overview: { icon: Github, label: 'GitHub · repo' },
+  github_list_files: { icon: Github, label: 'GitHub · archivos' },
+  github_read_file: { icon: FileText, label: 'GitHub · leer archivo' },
+  github_list_issues: { icon: Github, label: 'GitHub · issues' },
 }
 
 function formatArgs(name: string, args: Record<string, unknown>): string {
+  if (name.startsWith('github_')) {
+    const repo = typeof args.repo === 'string' ? args.repo : ''
+    const path = typeof args.path === 'string' ? args.path : ''
+    return [repo, path].filter(Boolean).join(' · ') || JSON.stringify(args)
+  }
   if (name === 'web_search' || name === 'search_vault') {
     return typeof args.query === 'string' ? args.query : JSON.stringify(args)
   }
@@ -41,6 +50,12 @@ function formatResult(result: string | undefined): string {
     if (parsed.success) return `Guardado en vault`
     if (Array.isArray(parsed.files)) {
       return `${parsed.files.length} archivos encontrados`
+    }
+    if (parsed.repo && Array.isArray(parsed.issues)) {
+      return `${parsed.count ?? parsed.issues.length} issues en ${parsed.repo}`
+    }
+    if (parsed.repo && parsed.top_level) {
+      return `${parsed.repo}: ${parsed.description || 'sin descripción'}`
     }
     if (parsed.path && parsed.content !== undefined) {
       const content = parsed.content as string

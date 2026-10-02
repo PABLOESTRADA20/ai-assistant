@@ -102,6 +102,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `RESEND_API_KEY` | API key de Resend para enviar correo | para correo |
 | `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
 | `EMAIL_ALLOWED_TO` | Lista blanca de destinatarios separada por comas | no |
+| `GITHUB_TOKEN` | Token fine-grained de GitHub (solo `Contents: read` e `Issues: read`) para leer repos privados y subir el límite a 5.000 peticiones/hora. Sin él, solo repos públicos y 60/hora | para GitHub privado |
 
 > **Búsqueda web sin API key**: `web_search` usa **Firecrawl keyless** (SERP real
 > y noticias) más APIs gratuitas y sin clave (Wikipedia, Stack Exchange, Hacker
@@ -142,11 +143,13 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **Memoria de ARIA** — long-term/factual (tabla `Memory` con `vector(1024)`), dedupe por coseno, extracción automática de preferencias/hechos por turno y retrieval inyectado en el prompt
 - **Memoria viva** — memoria de trabajo aislada por conversación e inyectada en el prompt (hilo de temas), refuerzo de los recuerdos que se usan (sube importancia/confianza), y consolidación/olvido automático: los recuerdos viejos y poco importantes se archivan y dejan de recuperarse; los ya olvidados se purgan y los contextos de sesión caducados se limpian
 - **Inspector de memoria** — panel lateral para ver, buscar (búsqueda semántica), editar, añadir, archivar/olvidar recuerdos y lanzar la consolidación a mano; muestra estadísticas (total, preferencias, hechos, importancia media)
-- **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory
+- **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory, **GitHub (solo lectura)**
 - **Rate limiting nativo** — límite por ruta con el binding `ratelimits` de Workers (chat 20/min, dictado 15/min) como red de seguridad si la clave se filtra
 - **WhatsApp (API oficial de Meta)** — ARIA recibe y responde mensajes por el webhook `/api/whatsapp/webhook`. Cada número tiene su propia conversación (visible en el sidebar) y comparte el mismo cerebro (memoria, herramientas). Firma `X-Hub-Signature-256` verificada.
 - **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
 - **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
+- **GitHub (solo lectura)** — botón **GitHub** en el header para agregar repos (`owner/repo` o la URL). ARIA los lee (`github_repo_overview`, `github_list_files`, `github_read_file`, `github_list_issues`) y te propone cómo arreglar bugs, issues y deuda técnica. **Nunca escribe** en GitHub: nada de issues ni PRs. Con `GITHUB_TOKEN` (fine-grained, solo lectura) accede a repos privados.
+- **Auto-cambio de modelo** — si el modelo elegido agota su cuota (Groq: tokens/día; Workers AI: neuronas/día), ARIA reintenta la misma pregunta con el siguiente modelo disponible y te avisa con un banner. Así una respuesta no se queda sin salir porque un modelo se quedó sin cupo.
 - **Núcleo compartido** — `app/lib/aria-core.ts` centraliza prompt, memoria y contexto; el chat web, WhatsApp y el correo usan exactamente el mismo cerebro.
 
 ## Modelos e IA gratis (DeepSeek)
@@ -161,6 +164,8 @@ En el selector del header puedes elegir:
 | **DeepSeek R1 32B** | **Cloudflare Workers AI** | **10.000 neuronas/día** | ❌ (solo razonamiento) |
 
 DeepSeek se sirve con el **binding `AI`** que ya estaba configurado para los embeddings: **no hace falta ninguna API key nueva**. Al ser un modelo de razonamiento no admite function calling, así que en ese modo ARIA responde sin herramientas (web, vault, abrir apps…). Úsalo como alternativa gratuita cuando se agote la cuota de Groq o para preguntas que pidan razonamiento profundo; eso sí, su cuota gratuita es mucho más pequeña que la de Groq.
+
+Además, si el modelo que tienes seleccionado se queda sin cuota a mitad de uso, ARIA **cambia solo** al siguiente de la lista (te avisa en el header) y vuelve a intentar la misma pregunta, sin que tengas que tocar el selector.
 
 ## Usar desde el móvil (PWA)
 
@@ -255,7 +260,7 @@ ai-assistant/
 │   │   ├── memory/                  # CRUD + búsqueda semántica + consolidación de memoria
 │   │   ├── whatsapp/webhook/route.ts # Webhook de WhatsApp Cloud API (Meta)
 │   │   └── vault/index/route.ts     # Indexar vault (solo local)
-│   ├── components/                  # UI components (incl. MemoryInspector.tsx)
+│   ├── components/                  # UI components (incl. MemoryInspector.tsx, GithubRepos.tsx)
 │   ├── hooks/useTTS.ts              # Hook de TTS
 │   ├── lib/
 │   │   ├── prisma.ts               # Cliente Prisma (adapter Neon)
@@ -265,6 +270,8 @@ ai-assistant/
 │   │   ├── whatsapp.ts             # Cloud API de Meta: verificación, parseo y envío
 │   │   ├── email.ts                # Envío de correo (Resend)
 │   │   ├── local-agent.ts          # Cliente del agente local (abrir apps)
+│   │   ├── github.ts               # GitHub solo lectura (repos, archivos, issues)
+│   │   ├── chat-client.ts          # Cliente de chat con auto-cambio de modelo
 │   │   ├── llm-embed.ts            # Embeddings bge-m3 (Workers AI bind/REST)
 │   │   ├── providers.ts            # Registro de proveedores (Groq / Workers AI)
 │   │   ├── workers-ai.ts           # DeepSeek gratis vía binding AI (SSE normalizado)

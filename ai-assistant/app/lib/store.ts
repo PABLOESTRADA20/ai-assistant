@@ -39,7 +39,7 @@ export async function createConversation(model: string): Promise<Conversation> {
   }
 }
 
-export async function updateConversation(id: string, data: Partial<{ title: string; messages: Message[] }>): Promise<Conversation> {
+export async function updateConversation(id: string, data: Partial<{ title: string; messages: Message[]; model: string }>): Promise<Conversation> {
   const res = await apiFetch(`/api/conversations/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -96,6 +96,10 @@ export async function POST(req: NextRequest) {
   const limited = await rateLimit(req, 'CHAT_RATE_LIMITER')
   if (limited) return limited
 
+  // Proveedor del modelo pedido. Se inicializa a Groq para que el catch exterior
+  // pueda traducir errores de cuota aunque el body falle antes de resolverse.
+  let provider: Provider = GROQ
+
   try {
     const body = await req.json()
     const { messages, model = DEFAULT_MODEL, conversationId } = body
@@ -107,7 +111,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const provider = providerForModel(model)
+    provider = providerForModel(model)
     // Clave del proveedor que responde el chat. Workers AI va por binding (sin clave).
     const apiKey = (provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : '') ?? ''
     if (provider.apiKeyEnv && !apiKey) {
@@ -476,6 +480,18 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal error'
+    /**
+     * Cuota agotada que se escapó del camino simple.
+     *
+     * `groqFetch` lanza (no devuelve respuesta) cuando detecta límite diario. En
+     * el camino con herramientas eso ya se traduce a 429 más arriba, pero en el
+     * camino simple el throw llegaba hasta aquí y salía como 500, con lo que el
+     * cliente no podía hacer el auto-cambio de modelo. Se traduce a 429 con su
+     * código para que el fallback funcione.
+     */
+    if (/rate limit|rate_limit_exceeded|tokens per day|TPD|free-models-per-day|neurons|quota/i.test(message)) {
+      return groqErrorResponse(429, message, provider)
+    }
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

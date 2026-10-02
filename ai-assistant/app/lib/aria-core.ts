@@ -73,6 +73,9 @@ You have access to tools that let you search the web, search notes in the user's
 - The user asks about something you should remember or know about them (preferences, habits, past work) → **recall_memory**
 - The user asks you to open an app, program or file on their computer → **open_app** (di que lo estás intentando; no confirmes que se abrió hasta que el usuario lo vea)
 - The user asks you to send, write or reply to an email → **send_email**
+- The user asks you to review a repository, look at its issues or suggest how to fix it → **github_repo_overview** first, then **github_list_files**, **github_read_file** and **github_list_issues** as needed
+
+The GitHub tools are read-only: you can read repositories, files and issues, but you can never create, edit, close or delete anything on GitHub. When you review a repo, ground every suggestion in what you actually read (cite the file paths and, if relevant, line context); never guess at file contents you did not fetch. If the user configured repositories, a list appears in your context — use it when they say "my repo" or "the repo I added", but still confirm which one if it is ambiguous.
 
 Always try to use these tools when they would improve your answer. When you use web_search, cite your sources.
 
@@ -309,6 +312,24 @@ export async function buildAriaContext(
       : []),
     ...contextMessages,
   ]
+
+  // Repos de GitHub configurados por el usuario: se listan para que ARIA sepa a
+  // qué apuntar cuando diga "mi repo". La lectura real la hacen las github_*.
+  try {
+    const { getRepos } = await import('@/app/lib/github')
+    const repos = await getRepos()
+    if (repos.length > 0) {
+      allMessages.push({
+        role: 'system',
+        content:
+          '[Repositorios de GitHub que el usuario agregó — usa github_repo_overview y las demás ' +
+          'herramientas github_* para leerlos cuando haga falta. No inventes su contenido:]\n' +
+          repos.map((r) => `- ${r.repo}${r.note ? ` — ${r.note}` : ''}`).join('\n'),
+      })
+    }
+  } catch {
+    /* GitHub no disponible: seguir sin la lista */
+  }
 
   return { allMessages, contextMessages, injectedMemoryIds, summary, lastUserMsg }
 }

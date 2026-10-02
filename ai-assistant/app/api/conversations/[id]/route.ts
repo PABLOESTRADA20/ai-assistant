@@ -28,10 +28,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   try {
     const body = await req.json()
-    const { title, messages } = body
+    const { title, messages, model } = body
 
     const data: Record<string, unknown> = {}
     if (title) data.title = title
+    if (typeof model === 'string' && model) data.model = model
 
     if (messages && Array.isArray(messages)) {
       await prisma.message.deleteMany({ where: { conversationId: id } })
