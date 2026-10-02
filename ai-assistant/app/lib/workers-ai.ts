@@ -9,9 +9,9 @@
  * extra: el `AI` ya está configurado en `wrangler.jsonc`.
  *
  * Extra: los modelos de razonamiento (DeepSeek R1) mandan su cadena de
- * pensamiento dentro de `response`, envuelta en ` thinking ... `. Al
- * usuario solo debe llegarle la respuesta final, así que se filtra ese bloque
- * aunque llegue troceado entre chunks.
+ * pensamiento dentro de `response`, envuelta entre una etiqueta de apertura y
+ * otra de cierre. Al usuario solo debe llegarle la respuesta final, así que se
+ * filtra ese bloque aunque llegue troceado entre chunks.
  */
 
 type AiBinding = {
@@ -26,8 +26,16 @@ function sseChunk(content: string): Uint8Array {
   )
 }
 
-const OPEN_TAGS = [' thinking', '<reasoning>']
-const CLOSE_TAGS = ['', '</reasoning>']
+/**
+ * Las etiquetas se construyen con `fromCharCode` a propósito: incrustar los
+ * signos angulares literales en el archivo fuente confunde a algunos entornos,
+ * que los interpretan como un bloque de razonamiento y los eliminan, dejando el
+ * filtro sin efecto.
+ */
+const LT = String.fromCharCode(60)
+const GT = String.fromCharCode(62)
+const OPEN_TAGS = ['think', 'reasoning'].map((t) => `${LT}${t}${GT}`)
+const CLOSE_TAGS = ['/think', '/reasoning'].map((t) => `${LT}${t}${GT}`)
 const MAX_TAG = Math.max(...[...OPEN_TAGS, ...CLOSE_TAGS].map((t) => t.length))
 
 /**
