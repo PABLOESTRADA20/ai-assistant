@@ -19,27 +19,31 @@
  *     searx.be/priv.au/baresearch 403/429/challenge, Marginalia sin cobertura,
  *     Yep y Google: shell de JS sin datos.
  *
- * Es decir: no hay forma de obtener una SERP real desde un Worker sin clave.
- * Como el riesgo real de esto es *inventarse* resultados, se eligieron APIs
- * publicas que exponen datos estructurados, sin key, y se verificó que responden
- * bien desde el egress de Cloudflare.
+ * Es decir: no hay forma de *scrapear* una SERP desde un Worker sin clave. Pero
+ * si existe una API de busqueda que da el trabajo hecho y responde desde el
+ * egress de Cloudflare sin key: Firecrawl (ver la seccion de Firecrawl mas abajo).
+ * Como el riesgo real de scrapear es *inventarse* resultados, para el resto se
+ * siguen usando APIs publicas que exponen datos estructurados, sin key.
  *
  * ---------------------------------------------------------------------------
  * FUENTES USADAS (todas keyless, gratis y sin limite oficial imposed)
  * ---------------------------------------------------------------------------
- *   1. Wikipedia  - enciclopedico, el mejor para hechos y fechas.
- *   2. Stack Overflow (Stack Exchange API) - preguntas y respuestas tecnicas.
- *   3. Hacker News (Algolia) - discussion tecnica y de industria.
- *   4. MDN - documentacion web (JS, CSS, HTML, Web APIs).
- *   5. Versiones - canales oficiales de cada proyecto (nodejs.org, GitHub Releases
+ *   1. Firecrawl  - busqueda web general real y noticias (keyless, ver abajo).
+ *   2. Wikipedia  - enciclopedico, el mejor para hechos y fechas.
+ *   3. Stack Overflow (Stack Exchange API) - preguntas y respuestas tecnicas.
+ *   4. Hacker News (Algolia) - discussion tecnica y de industria.
+ *   5. MDN - documentacion web (JS, CSS, HTML, Web APIs).
+ *   6. Versiones - canales oficiales de cada proyecto (nodejs.org, GitHub Releases
  *      de Rust, python.org) y endoflife.date como respaldo.
+ *   7. Releases - notas de version reales (GitHub Releases).
  *
  * Cada fuente declara `applies(query)`: no todas aportan a todas las consultas y
  * una fuente sin cobertura tematica solo mete ruido.
  *
- * Si alguna vez se quiere cobertura de noticias o busqueda general, hace falta
- * un proveedor con API key (Tavily, Brave, Serper, Exa tienen tier gratuito);
- * se agrega aqui como fuente mas y no hay que tocar el resto del codigo.
+ * La busqueda general y las noticias las cubre Firecrawl en modo keyless, que es
+ * una API de busqueda real, sin key, y si responde desde el egress de Cloudflare.
+ * Opcionalmente, definir `FIRECRAWL_API_KEY` (el tier gratis da 1.000 creditos por
+ * mes) sube el limite sin tocar el resto del codigo.
  */
 
 /** UA honesto: identificarse como bot. Presentarse como navegador no aporta nada. */
@@ -969,6 +973,127 @@ const searchReleases: Source = async (query, limit, signal) => {
 }
 
 // ---------------------------------------------------------------------------
+// Firecrawl (busqueda web general, sin API key)
+// ---------------------------------------------------------------------------
+
+/**
+ * La unica busqueda general real que se pudo usar sin key desde un Worker.
+ *
+ * Los scrapers de buscadores (DuckDuckGo, Bing, Google...) rechazan o corrompen
+ * las peticiones de IPs de datacenter, pero Firecrawl es una API de busqueda
+ * pensada para esto y su modo keyless responde bien. Devuelve `data.web` (titulo,
+ * url, descripcion) y `data.news` (ademas con fecha) cuando se pide la fuente
+ * `news`. Verificado con un Worker desplegado, no con Node local.
+ *
+ * Coste y limites, medidos:
+ *   - 2 creditos por llamada, independientemente de `limit` (medido con 4 y 5).
+ *   - Keyless: cupo por IP y por dia (peticiones y creditos); al superarlo, 429.
+ *     Las IPs de Cloudflare son compartidas, asi que el 429 no es raro: se corta
+ *     30 min para no gastar subrequests en balde y el resto de fuentes sigue.
+ *   - Definir `FIRECRAWL_API_KEY` (tier gratis: 1.000 creditos/mes) sube el
+ *     limite sin cambiar nada mas. Es opcional; sin key funciona igual.
+ *
+ * La fuente de noticias se pide solo si la consulta es de actualidad: medido con
+ * "how to install Docker on Ubuntu", las noticias devueltas eran sobre otro tema
+ * y solo añadian ruido.
+ */
+const FIRECRAWL_ENDPOINT = 'https://api.firecrawl.dev/v2/search'
+const FIRECRAWL_BREAKER_MS = 30 * 60_000
+let firecrawlBlockedUntil = 0
+
+function firecrawlThrottled(): boolean {
+  return Date.now() < firecrawlBlockedUntil
+}
+
+/** Consulta de actualidad: tiene sentido pedir tambien la fuente de noticias. */
+const NEWS_INTENT =
+  /\b(noticias?|news|actualidad|última hora|ultima hora|hoy|ayer|esta semana|este mes|breaking|estreno|elecciones|resultado|ganador|qué pasó|que paso|cómo va|como va)\b/i
+
+/**
+ * Geografia de la busqueda.
+ *
+ * Firecrawl geolocaliza por `country` (por defecto US). Para una consulta en
+ * español conviene `ES`: medido con "mejores lenguajes de programacion 2026",
+ * `country: ES` devolvio articulos en español de portales hispanos. El sesgo es
+ * solo de ranking, no de idioma, asi que no excluye resultados en otros idiomas.
+ */
+function looksSpanish(query: string): boolean {
+  return (
+    /[áéíóúñ¿¡]/i.test(query) ||
+    /\b(qué|que|cómo|como|cuál|cual|cuándo|cuando|dónde|donde|mejores|versión|novedades|noticias|instalar|usar|para|con|sobre|está|esta|son|es|del|los|las)\b/i.test(
+      query
+    )
+  )
+}
+
+type FirecrawlResponse = {
+  success?: boolean
+  error?: string
+  data?: {
+    web?: Array<{ title?: string; description?: string; url?: string }>
+    news?: Array<{ title?: string; snippet?: string; url?: string; date?: string }>
+  }
+}
+
+const searchFirecrawl: Source = async (query, limit, signal) => {
+  const body: Record<string, unknown> = {
+    query,
+    // Siempre un poco mas de lo que se va a mostrar, porque despues se filtra.
+    limit: Math.min(Math.max(limit, 5), 10),
+    sources: NEWS_INTENT.test(query) ? ['web', 'news'] : ['web'],
+  }
+  if (looksSpanish(query)) body.country = 'ES'
+
+  const key = process.env.FIRECRAWL_API_KEY
+  const res = await fetch(FIRECRAWL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': USER_AGENT,
+      ...(key ? { Authorization: `Bearer ${key}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  // 429 = cupo keyless agotado; 403 = IP marcada. Ambos se cortan igual.
+  if (res.status === 429 || res.status === 403) {
+    firecrawlBlockedUntil = Date.now() + FIRECRAWL_BREAKER_MS
+    throw new Error(`HTTP ${res.status} (limite keyless por IP)`)
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+  const data = (await res.json()) as FirecrawlResponse
+  if (data.success === false) {
+    throw new Error(`Firecrawl: ${data.error ?? 'success=false'}`)
+  }
+  // Un OK limpia el corte: la cuota se restablecio.
+  firecrawlBlockedUntil = 0
+
+  const results: WebResult[] = []
+  for (const item of data.data?.web ?? []) {
+    if (!item.url || !item.title) continue
+    results.push({
+      title: clamp(stripTags(item.title), 160),
+      url: item.url,
+      snippet: clamp(stripTags(item.description ?? ''), 700),
+      source: 'firecrawl',
+    })
+  }
+  for (const item of data.data?.news ?? []) {
+    if (!item.url || !item.title) continue
+    const when = item.date ? `${item.date}. ` : ''
+    results.push({
+      title: clamp(stripTags(item.title), 160),
+      url: item.url,
+      snippet: clamp(`${when}${stripTags(item.snippet ?? '')}`, 700),
+      source: 'firecrawl-news',
+    })
+  }
+  return results
+}
+
+// ---------------------------------------------------------------------------
 // arXiv (papers) - DESACTIVADO
 // ---------------------------------------------------------------------------
 // Se probo y se descarto. Su API keyless (`export.arxiv.org/api/query`) respondio
@@ -1051,6 +1176,15 @@ const SOURCES: Array<{
   /** Si es false, la fuente se salta en vez de gastar una consulta. */
   applies: (query: string) => boolean
 }> = [
+  {
+    name: 'firecrawl',
+    run: searchFirecrawl,
+    // 4 resultados web + hasta 4 de noticias; el limite global recorta despues.
+    max: 8,
+    timeoutMs: 7_000,
+    // Si la cuota keyless se agoto (429/403), se salta sin gastar subrequests.
+    applies: () => !firecrawlThrottled(),
+  },
   {
     name: 'stackoverflow',
     run: searchStackOverflow,
@@ -1278,7 +1412,14 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
   // Cada una agota sus resultados antes de pasar a la siguiente: si se metieran en un
   // unico bucle round-robin, la de versiones (2 resultados) dejaria a las notas para
   // la posicion 2 o 3, que es donde el modelo deja de leerlas.
-  const PRIORITY = ['releases', 'versiones']
+  const PRIORITY = ['releases', 'versiones', 'firecrawl']
+  /**
+   * Cupo por fuente prioritaria. Las de versiones no llevan cupo (deben agotar sus
+   * 1-2 resultados), pero Firecrawl es una SERP: sin cupo llenaria los 6 puestos y
+   * desplazaria a Wikipedia, cuya introduccion es mejor contexto que un snippet.
+   * Con 4, la SERP ocupa la parte alta y el round-robin reparte el resto.
+   */
+  const PRIORITY_MAX: Record<string, number> = { firecrawl: 4 }
   const ordered: WebResult[] = []
   const cursors = new Map<string, number>()
   const seenUrls = new Set<string>()
@@ -1312,9 +1453,15 @@ export async function searchWeb(query: string, maxResults = 6): Promise<WebSearc
   }
 
   for (const name of PRIORITY) {
+    const cap = PRIORITY_MAX[name]
+    let taken = 0
     for (const item of perSource.get(name) ?? []) {
       if (ordered.length >= limit) break
+      if (cap !== undefined && taken >= cap) break
+      const before = ordered.length
       take(item)
+      // Solo cuenta lo que realmente entro: `take` puede descartar duplicados.
+      if (ordered.length > before) taken++
     }
   }
 

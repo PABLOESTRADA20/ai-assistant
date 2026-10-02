@@ -67,6 +67,14 @@ jobs:
         run: |
           echo "${{ secrets.DATABASE_URL }}" | npx wrangler secret put DATABASE_URL
           echo "${{ secrets.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY
-          # Sin claves de busqueda web: `web_search` consulta APIs keyless
-          # (Wikipedia, Stack Exchange, Hacker News, MDN y endoflife.date), que
-          # son gratuitas y no requieren API key.
+          # Sin claves de busqueda web obligatorias: `web_search` usa Firecrawl
+          # en modo keyless (busqueda general y noticias) mas APIs keyless
+          # (Wikipedia, Stack Exchange, Hacker News, MDN, endoflife.date y
+          # GitHub Releases), todas gratuitas.
+          #
+          # Opcional: si se define el secret FIRECRAWL_API_KEY (tier gratis de
+          # 1.000 creditos/mes), `web_search` la usa sola y sube el limite keyless
+          # por IP. No hace falta para que funcione.
+          if [ -n "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
+            echo "${{ secrets.FIRECRAWL_API_KEY }}" | npx wrangler secret put FIRECRAWL_API_KEY
+          fi
