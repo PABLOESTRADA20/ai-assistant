@@ -9,7 +9,7 @@ import ChatContainer from './components/ChatContainer'
 import ChatInput from './components/ChatInput'
 import ModelSelector from './components/ModelSelector'
 
-import { Message, Conversation, ToolInvocation } from './types'
+import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
 import {
   getConversations,
   createConversation,
@@ -35,7 +35,7 @@ export default function Home() {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingTools, setStreamingTools] = useState<ToolInvocation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [model, setModel] = useState('llama-3.3-70b-versatile')
+  const [model, setModel] = useState(AVAILABLE_MODELS[0].id)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const abortRef = useRef<AbortController | null>(null)
 
