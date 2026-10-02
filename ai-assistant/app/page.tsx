@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X } from 'lucide-react'
+import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X, FileText } from 'lucide-react'
 
 import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
@@ -10,6 +10,7 @@ import ChatInput from './components/ChatInput'
 import ModelSelector from './components/ModelSelector'
 import MemoryInspector from './components/MemoryInspector'
 import GithubRepos from './components/GithubRepos'
+import NotesPanel from './components/NotesPanel'
 import { useTTS } from './hooks/useTTS'
 
 import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
@@ -47,6 +48,7 @@ export default function Home() {
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [modelNotice, setModelNotice] = useState<string | null>(null)
   const [githubOpen, setGithubOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
   const { speak, stop: stopSpeech, prime } = useTTS()
@@ -524,6 +526,8 @@ export default function Home() {
 
       <GithubRepos open={githubOpen} onClose={() => setGithubOpen(false)} />
 
+      <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
+
       <div className="flex flex-col flex-1 min-w-0 h-full">
         <header
           className="flex items-center justify-between px-4 py-3 flex-shrink-0 safe-top"
@@ -606,6 +610,15 @@ export default function Home() {
             >
               <Github size={12} />
               <span className="hidden sm:inline">GitHub</span>
+            </button>
+            <button
+              onClick={() => setNotesOpen(true)}
+              title="Carpeta ARIA: notas guardadas en la nube, exportables a Obsidian"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
+              style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            >
+              <FileText size={12} />
+              <span className="hidden sm:inline">Notas</span>
             </button>
             <ModelSelector value={model} onChange={setModel} />
           </div>

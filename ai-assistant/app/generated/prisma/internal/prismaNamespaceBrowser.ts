@@ -54,7 +54,8 @@ export const ModelName = {
   VaultNote: 'VaultNote',
   Memory: 'Memory',
   SessionContext: 'SessionContext',
-  SystemPrompt: 'SystemPrompt'
+  SystemPrompt: 'SystemPrompt',
+  Note: 'Note'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -148,6 +149,20 @@ export const SystemPromptScalarFieldEnum = {
 } as const
 
 export type SystemPromptScalarFieldEnum = (typeof SystemPromptScalarFieldEnum)[keyof typeof SystemPromptScalarFieldEnum]
+
+
+export const NoteScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  content: 'content',
+  tags: 'tags',
+  source: 'source',
+  pinned: 'pinned',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type NoteScalarFieldEnum = (typeof NoteScalarFieldEnum)[keyof typeof NoteScalarFieldEnum]
 
 
 export const SortOrder = {

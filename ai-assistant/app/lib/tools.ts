@@ -367,6 +367,63 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'save_cloud_note',
+      description:
+        "Save or update a note in the user's cloud ARIA folder (a persistent notes store, " +
+        'available from phone and PC and exportable to Obsidian). Use it when the user asks you ' +
+        'to remember, save, write down or keep information for later. If a note with the same ' +
+        'title already exists it is updated instead of duplicated. This is persistent storage, ' +
+        'unlike conversation memory.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short, descriptive title used as the note name' },
+          content: { type: 'string', description: 'Full note content in Markdown' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional short tags',
+          },
+        },
+        required: ['title', 'content'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_cloud_notes',
+      description:
+        "List the notes in the user's cloud ARIA folder (titles, dates and a short preview). " +
+        'Use it when the user asks what is saved, or before reading a note.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Optional text to filter by title or content' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_cloud_note',
+      description:
+        "Read the full content of a note in the user's cloud ARIA folder, by title (a partial " +
+        'match is fine) or by id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Note title or id' },
+        },
+        required: ['title'],
+      },
+    },
+  },
 ]
 
 export async function executeToolCall(toolCall: ToolCall): Promise<string> {
@@ -404,6 +461,12 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return githubReadFile(args.repo, args.path, args.ref)
     case 'github_list_issues':
       return githubListIssues(args.repo, args.state)
+    case 'save_cloud_note':
+      return saveCloudNote(args.title, args.content, args.tags)
+    case 'list_cloud_notes':
+      return listCloudNotes(args.query)
+    case 'read_cloud_note':
+      return readCloudNote(args.title)
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` })
   }
@@ -483,6 +546,55 @@ async function githubListIssues(repo?: unknown, state?: unknown): Promise<string
   }
   const gh = await import('@/app/lib/github')
   return gh.listIssues(repo, typeof state === 'string' ? state : 'open')
+}
+
+/* ----------------------- herramientas de notas nube ---------------------- */
+
+async function saveCloudNote(title?: unknown, content?: unknown, tags?: unknown): Promise<string> {
+  if (typeof title !== 'string' || !title.trim()) {
+    return JSON.stringify({ error: 'Falta el título de la nota' })
+  }
+  if (typeof content !== 'string' || !content.trim()) {
+    return JSON.stringify({ error: 'Falta el contenido de la nota' })
+  }
+  const notes = await import('@/app/lib/notes')
+  const note = await notes.saveNote({ title, content, tags })
+  return JSON.stringify({
+    success: true,
+    message: 'Nota guardada en la carpeta de ARIA.',
+    note: { id: note.id, title: note.title, updatedAt: note.updatedAt },
+  })
+}
+
+async function listCloudNotes(query?: unknown): Promise<string> {
+  const notes = await import('@/app/lib/notes')
+  const all = await notes.listNotes(typeof query === 'string' ? query : undefined)
+  return JSON.stringify({
+    count: all.length,
+    notes: all.map((n) => ({
+      id: n.id,
+      title: n.title,
+      tags: n.tags,
+      updatedAt: n.updatedAt,
+      preview: n.content.replace(/\s+/g, ' ').slice(0, 160),
+    })),
+  })
+}
+
+async function readCloudNote(title?: unknown): Promise<string> {
+  if (typeof title !== 'string' || !title.trim()) {
+    return JSON.stringify({ error: 'Falta el título o el id de la nota' })
+  }
+  const notes = await import('@/app/lib/notes')
+  const note = await notes.findNote(title)
+  if (!note) return JSON.stringify({ error: `No encontré la nota "${title}".` })
+  return JSON.stringify({
+    id: note.id,
+    title: note.title,
+    tags: note.tags,
+    updatedAt: note.updatedAt,
+    content: note.content,
+  })
 }
 
 async function getWeather(location: string): Promise<string> {

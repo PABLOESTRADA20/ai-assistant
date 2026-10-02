@@ -76,3 +76,19 @@ model SystemPrompt {
   tools     Json?
   createdAt DateTime @default(now())
 }
+
+/// "Carpeta ARIA": notas guardadas en la nube para luego exportarlas a Obsidian.
+/// Vive en la base de datos a propósito: el Worker no puede escribir en el disco
+/// del PC, y así la carpeta está disponible igual desde el celular y el PC.
+model Note {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  tags      Json?
+  source    String   @default("aria")
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}

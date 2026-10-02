@@ -68,3 +68,10 @@ export type SessionContext = Prisma.SessionContextModel
  * 
  */
 export type SystemPrompt = Prisma.SystemPromptModel
+/**
+ * Model Note
+ * "Carpeta ARIA": notas guardadas en la nube para luego exportarlas a Obsidian.
+ * Vive en la base de datos a propósito: el Worker no puede escribir en el disco
+ * del PC, y así la carpeta está disponible igual desde el celular y el PC.
+ */
+export type Note = Prisma.NoteModel

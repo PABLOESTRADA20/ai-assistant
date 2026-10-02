@@ -16,6 +16,9 @@ const TOOL_ICONS: Record<string, { icon: typeof Search; label: string }> = {
   github_list_files: { icon: Github, label: 'GitHub · archivos' },
   github_read_file: { icon: FileText, label: 'GitHub · leer archivo' },
   github_list_issues: { icon: Github, label: 'GitHub · issues' },
+  save_cloud_note: { icon: FileText, label: 'Guardar en carpeta ARIA' },
+  list_cloud_notes: { icon: BookOpen, label: 'Notas de ARIA' },
+  read_cloud_note: { icon: FileText, label: 'Leer nota de ARIA' },
 }
 
 function formatArgs(name: string, args: Record<string, unknown>): string {
@@ -47,6 +50,8 @@ function formatResult(result: string | undefined): string {
       return answer.length > 120 ? answer.slice(0, 120) + '…' : answer
     }
     if (parsed.result !== undefined) return `Resultado: ${parsed.result}`
+    if (parsed.success && parsed.note) return 'Nota guardada en la carpeta ARIA'
+    if (Array.isArray(parsed.notes)) return `${parsed.count ?? parsed.notes.length} notas en la carpeta`
     if (parsed.success) return `Guardado en vault`
     if (Array.isArray(parsed.files)) {
       return `${parsed.files.length} archivos encontrados`
