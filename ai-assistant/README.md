@@ -159,7 +159,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 - **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
 - **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
 - **GitHub (solo lectura)** — botón **GitHub** en el header para agregar repos (`owner/repo` o la URL). Con `GITHUB_TOKEN` (fine-grained, solo lectura) además aparece **«Ver mis repositorios»**, que lista tus repos (públicos y privados) con buscador para agregarlos con un clic. ARIA los lee (`github_repo_overview`, `github_list_files`, `github_read_file`, `github_list_issues`) y te propone cómo arreglar bugs, issues y deuda técnica. **Nunca escribe** en GitHub: nada de issues ni PRs.
-- **Auto-cambio de modelo** — si el modelo elegido agota su cuota (Groq: tokens/día; Workers AI: neuronas/día), ARIA reintenta la misma pregunta con el siguiente modelo disponible y te avisa con un banner. Así una respuesta no se queda sin salir porque un modelo se quedó sin cupo.
+- **Auto-cambio de modelo** — si el modelo elegido agota su cuota (Groq: tokens/día; Workers AI: neuronas/día), ARIA reintenta la misma pregunta con el siguiente modelo disponible y te avisa con un banner. Así una respuesta no se queda sin salir porque un modelo se quedó sin cupo. Además, si el modelo elegido **no ejecuta herramientas** (DeepSeek) y le pedís algo que sí las necesita (leer un repo de GitHub, buscar en la web, abrir una app), ARIA responde con un modelo de Groq que sí las tiene y te avisa del cambio.
 - **Carpeta ARIA (notas + Obsidian)** — botón **Notas** en el header. ARIA puede guardar, listar y leer notas (`save_cloud_note`, `list_cloud_notes`, `read_cloud_note`) y tú las editas en el panel. Viven en la base de datos (tabla `Note`) a propósito: el Worker **no puede** escribir en el disco del PC, así que así funcionan desde el celular sin tener el ordenador encendido. El botón **Exportar a Obsidian (.zip)** descarga un `.md` por nota (con frontmatter) listo para descomprimir dentro del vault.
 - **Núcleo compartido** — `app/lib/aria-core.ts` centraliza prompt, memoria y contexto; el chat web, WhatsApp y el correo usan exactamente el mismo cerebro.
 
@@ -171,7 +171,7 @@ En el selector del header puedes elegir:
 |--------|-----------|--------------|--------------|
 | GPT-OSS 120B | Groq | 200.000 tokens/día | ✅ |
 | Qwen 3.8 27B | Groq | 200.000 tokens/día | ✅ |
-| GPT-OSS 20B | Groq | 200.000 tokens/día | ✅ (modo rápido) |
+| GPT-OSS 20B | Groq | 200.000 tokens/día | ✅ |
 | **DeepSeek R1 32B** | **Cloudflare Workers AI** | **10.000 neuronas/día** | ❌ (solo razonamiento) |
 
 DeepSeek se sirve con el **binding `AI`** que ya estaba configurado para los embeddings: **no hace falta ninguna API key nueva**. Al ser un modelo de razonamiento no admite function calling, así que en ese modo ARIA responde sin herramientas (web, vault, abrir apps…). Úsalo como alternativa gratuita cuando se agote la cuota de Groq o para preguntas que pidan razonamiento profundo; eso sí, su cuota gratuita es mucho más pequeña que la de Groq.

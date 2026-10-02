@@ -269,10 +269,14 @@ export default function Home() {
           setStreamingTools([...all])
           void runLocalTool(tool, all)
         },
-        onFallback: (from, to) => {
+        onFallback: (from, to, reason) => {
           const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
           const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
-          setModelNotice(`🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`)
+          setModelNotice(
+            reason === 'no_tools'
+              ? `🔄 ${fromName} no ejecuta herramientas. Pasé a ${toName} para poder hacerlo.`
+              : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
+          )
         },
       })
 
@@ -395,10 +399,14 @@ export default function Home() {
           setStreamingTools([...all])
           void runLocalTool(tool, all)
         },
-        onFallback: (from, to) => {
+        onFallback: (from, to, reason) => {
           const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
           const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
-          setModelNotice(`🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`)
+          setModelNotice(
+            reason === 'no_tools'
+              ? `🔄 ${fromName} no ejecuta herramientas. Pasé a ${toName} para poder hacerlo.`
+              : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
+          )
         },
       })
 

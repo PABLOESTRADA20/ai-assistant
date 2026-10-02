@@ -15,6 +15,7 @@ import {
   generateSummary,
   buildAriaContext,
   rememberTurn,
+  type ChatMessage,
 } from '@/app/lib/aria-core'
 
 /**
@@ -89,6 +90,31 @@ function groqErrorResponse(status: number, errText: string, provider: Provider =
   )
 }
 
+/**
+ * ¿La petición necesita herramientas?
+ *
+ * Solo se usa para modelos que NO soportan function calling (DeepSeek/Workers
+ * AI). Si el usuario pide leer un repo de GitHub, buscar en la web o abrir una
+ * app, no tiene sentido contestar "no puedo": la ruta responde con un modelo de
+ * Groq que sí ejecuta herramientas. Para charla normal, DeepSeek sigue igual.
+ */
+function needsTools(messages: ChatMessage[], lastUserMsg?: ChatMessage | null): boolean {
+  const text = (lastUserMsg?.content ?? '').toLowerCase()
+  if (!text) return false
+  if (wantsWebSearch(messages)) return true
+  if (/(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente)/i.test(text)) {
+    return true
+  }
+  if (
+    /\b(abre|abrir|abrime|ejecuta|lanza)\b[^.]{0,40}\b(app|aplicaci[oó]n|spotify|vscode|vs ?code|carpeta|navegador|programa)/i.test(
+      text,
+    )
+  ) {
+    return true
+  }
+  return false
+}
+
 export async function POST(req: NextRequest) {
   const denied = requireAuth(req)
   if (denied) return denied
@@ -102,7 +128,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { messages, model = DEFAULT_MODEL, conversationId } = body
+    let { messages, model = DEFAULT_MODEL, conversationId } = body
+    const requestedModel = model
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'Messages array is required' }), {
@@ -112,6 +139,25 @@ export async function POST(req: NextRequest) {
     }
 
     provider = providerForModel(model)
+
+    // ¿El pedido necesita herramientas? Se decide por el mensaje del usuario, no
+    // por lo que el modelo crea. Sirve para dos cosas:
+    //   - DeepSeek (Workers AI) no ejecuta function calling: si el pedido las
+    //     necesita, se responde con un modelo de Groq en vez de decir "no puedo".
+    //   - GPT-OSS 20B va sin herramientas por defecto (más rápido y barato); se
+    //     activan solo para estos pedidos (leer un repo, buscar, abrir una app).
+    const rawLastUser =
+      [...messages].reverse().find((m: ChatMessage) => m?.role === 'user') ?? null
+    const requestNeedsTools = needsTools(messages, rawLastUser)
+
+    let switchedForTools = false
+    if (!provider.supportsTools && requestNeedsTools) {
+      console.warn(`[chat] ${model} no soporta herramientas; se responde con ${CHEAP_MODEL}`)
+      switchedForTools = true
+      model = CHEAP_MODEL
+      provider = GROQ
+    }
+
     // Clave del proveedor que responde el chat. Workers AI va por binding (sin clave).
     const apiKey = (provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : '') ?? ''
     if (provider.apiKeyEnv && !apiKey) {
@@ -164,9 +210,10 @@ export async function POST(req: NextRequest) {
       await registerBackground(reinforceMemories(injectedMemoryIds))
     }
 
-    // Check if we should use tool calling (skip for simple/fast models to save latency)
+    // Check if we should use tool calling (skip for the fast model on normal chat:
+    // only the requests that actually need a tool pay for the extra round).
     // Workers AI (DeepSeek) es de razonamiento y no soporta tools: va por simple mode.
-    const useTools = provider.supportsTools && model !== CHEAP_MODEL
+    const useTools = provider.supportsTools && (model !== CHEAP_MODEL || requestNeedsTools)
 
     if (useTools) {
       try {
@@ -191,6 +238,15 @@ export async function POST(req: NextRequest) {
             let emitted = 0
             let reasoningChars = 0
             let finishReason: string | null = null
+
+            // Aviso de auto-cambio por herramientas (DeepSeek -> Groq).
+            if (switchedForTools) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: 'model_switch', from: requestedModel, to: model, reason: 'no_tools' })}\n\n`,
+                ),
+              )
+            }
 
             const emit = (content: string) => {
               emitted++

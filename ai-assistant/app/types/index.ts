@@ -71,13 +71,13 @@ export const AVAILABLE_MODELS: AIModel[] = [
   {
     id: 'openai/gpt-oss-20b',
     name: 'GPT-OSS 20B',
-    description: 'Ultra rápido • Respuestas simples',
+    description: 'Ultra rápido • Con herramientas',
     badge: '⚡ Rápido',
   },
   {
     id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
     name: 'DeepSeek R1 32B',
-    description: 'Razonamiento profundo • gratis (Cloudflare)',
+    description: 'Razonamiento profundo • gratis (sin herramientas)',
     badge: '🐋 Gratis',
   },
 ]

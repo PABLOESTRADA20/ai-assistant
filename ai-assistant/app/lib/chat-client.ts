@@ -107,6 +107,8 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
     const reader = res.body?.getReader()
     const decoder = new TextDecoder()
     let accumulated = ''
+    // Puede cambiar si el servidor avisa que cambió de modelo para usar tools.
+    let servedModel = candidate
     const toolEvents: ToolInvocation[] = []
 
     if (reader) {
@@ -124,6 +126,15 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
           if (data === '[DONE]') continue
           try {
             const parsed = JSON.parse(data)
+            if (parsed.type === 'model_switch') {
+              servedModel = typeof parsed.to === 'string' ? parsed.to : candidate
+              opts.onFallback?.(
+                typeof parsed.from === 'string' ? parsed.from : candidate,
+                servedModel,
+                'no_tools',
+              )
+              continue
+            }
             if (parsed.type === 'tool_call') {
               const tool: ToolInvocation = {
                 name: parsed.tool?.name || '',
@@ -149,8 +160,8 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
     return {
       content: accumulated,
       tools: toolEvents,
-      model: candidate,
-      switchedFrom: candidate !== opts.model ? opts.model : undefined,
+      model: servedModel,
+      switchedFrom: servedModel !== opts.model ? opts.model : undefined,
     }
   }
 
