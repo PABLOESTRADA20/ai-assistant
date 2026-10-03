@@ -140,6 +140,26 @@ export default function Home() {
     return () => clearTimeout(t)
   }, [])
 
+  // Red de seguridad: pase lo que pase, no quedarse atascado en la pantalla de
+  // carga. Si a los 12 s seguimos arrancando, entramos igual; las peticiones
+  // posteriores resolverán la sesión (un 401 devuelve al login).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setInitialLoading(false)
+      setAuthState((s) => (s === 'checking' ? (getToken() ? 'ready' : 'needed') : s))
+    }, 12_000)
+    return () => clearTimeout(t)
+  }, [])
+
+  // Marca de "la app ya arrancó" para el aviso de emergencia del HTML. Si está,
+  // ocultamos ese aviso por si había aparecido mientras cargaba.
+  useEffect(() => {
+    if (authState === 'checking' || initialLoading) return
+    ;(window as Window & { __ariaBooted?: boolean }).__ariaBooted = true
+    const el = document.getElementById('aria-boot-fallback')
+    if (el) el.style.display = 'none'
+  }, [authState, initialLoading])
+
   // Preferencia de voz: persistente entre recargas.
   useEffect(() => {
     setAutoSpeak(localStorage.getItem('aria_autospeak') === '1')

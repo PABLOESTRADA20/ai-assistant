@@ -14,17 +14,30 @@ export const UNAUTHORIZED_EVENT = 'aria:unauthorized'
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null
-  return window.localStorage.getItem(TOKEN_KEY)
+  // Brave/modo privado pueden bloquear `localStorage`: nunca debe romper el arranque.
+  try {
+    return window.localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
 }
 
 export function setToken(token: string): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(TOKEN_KEY, token)
+  try {
+    window.localStorage.setItem(TOKEN_KEY, token)
+  } catch {
+    /* almacenamiento bloqueado: la sesión no persiste, pero la app funciona. */
+  }
 }
 
 export function clearToken(): void {
   if (typeof window === 'undefined') return
-  window.localStorage.removeItem(TOKEN_KEY)
+  try {
+    window.localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* ignorar */
+  }
 }
 
 /** Cabeceras base con el token, si lo hay. */
@@ -50,10 +63,17 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return res
 }
 
+/** `fetch` que se aborta solo si tarda demasiado (evita cuelgues al arrancar). */
+function fetchWithTimeout(input: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController()
+  const id = setTimeout(() => ctrl.abort(), ms)
+  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(id))
+}
+
 /** Pregunta al servidor si la app exige clave. */
 export async function fetchAuthRequired(): Promise<boolean> {
   try {
-    const res = await fetch('/api/auth', { cache: 'no-store' })
+    const res = await fetchWithTimeout('/api/auth', { cache: 'no-store' }, 8000)
     if (!res.ok) return false
     const data = await res.json()
     return data?.required === true
