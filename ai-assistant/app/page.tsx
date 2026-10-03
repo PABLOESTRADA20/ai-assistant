@@ -53,6 +53,7 @@ export default function Home() {
   const [githubOpen, setGithubOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [rescueVisible, setRescueVisible] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
   // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
@@ -73,9 +74,15 @@ export default function Home() {
         setAuthState('needed')
         return
       }
-      const res = await apiFetch('/api/conversations')
-      if (cancelled) return
-      setAuthState(res.ok ? 'ready' : 'needed')
+      try {
+        const res = await apiFetch('/api/conversations')
+        if (cancelled) return
+        setAuthState(res.ok ? 'ready' : 'needed')
+      } catch {
+        // Sin red no se puede validar ahora: dejamos entrar y que las peticiones
+        // posteriores decidan (un 401 devuelve al login).
+        if (!cancelled) setAuthState('ready')
+      }
     })()
     return () => {
       cancelled = true
@@ -93,13 +100,17 @@ export default function Home() {
   useEffect(() => {
     if (authState !== 'ready') return
 
-    getConversations().then((stored) => {
-      setConversations(stored)
-      if (stored.length > 0) {
-        setActiveId((prev) => prev ?? stored[0].id)
-      }
-      setInitialLoading(false)
-    })
+    getConversations()
+      .then((stored) => {
+        setConversations(stored)
+        if (stored.length > 0) {
+          setActiveId((prev) => prev ?? stored[0].id)
+        }
+      })
+      .catch(() => {
+        // Si falla, igual dejamos entrar en vez de quedar cargando para siempre.
+      })
+      .finally(() => setInitialLoading(false))
 
     // Pre-index the Obsidian vault on startup (best-effort)
     apiFetch('/api/vault/index', { method: 'GET' }).catch(() => {})
@@ -121,6 +132,13 @@ export default function Home() {
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [headerMenuOpen])
+
+  // Si el arranque se demora demasiado (p. ej. un service worker viejo dejó la
+  // app a medio cargar), ofrecemos una salida que limpia y recarga.
+  useEffect(() => {
+    const t = setTimeout(() => setRescueVisible(true), 8000)
+    return () => clearTimeout(t)
+  }, [])
 
   // Preferencia de voz: persistente entre recargas.
   useEffect(() => {
@@ -517,6 +535,23 @@ export default function Home() {
     URL.revokeObjectURL(url)
   }
 
+  // Salida de emergencia: desregistra el service worker, borra cachés y recarga.
+  const hardReset = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map((r) => r.unregister()))
+      }
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
+      }
+    } catch {
+      // Aunque algo falle, recargamos igual.
+    }
+    window.location.reload()
+  }
+
   if (authState === 'checking' || (authState === 'ready' && initialLoading)) {
     return (
       <div className="relative flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
@@ -535,6 +570,19 @@ export default function Home() {
             <AriaMark size={34} />
           </div>
           <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando conversaciones...</span>
+          {rescueVisible && (
+            <button
+              onClick={hardReset}
+              className="mt-2 text-xs px-3 py-1.5 rounded-xl transition hover:opacity-80 cursor-pointer"
+              style={{
+                color: 'var(--accent)',
+                background: 'var(--accent-muted)',
+                border: '1px solid rgba(255,46,77,0.3)',
+              }}
+            >
+              ¿Tarda mucho? Recargar y limpiar caché
+            </button>
+          )}
         </div>
       </div>
     )
