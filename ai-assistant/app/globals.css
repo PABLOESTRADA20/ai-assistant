@@ -57,6 +57,10 @@ html {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* PWA en el celular: sin destello azul al tocar y sin reescalado de texto. */
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -64,6 +68,9 @@ body {
   background-attachment: fixed;
   height: 100dvh;
   overflow: hidden;
+  /* Quita el rebote tipo página web: se siente como app nativa. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 /* Móvil con notch: `viewportFit: cover` deja el contenido bajo la barra de

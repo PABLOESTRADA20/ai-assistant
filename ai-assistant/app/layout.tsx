@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import ServiceWorkerRegister from './components/ServiceWorkerRegister'
 
 export const metadata: Metadata = {
   title: 'ARIA — AI Assistant',
@@ -13,7 +14,13 @@ export const metadata: Metadata = {
     title: 'ARIA',
   },
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23ff2e4d'/><stop offset='100%25' stop-color='%23c81e3c'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text x='50' y='68' font-size='50' fill='white' text-anchor='middle' font-family='system-ui' font-weight='bold'>A</text></svg>",
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: '/icon-192.png',
   },
 }
 
@@ -29,7 +36,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className="noise">{children}</body>
+      <body className="noise">
+        {children}
+        <ServiceWorkerRegister />
+      </body>
     </html>
   )
 }

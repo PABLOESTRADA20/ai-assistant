@@ -1,12 +1,51 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7c6af7"/>
-      <stop offset="100%" stop-color="#6d5ce6"/>
+    <linearGradient id="aria-bg-m" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16161c"/>
+      <stop offset="1" stop-color="#08080b"/>
     </linearGradient>
+    <linearGradient id="aria-stroke-m" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff5c76"/>
+      <stop offset="1" stop-color="#c81e3c"/>
+    </linearGradient>
+    <radialGradient id="aria-glow-m" cx="50%" cy="42%" r="62%">
+      <stop offset="0" stop-color="#ff2e4d" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#ff2e4d" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <!-- Fondo a sangre: la zona segura "maskable" es el círculo central del 80%. -->
-  <rect width="512" height="512" fill="url(#g)"/>
-  <text x="256" y="330" font-size="200" fill="#ffffff" text-anchor="middle"
-        font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="700">A</text>
+  <!-- Maskable: fondo a sangre y marca dentro de la zona segura central (80%). -->
+  <rect width="512" height="512" fill="url(#aria-bg-m)"/>
+  <rect width="512" height="512" fill="url(#aria-glow-m)"/>
+  <g transform="translate(256 256) scale(0.74) translate(-256 -256)">
+    <g fill="none" stroke="url(#aria-stroke-m)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" opacity="0.20">
+      <path d="M150 404 L256 120 L362 404"/>
+      <path d="M188 302 L324 302"/>
+    </g>
+    <g fill="none" stroke="url(#aria-stroke-m)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M150 404 L256 120 L362 404"/>
+      <path d="M188 302 L324 302"/>
+    </g>
+    <g stroke="#ff2e4d" stroke-width="4" opacity="0.55">
+      <line x1="256" y1="120" x2="256" y2="64"/>
+      <line x1="150" y1="404" x2="116" y2="432"/>
+      <line x1="362" y1="404" x2="396" y2="432"/>
+    </g>
+    <g fill="#ff2e4d" opacity="0.85">
+      <circle cx="256" cy="64" r="9"/>
+      <circle cx="116" cy="432" r="8"/>
+      <circle cx="396" cy="432" r="8"/>
+    </g>
+    <g fill="url(#aria-stroke-m)">
+      <circle cx="256" cy="120" r="17"/>
+      <circle cx="150" cy="404" r="15"/>
+      <circle cx="362" cy="404" r="15"/>
+      <circle cx="188" cy="302" r="10"/>
+      <circle cx="324" cy="302" r="10"/>
+    </g>
+    <g fill="#ffffff">
+      <circle cx="256" cy="120" r="6"/>
+      <circle cx="150" cy="404" r="5"/>
+      <circle cx="362" cy="404" r="5"/>
+    </g>
+  </g>
 </svg>

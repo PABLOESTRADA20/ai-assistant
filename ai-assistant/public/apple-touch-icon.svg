@@ -1,26 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="aria-bg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="aria-bg-a" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#16161c"/>
       <stop offset="1" stop-color="#08080b"/>
     </linearGradient>
-    <linearGradient id="aria-stroke" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="aria-stroke-a" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#ff5c76"/>
       <stop offset="1" stop-color="#c81e3c"/>
     </linearGradient>
-    <radialGradient id="aria-glow" cx="50%" cy="42%" r="62%">
+    <radialGradient id="aria-glow-a" cx="50%" cy="42%" r="62%">
       <stop offset="0" stop-color="#ff2e4d" stop-opacity="0.30"/>
       <stop offset="1" stop-color="#ff2e4d" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#aria-bg)"/>
-  <rect width="512" height="512" rx="112" fill="url(#aria-glow)"/>
-  <g>
-    <g fill="none" stroke="url(#aria-stroke)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" opacity="0.20">
+  <!-- iOS recorta las esquinas: fondo cuadrado a sangre. -->
+  <rect width="512" height="512" fill="url(#aria-bg-a)"/>
+  <rect width="512" height="512" fill="url(#aria-glow-a)"/>
+  <g transform="translate(256 256) scale(0.86) translate(-256 -256)">
+    <g fill="none" stroke="url(#aria-stroke-a)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" opacity="0.20">
       <path d="M150 404 L256 120 L362 404"/>
       <path d="M188 302 L324 302"/>
     </g>
-    <g fill="none" stroke="url(#aria-stroke)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <g fill="none" stroke="url(#aria-stroke-a)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
       <path d="M150 404 L256 120 L362 404"/>
       <path d="M188 302 L324 302"/>
     </g>
@@ -34,7 +35,7 @@
       <circle cx="116" cy="432" r="8"/>
       <circle cx="396" cy="432" r="8"/>
     </g>
-    <g fill="url(#aria-stroke)">
+    <g fill="url(#aria-stroke-a)">
       <circle cx="256" cy="120" r="17"/>
       <circle cx="150" cy="404" r="15"/>
       <circle cx="362" cy="404" r="15"/>

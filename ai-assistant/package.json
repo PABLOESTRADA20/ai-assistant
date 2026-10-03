@@ -12,6 +12,7 @@
     "db:smoke": "node --import ./scripts/wasm-module-hook.mjs --import tsx scripts/smoke-memory.ts",
     "db:brain": "node --import ./scripts/wasm-module-hook.mjs --import tsx scripts/smoke-brain.ts",
     "agent": "node local-agent/aria-local-agent.mjs",
+    "icons": "node scripts/generate-icons.mjs",
     "lint": "next lint",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",

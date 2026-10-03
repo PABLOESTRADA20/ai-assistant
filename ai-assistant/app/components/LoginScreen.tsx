@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { KeyRound, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react'
+import { KeyRound, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { verifyToken } from '@/app/lib/auth-client'
 import NeuralNetwork from './NeuralNetwork'
+import AriaMark from './AriaMark'
 
 interface Props {
   onSuccess: () => void
@@ -52,11 +53,12 @@ export default function LoginScreen({ onSuccess }: Props) {
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
             style={{
-              background: 'linear-gradient(135deg, #ff2e4d 0%, #c81e3c 100%)',
-              boxShadow: '0 8px 32px rgba(255,46,77,0.4)',
+              background: 'radial-gradient(circle at 50% 40%, rgba(255,46,77,0.22), transparent 70%)',
+              border: '1px solid rgba(255,46,77,0.3)',
+              boxShadow: '0 8px 32px rgba(255,46,77,0.25)',
             }}
           >
-            <ShieldCheck size={26} color="#fff" />
+            <AriaMark size={34} />
           </div>
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
             ARIA protegida

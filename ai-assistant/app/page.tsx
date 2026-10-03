@@ -25,6 +25,8 @@ import {
 } from './lib/store'
 import LoginScreen from './components/LoginScreen'
 import NeuralNetwork from './components/NeuralNetwork'
+import AriaMark from './components/AriaMark'
+import InstallButton from './components/InstallButton'
 import {
   apiFetch,
   fetchAuthRequired,
@@ -506,7 +508,18 @@ export default function Home() {
       <div className="relative flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
         <NeuralNetwork opacity={0.35} />
         <div className="relative z-10 flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-xl" style={{ background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)', animation: 'pulse 1.5s infinite' }} />
+          <div
+            className="flex items-center justify-center rounded-2xl"
+            style={{
+              width: 56,
+              height: 56,
+              background: 'radial-gradient(circle at 50% 40%, rgba(255,46,77,0.25), transparent 70%)',
+              border: '1px solid rgba(255,46,77,0.3)',
+              animation: 'pulse 1.8s ease-in-out infinite',
+            }}
+          >
+            <AriaMark size={34} />
+          </div>
           <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando conversaciones...</span>
         </div>
       </div>
@@ -632,6 +645,7 @@ export default function Home() {
               <span className="hidden sm:inline">Notas</span>
             </button>
             <ModelSelector value={model} onChange={setModel} />
+            <InstallButton />
           </div>
         </header>
 
