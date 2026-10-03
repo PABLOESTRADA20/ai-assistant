@@ -146,23 +146,4 @@ export const AVAILABLE_MODELS: AIModel[] = [
     description: 'Z AI • 200K • gratis con clave',
     badge: '🧩 GLM',
   },
-  // Gateways sin clave (límites bajos, respaldo)
-  {
-    id: 'Meta-Llama-3_3-70B-Instruct',
-    name: 'Llama 3.3 70B (OVH)',
-    description: 'Sin clave • 2 req/min • respaldo',
-    badge: '🔓 Sin clave',
-  },
-  {
-    id: 'Qwen3.6-27B',
-    name: 'Qwen 3.6 27B (OVH)',
-    description: 'Sin clave • 2 req/min • respaldo',
-    badge: '🔓 Sin clave',
-  },
-  {
-    id: 'gpt-oss:20b',
-    name: 'GPT-OSS 20B (LLM7)',
-    description: 'Sin clave • límite bajo • respaldo',
-    badge: '🔓 Sin clave',
-  },
 ]

@@ -43,7 +43,7 @@ export async function groqFetch(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // Los gateways sin clave (OVH, LLM7) no aceptan `Authorization: Bearer`.
+          // Si un proveedor no necesita clave, no se manda `Authorization`.
           ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
           ...(provider.headers ?? {}),
         },

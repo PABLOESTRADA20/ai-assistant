@@ -54,7 +54,7 @@ function groqErrorResponse(status: number, errText: string, provider: Provider =
     )
   }
 
-  // Proveedores con free tier (Gemini, Mistral, OpenRouter, Z AI, OVH, LLM7):
+  // Proveedores con free tier (Gemini, Mistral, OpenRouter, Z AI):
   // no comparten los codigos de Groq, asi que se responde generico con su nombre.
   if (provider.id !== 'groq') {
     const rateLimited = status === 429 || /rate limit|quota|exceeded|too many|limit/i.test(errText)

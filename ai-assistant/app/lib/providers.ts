@@ -4,11 +4,11 @@
  * ARIA nacio atada a Groq (fetch + SSE estilo OpenAI). Con el tiempo se fueron
  * sumando Workers AI (binding `AI`, sin clave) y ahora varios proveedores con
  * free tier que hablan el mismo dialecto OpenAI: Google Gemini, Mistral,
- * OpenRouter, Z AI y dos gateways que no piden clave (OVHcloud y LLM7).
+ * OpenRouter y Z AI.
  *
  * Toda la infraestructura ya asume "fetch a un endpoint OpenAI-compatible con
  * Bearer", asi que sumar un proveedor es solo agregar una entrada aca. Los
- * modelos sin clave (keyless) funcionan de inmediato; los demas aparecen en la
+ * modelos sin clave (Workers AI) funcionan de inmediato; los demas aparecen en la
  * app recien cuando su variable de entorno esta configurada.
  */
 export type ProviderId =
@@ -18,8 +18,6 @@ export type ProviderId =
   | 'mistral'
   | 'openrouter'
   | 'zai'
-  | 'ovh'
-  | 'llm7'
 
 export interface Provider {
   id: ProviderId
@@ -92,24 +90,6 @@ export const ZAI: Provider = {
   supportsTools: false,
 }
 
-/** Gateway con tier anonimo: 2 RPM por IP y modelo, sin registro. */
-export const OVH: Provider = {
-  id: 'ovh',
-  label: 'OVHcloud AI',
-  apiUrl: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions',
-  supportsTools: false,
-  keyless: true,
-}
-
-/** Gateway con acceso anonimo limitado (10 RPM, 60 req/hora). */
-export const LLM7: Provider = {
-  id: 'llm7',
-  label: 'LLM7.io',
-  apiUrl: 'https://api.llm7.io/v1/chat/completions',
-  supportsTools: false,
-  keyless: true,
-}
-
 export interface ModelCatalogEntry {
   id: string
   name: string
@@ -121,7 +101,7 @@ export interface ModelCatalogEntry {
 /**
  * Catalogo visible en la app. El `id` es exactamente el nombre que espera el
  * endpoint del proveedor (no hay traduccion), por eso conviven ids como
- * `openai/gpt-oss-120b` (Groq) y `gpt-oss-120b` (OVH) sin chocar.
+ * `openai/gpt-oss-120b` (Groq) y `@cf/openai/gpt-oss-120b` (Workers AI) sin chocar.
  */
 export const MODEL_CATALOG: ModelCatalogEntry[] = [
   // --- Groq (free tier amplio, con herramientas) ---
@@ -234,28 +214,6 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     provider: ZAI,
   },
 
-  // --- Keyless: funcionan sin registro (limites bajos) ---
-  {
-    id: 'Meta-Llama-3_3-70B-Instruct',
-    name: 'Llama 3.3 70B (OVH)',
-    description: 'Sin clave • 2 req/min • respaldo',
-    badge: 'Sin clave',
-    provider: OVH,
-  },
-  {
-    id: 'Qwen3.6-27B',
-    name: 'Qwen 3.6 27B (OVH)',
-    description: 'Sin clave • 2 req/min • respaldo',
-    badge: 'Sin clave',
-    provider: OVH,
-  },
-  {
-    id: 'gpt-oss:20b',
-    name: 'GPT-OSS 20B (LLM7)',
-    description: 'Sin clave • limite bajo • respaldo',
-    badge: 'Sin clave',
-    provider: LLM7,
-  },
 ]
 
 const CATALOG_BY_ID = new Map(MODEL_CATALOG.map((m) => [m.id, m]))

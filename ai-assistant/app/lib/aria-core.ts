@@ -113,10 +113,6 @@ export const MODEL_CONFIG: Record<string, GroqModelConfig> = {
   'openai/gpt-oss-20b:free': { max_tokens: 4096, temperature: 0.7 },
   'nvidia/nemotron-3-super-120b-a12b:free': { max_tokens: 8192, temperature: 0.6 },
   'glm-4.7-flash': { max_tokens: 8192, temperature: 0.6 },
-  // Gateways sin clave (limites bajos, como respaldo).
-  'Meta-Llama-3_3-70B-Instruct': { max_tokens: 4096, temperature: 0.6 },
-  'Qwen3.6-27B': { max_tokens: 4096, temperature: 0.6 },
-  'gpt-oss:20b': { max_tokens: 4096, temperature: 0.7 },
 }
 
 export const MAX_VISIBLE_MESSAGES = 8
