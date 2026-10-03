@@ -1,0 +1,23 @@
+name: aria_app
+description: ARIA — asistente de IA para el celular.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  shared_preferences: ^2.3.2
+  provider: ^6.1.2
+  flutter_markdown: ^0.7.3
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
