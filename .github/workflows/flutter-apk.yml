@@ -38,6 +38,11 @@ jobs:
           cp -r mobile/lib build_src/lib
           cp mobile/pubspec.yaml build_src/pubspec.yaml
 
+      - name: Poner el nombre ARIA en el lanzador
+        run: |
+          sed -i 's/android:label="aria_app"/android:label="ARIA"/' build_src/android/app/src/main/AndroidManifest.xml
+          grep -n 'android:label' build_src/android/app/src/main/AndroidManifest.xml
+
       - name: Instalar dependencias
         working-directory: build_src
         run: flutter pub get
