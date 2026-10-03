@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { KeyRound, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react'
 import { verifyToken } from '@/app/lib/auth-client'
+import NeuralNetwork from './NeuralNetwork'
 
 interface Props {
   onSuccess: () => void
@@ -38,12 +39,13 @@ export default function LoginScreen({ onSuccess }: Props) {
 
   return (
     <div
-      className="flex h-dvh items-center justify-center px-4"
+      className="relative flex h-dvh items-center justify-center px-4"
       style={{ background: 'var(--app-bg)' }}
     >
+      <NeuralNetwork opacity={0.5} />
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-2xl p-6"
+        className="relative z-10 w-full max-w-sm rounded-2xl p-6"
         style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
         <div className="flex flex-col items-center text-center mb-6">

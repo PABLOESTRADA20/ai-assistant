@@ -24,6 +24,7 @@ import {
   generateTitle,
 } from './lib/store'
 import LoginScreen from './components/LoginScreen'
+import NeuralNetwork from './components/NeuralNetwork'
 import {
   apiFetch,
   fetchAuthRequired,
@@ -502,8 +503,9 @@ export default function Home() {
 
   if (authState === 'checking' || (authState === 'ready' && initialLoading)) {
     return (
-      <div className="flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
-        <div className="flex flex-col items-center gap-3">
+      <div className="relative flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
+        <NeuralNetwork opacity={0.35} />
+        <div className="relative z-10 flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-xl" style={{ background: 'linear-gradient(135deg, #ff2e4d, #c81e3c)', animation: 'pulse 1.5s infinite' }} />
           <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando conversaciones...</span>
         </div>
@@ -516,7 +518,8 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden" style={{ background: 'var(--app-bg)' }}>
+    <div className="relative flex h-dvh overflow-hidden" style={{ background: 'var(--app-bg)' }}>
+      <NeuralNetwork opacity={0.4} />
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -536,7 +539,7 @@ export default function Home() {
 
       <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
 
-      <div className="flex flex-col flex-1 min-w-0 h-full">
+      <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full">
         <header
           className="flex items-center justify-between px-4 py-3 flex-shrink-0 safe-top"
           style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}
