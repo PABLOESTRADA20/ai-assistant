@@ -12,9 +12,34 @@ interface Props {
 
 export default function ModelSelector({ value, onChange }: Props) {
   const [open, setOpen] = useState(false)
+  const [models, setModels] = useState<AIModel[]>(AVAILABLE_MODELS)
   const ref = useRef<HTMLDivElement>(null)
 
-  const current = AVAILABLE_MODELS.find((m) => m.id === value) || AVAILABLE_MODELS[0]
+  const current = models.find((m) => m.id === value) || models[0]
+
+  // El servidor dice que modelos pueden responder (los gratis sin clave y los
+  // que ya tienen clave configurada). Si no responde, se usa la lista local.
+  useEffect(() => {
+    let alive = true
+    fetch('/api/models')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!alive || !data || !Array.isArray(data.models)) return
+        const available: AIModel[] = data.models
+          .filter((m: { available?: boolean }) => m.available !== false)
+          .map((m: AIModel) => ({
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            badge: m.badge,
+          }))
+        if (available.length) setModels(available)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -53,7 +78,7 @@ export default function ModelSelector({ value, onChange }: Props) {
             boxShadow: '0 -8px 32px rgba(0,0,0,0.25)',
           }}
         >
-          {AVAILABLE_MODELS.map((model: AIModel) => (
+          {models.map((model: AIModel) => (
             <button
               key={model.id}
               onClick={() => { onChange(model.id); setOpen(false) }}

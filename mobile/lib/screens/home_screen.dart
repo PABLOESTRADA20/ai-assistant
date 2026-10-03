@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
       initialValue: c.model,
       onSelected: c.setModel,
       color: kSurface2,
-      itemBuilder: (context) => availableModels
+      itemBuilder: (context) => c.models
           .map(
             (m) => PopupMenuItem<String>(
               value: m.id,
@@ -173,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 110),
               child: Text(
-                modelName(c.model),
+                c.modelLabel(c.model),
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: kTextSecondary, fontSize: 12),
               ),

@@ -54,6 +54,22 @@ function groqErrorResponse(status: number, errText: string, provider: Provider =
     )
   }
 
+  // Proveedores con free tier (Gemini, Mistral, OpenRouter, Z AI, OVH, LLM7):
+  // no comparten los codigos de Groq, asi que se responde generico con su nombre.
+  if (provider.id !== 'groq') {
+    const rateLimited = status === 429 || /rate limit|quota|exceeded|too many|limit/i.test(errText)
+    console.error(`${provider.label} ${status}: ${errText.slice(0, 400)}`)
+    return Response.json(
+      {
+        error: rateLimited
+          ? `${provider.label} alcanzo su limite gratuito. Proba con otro modelo mientras se recupera.`
+          : `${provider.label} no pudo responder ahora mismo. Proba de nuevo o cambia de modelo.`,
+        code: rateLimited ? 'quota_daily' : 'upstream_error',
+      },
+      { status: rateLimited ? 429 : 502, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
   const isRateLimit = status === 429 || /rate limit|rate_limit_exceeded/i.test(errText)
 
   if (isRateLimit) {

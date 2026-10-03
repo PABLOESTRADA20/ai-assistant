@@ -42,8 +42,9 @@ export async function groqFetch(
       res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          // Los gateways sin clave (OVH, LLM7) no aceptan `Authorization: Bearer`.
+          ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
           ...(provider.headers ?? {}),
         },
         body: JSON.stringify(body),

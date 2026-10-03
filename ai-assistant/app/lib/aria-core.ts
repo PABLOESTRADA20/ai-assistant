@@ -97,10 +97,26 @@ export const MODEL_CONFIG: Record<string, GroqModelConfig> = {
   'openai/gpt-oss-120b': { max_tokens: 8192, temperature: 0.6 },
   'qwen/qwen3.8-27b': { max_tokens: 8192, temperature: 0.6 },
   'openai/gpt-oss-20b': { max_tokens: 4096, temperature: 0.7 },
+  // Workers AI (gratis, sin clave). Comparten las 10.000 neuronas/dia.
+  '@cf/openai/gpt-oss-120b': { max_tokens: 8192, temperature: 0.6 },
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { max_tokens: 8192, temperature: 0.6 },
+  '@cf/google/gemma-4-26b-a4b-it': { max_tokens: 8192, temperature: 0.6 },
+  '@cf/mistralai/mistral-small-3.1-24b-instruct': { max_tokens: 8192, temperature: 0.6 },
   // DeepSeek R1 distilado por Cloudflare Workers AI (gratis dentro de las
   // 10.000 neuronas/día). Es de razonamiento: gasta tokens pensando antes de
   // responder, por eso se le deja un margen amplio.
   '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': { max_tokens: 8192, temperature: 0.6 },
+  // Proveedores con free tier (requieren clave).
+  'gemini-3.5-flash': { max_tokens: 8192, temperature: 0.6 },
+  'gemini-3.5-flash-lite': { max_tokens: 8192, temperature: 0.6 },
+  'mistral-small-4': { max_tokens: 8192, temperature: 0.6 },
+  'openai/gpt-oss-20b:free': { max_tokens: 4096, temperature: 0.7 },
+  'nvidia/nemotron-3-super-120b-a12b:free': { max_tokens: 8192, temperature: 0.6 },
+  'glm-4.7-flash': { max_tokens: 8192, temperature: 0.6 },
+  // Gateways sin clave (limites bajos, como respaldo).
+  'Meta-Llama-3_3-70B-Instruct': { max_tokens: 4096, temperature: 0.6 },
+  'Qwen3.6-27B': { max_tokens: 4096, temperature: 0.6 },
+  'gpt-oss:20b': { max_tokens: 4096, temperature: 0.7 },
 }
 
 export const MAX_VISIBLE_MESSAGES = 8

@@ -68,6 +68,33 @@ class AriaApi {
     return res.statusCode == 200;
   }
 
+  /// Catalogo de modelos disponibles en el servidor (publico). Devuelve solo
+  /// los que pueden responder: los gratis sin clave y los que ya tienen clave.
+  Future<List<AIModel>> getModels() async {
+    final res = await http
+        .get(Uri.parse('$kBaseUrl/api/models'))
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) return const [];
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
+    final raw = (data is Map ? data['models'] : data);
+    if (raw is! List) return const [];
+    final out = <AIModel>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final m = Map<String, dynamic>.from(item);
+      if (m['available'] == false) continue;
+      out.add(
+        AIModel(
+          id: (m['id'] ?? '').toString(),
+          name: (m['name'] ?? '').toString(),
+          description: (m['description'] ?? '').toString(),
+          badge: (m['badge'] ?? '').toString(),
+        ),
+      );
+    }
+    return out;
+  }
+
   Future<List<Conversation>> getConversations() async {
     final res = await http.get(
       Uri.parse('$kBaseUrl/api/conversations'),

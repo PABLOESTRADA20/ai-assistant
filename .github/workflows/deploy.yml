@@ -72,6 +72,21 @@ jobs:
         run: |
           echo "${{ secrets.DATABASE_URL }}" | npx wrangler secret put DATABASE_URL
           echo "${{ secrets.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY
+          # Proveedores gratis adicionales. Todos opcionales: si el secret no
+          # existe, sus modelos simplemente no aparecen en la app (el endpoint
+          # /api/models calcula la disponibilidad).
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "${{ secrets.GEMINI_API_KEY }}" | npx wrangler secret put GEMINI_API_KEY
+          fi
+          if [ -n "${{ secrets.MISTRAL_API_KEY }}" ]; then
+            echo "${{ secrets.MISTRAL_API_KEY }}" | npx wrangler secret put MISTRAL_API_KEY
+          fi
+          if [ -n "${{ secrets.OPENROUTER_API_KEY }}" ]; then
+            echo "${{ secrets.OPENROUTER_API_KEY }}" | npx wrangler secret put OPENROUTER_API_KEY
+          fi
+          if [ -n "${{ secrets.ZAI_API_KEY }}" ]; then
+            echo "${{ secrets.ZAI_API_KEY }}" | npx wrangler secret put ZAI_API_KEY
+          fi
           # Sin claves de busqueda web obligatorias: `web_search` usa Firecrawl
           # en modo keyless (busqueda general y noticias) mas APIs keyless
           # (Wikipedia, Stack Exchange, Hacker News, MDN, endoflife.date y

@@ -21,6 +21,7 @@ class ChatController extends ChangeNotifier {
   bool sending = false;
   String streaming = '';
   String model = defaultModelId;
+  List<AIModel> models = List.of(availableModels);
   String? error;
   String? notice;
 
@@ -51,6 +52,7 @@ class ChatController extends ChangeNotifier {
       api.token = savedToken;
       authState = AuthState.ready;
       notifyListeners();
+      unawaited(_loadModels());
       await _loadConversations();
       return;
     }
@@ -72,6 +74,7 @@ class ChatController extends ChangeNotifier {
     if (ok) {
       authState = AuthState.ready;
       notifyListeners();
+      unawaited(_loadModels());
       await _loadConversations();
     } else {
       authState = AuthState.needed;
@@ -95,6 +98,7 @@ class ChatController extends ChangeNotifier {
     await prefs.setString(_tokenKey, value);
     authState = AuthState.ready;
     notifyListeners();
+    unawaited(_loadModels());
     await _loadConversations();
     return null;
   }
@@ -172,6 +176,33 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Trae del servidor los modelos que pueden responder y actualiza la lista.
+  /// Si falla, se queda con la lista local (los modelos base).
+  Future<void> _loadModels() async {
+    try {
+      final remote = await _api!.getModels();
+      if (remote.isEmpty) return;
+      models = remote;
+      if (!models.any((m) => m.id == model)) {
+        model = models.first.id;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Sin conexión: se mantiene la lista local.
+    }
+  }
+
+  /// Nombre visible de un modelo (o el id si no se conoce).
+  String modelLabel(String id) {
+    for (final m in models) {
+      if (m.id == id) return m.name;
+    }
+    for (final m in availableModels) {
+      if (m.id == id) return m.name;
+    }
+    return id;
+  }
+
   void clearError() {
     error = null;
     notifyListeners();
@@ -227,7 +258,7 @@ class ChatController extends ChangeNotifier {
           notifyListeners();
         },
         onModelSwitch: (from, to) {
-          notice = '${modelName(from)} no ejecuta herramientas. Pasé a ${modelName(to)}.';
+          notice = '${modelLabel(from)} no ejecuta herramientas. Pasé a ${modelLabel(to)}.';
           notifyListeners();
           unawaited(Future.delayed(const Duration(seconds: 8), () {
             if (notice != null) {
