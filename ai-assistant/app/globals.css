@@ -66,11 +66,19 @@ html {
 body {
   background: var(--app-bg);
   background-attachment: fixed;
+  /* Fallback para navegadores viejos que aún no entienden `dvh`. */
+  height: 100vh;
   height: 100dvh;
   overflow: hidden;
   /* Quita el rebote tipo página web: se siente como app nativa. */
   overscroll-behavior: none;
   touch-action: manipulation;
+}
+
+/* Mismos fallback para la utilidad de Tailwind usada en el contenedor raíz. */
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
 }
 
 /* Móvil con notch: `viewportFit: cover` deja el contenido bajo la barra de

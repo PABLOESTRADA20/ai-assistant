@@ -1,5 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from 'next'
+import Script from 'next/script'
 import './globals.css'
 import ServiceWorkerRegister from './components/ServiceWorkerRegister'
 
@@ -37,6 +38,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" suppressHydrationWarning>
       <body className="noise">
+        {/* Guarda `beforeinstallprompt` antes de la hidratación: si el navegador
+            lo dispara muy pronto, el botón Instalar no lo pierde. */}
+        <Script id="aria-install-capture" strategy="beforeInteractive">
+          {`window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__ariaBIP=e;window.dispatchEvent(new Event('aria:bip'));});`}
+        </Script>
         {children}
         <ServiceWorkerRegister />
       </body>

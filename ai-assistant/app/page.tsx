@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X, FileText } from 'lucide-react'
+import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X, FileText, MoreVertical } from 'lucide-react'
 
 import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
@@ -52,7 +52,9 @@ export default function Home() {
   const [modelNotice, setModelNotice] = useState<string | null>(null)
   const [githubOpen, setGithubOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const headerMenuRef = useRef<HTMLDivElement>(null)
   // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
   const { speak, stop: stopSpeech, prime } = useTTS()
 
@@ -107,6 +109,18 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
   }, [theme])
+
+  // Cerrar el menú móvil del header al tocar fuera de él.
+  useEffect(() => {
+    if (!headerMenuOpen) return
+    const onClick = (e: MouseEvent) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
+        setHeaderMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [headerMenuOpen])
 
   // Preferencia de voz: persistente entre recargas.
   useEffect(() => {
@@ -530,6 +544,75 @@ export default function Home() {
     return <LoginScreen onSuccess={() => setAuthState('ready')} />
   }
 
+  // Acciones secundarias del header. En pantallas grandes se ven como botones;
+  // en móvil van dentro del menú "⋮" para que el header no se amontone.
+  const headerActions = [
+    {
+      key: 'agent',
+      label: 'Agente local',
+      title: localAgent
+        ? 'Agente local conectado: ARIA puede abrir apps en tu PC'
+        : 'Agente local desconectado: ARIA no puede abrir apps en tu PC. Arráncalo con: node local-agent/aria-local-agent.mjs',
+      icon: <span className="w-1.5 h-1.5 rounded-full" style={{ background: localAgent ? '#34d399' : '#6b7280' }} />,
+      onClick: async () => setLocalAgent(await checkLocalAgent()),
+      active: false,
+      disabled: false,
+    },
+    {
+      key: 'voice',
+      label: 'Voz',
+      title: autoSpeak ? 'Voz activada: ARIA lee sus respuestas en voz alta' : 'Leer las respuestas en voz alta',
+      icon: autoSpeak ? <Volume2 size={14} /> : <VolumeX size={14} />,
+      onClick: toggleAutoSpeak,
+      active: autoSpeak,
+      disabled: false,
+    },
+    ...(activeConversation && activeConversation.messages.length >= 2
+      ? [
+          {
+            key: 'regen',
+            label: 'Regenerar',
+            title: 'Volver a generar la última respuesta',
+            icon: <RefreshCw size={14} />,
+            onClick: handleRegenerate,
+            active: false,
+            disabled: isLoading,
+          },
+        ]
+      : []),
+    ...(activeConversation && activeConversation.messages.length > 0
+      ? [
+          {
+            key: 'export',
+            label: 'Exportar',
+            title: 'Exportar conversación a Markdown',
+            icon: <Download size={14} />,
+            onClick: handleExportMarkdown,
+            active: false,
+            disabled: false,
+          },
+        ]
+      : []),
+    {
+      key: 'github',
+      label: 'GitHub',
+      title: 'Repositorios de GitHub que ARIA puede leer y revisar',
+      icon: <Github size={14} />,
+      onClick: () => setGithubOpen(true),
+      active: false,
+      disabled: false,
+    },
+    {
+      key: 'notes',
+      label: 'Notas',
+      title: 'Carpeta ARIA: notas guardadas en la nube, exportables a Obsidian',
+      icon: <FileText size={14} />,
+      onClick: () => setNotesOpen(true),
+      active: false,
+      disabled: false,
+    },
+  ]
+
   return (
     <div className="relative flex h-dvh overflow-hidden" style={{ background: 'var(--app-bg)' }}>
       <NeuralNetwork opacity={0.4} />
@@ -554,10 +637,10 @@ export default function Home() {
 
       <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full">
         <header
-          className="flex items-center justify-between px-4 py-3 flex-shrink-0 safe-top"
+          className="flex items-center justify-between gap-2 px-4 py-3 flex-shrink-0 safe-top"
           style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden w-8 h-8 flex items-center justify-center rounded-xl hover:opacity-70 transition cursor-pointer"
@@ -570,82 +653,75 @@ export default function Home() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={async () => setLocalAgent(await checkLocalAgent())}
-              title={
-                localAgent
-                  ? 'Agente local conectado: ARIA puede abrir apps en tu PC'
-                  : 'Agente local desconectado: ARIA no puede abrir apps en tu PC. Arráncalo con: node local-agent/aria-local-agent.mjs'
-              }
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
-              style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: localAgent ? '#34d399' : '#6b7280' }}
-              />
-              <span className="hidden sm:inline">Agente local</span>
-            </button>
-            <button
-              onClick={toggleAutoSpeak}
-              title={
-                autoSpeak
-                  ? 'Voz activada: ARIA lee sus respuestas en voz alta'
-                  : 'Leer las respuestas en voz alta'
-              }
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
-              style={{
-                color: autoSpeak ? 'var(--accent)' : 'var(--text-muted)',
-                background: autoSpeak ? 'var(--accent-muted)' : 'var(--surface-2)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              {autoSpeak ? <Volume2 size={12} /> : <VolumeX size={12} />}
-              <span className="hidden sm:inline">Voz</span>
-            </button>
-            {activeConversation && activeConversation.messages.length >= 2 && (
-              <button
-                onClick={handleRegenerate}
-                disabled={isLoading}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70 disabled:opacity-40"
-                style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-              >
-                <RefreshCw size={12} />
-                <span className="hidden sm:inline">Regenerar</span>
-              </button>
-            )}
-            {activeConversation && activeConversation.messages.length > 0 && (
-              <button
-                onClick={handleExportMarkdown}
-                title="Exportar conversación a Markdown"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
-                style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-              >
-                <Download size={12} />
-                <span className="hidden sm:inline">Exportar</span>
-              </button>
-            )}
-            <button
-              onClick={() => setGithubOpen(true)}
-              title="Repositorios de GitHub que ARIA puede leer y revisar"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
-              style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            >
-              <Github size={12} />
-              <span className="hidden sm:inline">GitHub</span>
-            </button>
-            <button
-              onClick={() => setNotesOpen(true)}
-              title="Carpeta ARIA: notas guardadas en la nube, exportables a Obsidian"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70"
-              style={{ color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            >
-              <FileText size={12} />
-              <span className="hidden sm:inline">Notas</span>
-            </button>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {/* Acciones secundarias: visibles desde md; en móvil van al menú ⋮. */}
+            <div className="hidden md:flex items-center gap-2">
+              {headerActions.map((a) => (
+                <button
+                  key={a.key}
+                  onClick={a.onClick}
+                  disabled={a.disabled}
+                  title={a.title}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition hover:opacity-70 disabled:opacity-40"
+                  style={{
+                    color: a.active ? 'var(--accent)' : 'var(--text-muted)',
+                    background: a.active ? 'var(--accent-muted)' : 'var(--surface-2)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  {a.icon}
+                  <span className="hidden lg:inline">{a.label}</span>
+                </button>
+              ))}
+            </div>
+
             <ModelSelector value={model} onChange={setModel} />
             <InstallButton />
+
+            <div ref={headerMenuRef} className="relative md:hidden">
+              <button
+                onClick={() => setHeaderMenuOpen((o) => !o)}
+                aria-label="Más opciones"
+                aria-expanded={headerMenuOpen}
+                className="w-8 h-8 flex items-center justify-center rounded-xl transition hover:opacity-70"
+                style={{
+                  color: 'var(--text-secondary)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <MoreVertical size={15} />
+              </button>
+              {headerMenuOpen && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-56 rounded-2xl p-1.5 z-[70] animate-fade-in"
+                  style={{
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 16px 48px rgba(0,0,0,0.55)',
+                  }}
+                >
+                  {headerActions.map((a) => (
+                    <button
+                      key={a.key}
+                      onClick={() => {
+                        setHeaderMenuOpen(false)
+                        a.onClick()
+                      }}
+                      disabled={a.disabled}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-left transition hover:opacity-80 disabled:opacity-40"
+                      style={{
+                        color: a.active ? 'var(--accent)' : 'var(--text-primary)',
+                        background: a.active ? 'var(--accent-muted)' : 'transparent',
+                      }}
+                    >
+                      {a.icon}
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
