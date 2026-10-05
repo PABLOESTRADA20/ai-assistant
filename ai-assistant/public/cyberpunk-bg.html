@@ -18,6 +18,10 @@
 <script src="https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js"></script>
 <script>
 (function(){
+  var params = new URLSearchParams(location.search);
+  var TRANSPARENT = params.get('bg') === '0';
+  if (TRANSPARENT) document.body.classList.add('transparent');
+
   var stage = document.getElementById('stage');
   var isNarrow = Math.min(window.innerWidth, window.innerHeight) < 620;
   var dpr = window.devicePixelRatio || 1;
