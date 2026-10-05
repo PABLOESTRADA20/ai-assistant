@@ -92,3 +92,21 @@ jobs:
             desconocido, permití la instalación.
           files: ARIA-*.apk
           make_latest: true
+
+      # El APK tambien se sirve desde el dominio propio de ARIA (/apk/...), que
+      # es de donde lo baja la gente en el celular: GitHub redirige a
+      # release-assets.githubusercontent.com y esa descarga se trababa.
+      - name: Publicar los APK en el dominio de ARIA
+        run: |
+          set -e
+          mkdir -p ai-assistant/public/apk
+          cp ARIA-arm64-v8a.apk ARIA-armeabi-v7a.apk ai-assistant/public/apk/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ai-assistant/public/apk
+          if git diff --cached --quiet; then
+            echo "Los APK del dominio ya estaban actualizados."
+          else
+            git commit -m "chore: actualiza los APK en el dominio de ARIA [skip ci]"
+            git push origin main
+          fi
