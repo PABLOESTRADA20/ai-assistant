@@ -129,7 +129,6 @@
     </div>
   </main>
 
-  <script src="https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js"></script>
   <script>
     (function(){
       const bg2d = document.getElementById('bg2d');
@@ -138,22 +137,9 @@
       const txtMode = document.getElementById('txtMode');
       const iconMode = document.getElementById('iconMode');
 
-      let holo = false;
-      function setMode(v){
-        holo = v;
-        if (holo){
-          bg3d.style.display = 'block';
-          bg2d.style.display = 'none';
-          txtMode.textContent = 'Modo: Holográfico ON';
-          iconMode.textContent = 'view_in_ar';
-        } else {
-          bg3d.style.display = 'none';
-          bg2d.style.display = 'block';
-          txtMode.textContent = 'Modo: Holográfico OFF';
-          iconMode.textContent = 'auto_awesome';
-        }
-      }
-      btnMode.addEventListener('click', ()=> setMode(!holo));
+      bg3d.style.display = 'none';
+      btnMode.style.opacity = '0.5';
+      btnMode.disabled = true;
 
       // Fondo 2D: auto estilizado detrás
       (function draw2D(){
@@ -200,36 +186,7 @@
         loop();
       })();
 
-      // Fondo 3D (holográfico)
-      (function draw3D(){
-        const c3 = document.createElement('div');
-        c3.id='c3'; c3.style.cssText='position:fixed;inset:0';
-        bg3d.appendChild(c3);
-        const w = ()=>c3.clientWidth||innerWidth, h=()=>c3.clientHeight||innerHeight;
-        const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x050407,0.024);
-        const cam=new THREE.PerspectiveCamera(42,w()/h(),0.1,90);
-        cam.position.set(0,1.2,5.2);
-        const ren=new THREE.WebGLRenderer({antialias:true,alpha:true});
-        ren.setPixelRatio(Math.min(devicePixelRatio,2)); ren.setSize(w(),h()); ren.setClearColor(0,0);
-        c3.appendChild(ren.domElement);
-        const amb=new THREE.AmbientLight(0x2a0d16,0.7); scene.add(amb);
-        const rim=new THREE.DirectionalLight(0xff2244,2.6); rim.position.set(-3,2,-3); scene.add(rim);
-        const key=new THREE.DirectionalLight(0xffffff,1.6); key.position.set(2,3,3); scene.add(key);
-        const car=new THREE.Group(); scene.add(car);
-        const paint=new THREE.MeshStandardMaterial({color:0xe6ebf2,metalness:0.92,roughness:0.22,envMapIntensity:1.4});
-        const glass=new THREE.MeshPhysicalMaterial({color:0x06070a,metalness:0.08,roughness:0.05,transparent:true,opacity:0.5});
-        const body=new THREE.Mesh(new THREE.BoxGeometry(1.8,0.18,3.2),paint); body.position.y=0.4; car.add(body);
-        const nose=new THREE.Mesh(new THREE.CylinderGeometry(0.42,1.0,0.4,4),paint); nose.rotation.y=Math.PI/4; nose.position.set(0,0.36,1.4); nose.scale.set(1,0.6,1.5); car.add(nose);
-        const cab=new THREE.Mesh(new THREE.CylinderGeometry(0.8,1.1,0.4,4),glass); cab.rotation.y=Math.PI/4; cab.position.set(0,0.6,-0.05); cab.scale.set(1,1,1.5); car.add(cab);
-        const cage=new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.BoxGeometry(2.0,0.6,3.6)),new THREE.LineBasicMaterial({color:0xff0044,transparent:true,opacity:0.22}));
-        cage.position.y=0.45; car.add(cage);
-        const ring=new THREE.Mesh(new THREE.RingGeometry(2.2,2.24,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0xff1144,side:THREE.DoubleSide,transparent:true,opacity:0.28}));
-        ring.position.y=0.05; scene.add(ring);
-        let t=0; const clock=new THREE.Clock();
-        addEventListener('resize',()=>{cam.aspect=w()/h();cam.updateProjectionMatrix();ren.setSize(w(),h());});
-        function anim(){ requestAnimationFrame(anim); t=clock.getElapsedTime(); car.rotation.y=t*0.12; car.rotation.x=Math.sin(t*0.5)*0.01; car.position.y=Math.sin(t*0.9)*0.01; ring.rotation.z=t*0.15; cage.material.opacity=0.16+Math.sin(t*2)*0.1; ren.render(scene,cam); }
-        anim();
-      })();
+
     })();
   </script>
 </body>
