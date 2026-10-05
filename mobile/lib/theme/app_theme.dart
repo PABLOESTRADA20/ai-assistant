@@ -26,7 +26,8 @@ ThemeData buildAriaTheme() {
       centerTitle: false,
     ),
     drawerTheme: const DrawerThemeData(backgroundColor: kSurface1),
-    dialogTheme: const DialogTheme(backgroundColor: kSurface1),
+    // Flutter 3.29+ renombro DialogTheme a DialogThemeData.
+    dialogTheme: const DialogThemeData(backgroundColor: kSurface1),
     snackBarTheme: const SnackBarThemeData(
       backgroundColor: kSurface3,
       contentTextStyle: TextStyle(color: kTextPrimary),
