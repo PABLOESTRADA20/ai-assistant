@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html class="dark" lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>ARIA</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..600&family=JetBrains+Mono:wght@400..600&family=Space+Grotesk:wght@400..700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #07080b;
+      font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      color: #f3f4f6;
+      -webkit-tap-highlight-color: transparent;
+    }
+    * { box-sizing: border-box; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(239, 68, 68, 0.25); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(239, 68, 68, 0.4); }
+    .glass {
+      background: rgba(13, 14, 20, 0.82);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(239, 68, 68, 0.16);
+    }
+    .glass-light {
+      background: rgba(13, 14, 20, 0.72);
+      backdrop-filter: blur(14px) saturate(120%);
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      border: 1px solid rgba(239, 68, 68, 0.22);
+    }
+    .chat-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    .chat-scroll::-webkit-scrollbar { display: none; }
+    #bg3d, #bg2d { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+    #bg2d { z-index: 0; background: radial-gradient(ellipse at 50% 40%, rgba(239,68,68,0.12) 0%, rgba(7,8,11,1) 70%); }
+    #bg3d { z-index: 0; display: none; }
+    canvas { display: block; touch-action: none; }
+    .vig {
+      position: fixed; inset: 0; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(3,4,6,0.78) 100%);
+      z-index: 1;
+    }
+    .halo {
+      position: fixed; left: 50%; top: 48%; transform: translate(-50%,-50%);
+      width: min(70vw,560px); height: min(70vw,560px); border-radius: 50%;
+      background: radial-gradient(circle, rgba(239,68,68,0.14) 0%, rgba(153,27,27,0.05) 50%, transparent 70%);
+      filter: blur(28px); pointer-events: none; z-index: 0;
+      animation: breathe 4.2s ease-in-out infinite;
+    }
+    @keyframes breathe { 0%,100%{opacity:.7;transform:translate(-50%,-50%) scale(1)} 50%{opacity:1;transform:translate(-50%,-50%) scale(1.05)} }
+  </style>
+</head>
+<body>
+  <div id="bg2d"></div>
+  <div id="bg3d"></div>
+  <div class="halo"></div>
+  <div class="vig"></div>
+
+  <!-- Header -->
+  <header class="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-4 sm:px-5 py-3 pointer-events-none">
+    <div class="pointer-events-auto glass-light flex items-center gap-2 px-3 py-1.5 rounded-full">
+      <span class="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_#fb7185] animate-pulse"></span>
+      <span class="text-[10px] tracking-[0.18em] uppercase text-zinc-300">ARIA • ASISTENTE IA</span>
+    </div>
+    <div class="pointer-events-auto glass-light flex items-center gap-1.5 px-2.5 py-1 rounded-full">
+      <button id="btnMode" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-white/5 transition">
+        <span class="material-symbols-outlined text-[16px] text-rose-400" id="iconMode">auto_awesome</span>
+        <span class="text-[10px] uppercase tracking-[0.14em] text-zinc-300" id="txtMode">Modo: Holográfico OFF</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="fixed left-0 top-14 bottom-0 z-20 w-[76px] sm:w-[260px] flex flex-col gap-2 px-2 sm:px-3 py-2 pointer-events-none">
+    <button class="pointer-events-auto glass flex items-center gap-2 px-2 sm:px-3 py-2 rounded-xl w-full justify-center sm:justify-start">
+      <span class="material-symbols-outlined text-[18px] text-rose-400">add</span>
+      <span class="hidden sm:inline text-[11px] uppercase tracking-[0.14em] text-zinc-300">Nueva conversación</span>
+    </button>
+    <div class="pointer-events-auto glass-light flex-1 rounded-xl p-1 sm:p-2 flex flex-col gap-1 overflow-y-auto chat-scroll">
+      <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
+        <span class="material-symbols-outlined text-[16px] text-rose-400">chat_bubble</span>
+        <span class="hidden sm:inline text-[12px] text-zinc-300 truncate">Bienvenida a ARIA</span>
+      </div>
+      <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5">
+        <span class="material-symbols-outlined text-[16px] text-zinc-500">chat_bubble</span>
+        <span class="hidden sm:inline text-[12px] text-zinc-500 truncate">Conversación nueva</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Chat -->
+  <main class="fixed inset-0 z-10 flex flex-col items-center justify-between px-2 sm:px-5 pt-16 pb-5 pointer-events-none">
+    <div class="w-full max-w-3xl flex-1 flex flex-col gap-3 overflow-y-auto chat-scroll py-4 pointer-events-auto">
+      <div class="flex justify-start">
+        <div class="glass-light max-w-[92%] sm:max-w-[78%] px-4 py-2.5 rounded-2xl rounded-tl-none">
+          <p class="text-[13px] sm:text-[14px] leading-relaxed text-zinc-300">
+            Hola, soy ARIA. Preguntame lo que quieras.
+          </p>
+        </div>
+      </div>
+      <div class="flex justify-end">
+        <div class="glass max-w-[92%] sm:max-w-[78%] px-4 py-2.5 rounded-2xl rounded-tr-none">
+          <p class="text-[13px] sm:text-[14px] leading-relaxed text-zinc-100">
+            Muestra el diseño limpio con fondo del auto
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="w-full max-w-3xl pointer-events-auto">
+      <div class="glass flex items-end gap-2 px-2 sm:px-3 py-1.5 rounded-full">
+        <textarea rows="1" placeholder="Preguntá cualquier cosa..." class="flex-1 bg-transparent text-[13px] sm:text-[14px] text-zinc-300 placeholder:text-zinc-500 resize-none focus:outline-none px-2 py-1.5 max-h-36"></textarea>
+        <button class="p-2 rounded-full hover:bg-white/5">
+          <span class="material-symbols-outlined text-[18px] text-rose-400">send</span>
+        </button>
+      </div>
+      <div class="mt-1.5 flex justify-center">
+        <span class="text-[9px] uppercase tracking-[0.14em] text-zinc-500">Enter para enviar • Shift+Enter para salto de línea</span>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js"></script>
+  <script>
+    (function(){
+      const bg2d = document.getElementById('bg2d');
+      const bg3d = document.getElementById('bg3d');
+      const btnMode = document.getElementById('btnMode');
+      const txtMode = document.getElementById('txtMode');
+      const iconMode = document.getElementById('iconMode');
+
+      let holo = false;
+      function setMode(v){
+        holo = v;
+        if (holo){
+          bg3d.style.display = 'block';
+          bg2d.style.display = 'none';
+          txtMode.textContent = 'Modo: Holográfico ON';
+          iconMode.textContent = 'view_in_ar';
+        } else {
+          bg3d.style.display = 'none';
+          bg2d.style.display = 'block';
+          txtMode.textContent = 'Modo: Holográfico OFF';
+          iconMode.textContent = 'auto_awesome';
+        }
+      }
+      btnMode.addEventListener('click', ()=> setMode(!holo));
+
+      // Fondo 2D: auto estilizado detrás
+      (function draw2D(){
+        const c = document.createElement('canvas');
+        c.style.position='fixed'; c.style.inset='0'; c.style.width='100%'; c.style.height='100%';
+        bg2d.appendChild(c);
+        const ctx = c.getContext('2d');
+        function resize(){ c.width = innerWidth*devicePixelRatio; c.height = innerHeight*devicePixelRatio; ctx.scale(devicePixelRatio,devicePixelRatio); }
+        addEventListener('resize', resize); resize();
+        let t=0;
+        function loop(){
+          requestAnimationFrame(loop);
+          t+=0.002;
+          const w=innerWidth,h=innerHeight;
+          ctx.clearRect(0,0,w,h);
+          // silueta auto central
+          ctx.save();
+          ctx.translate(w/2, h/2 + Math.sin(t*400)*2);
+          ctx.rotate(Math.sin(t)*0.01);
+          const s = Math.min(w,h)*0.36;
+          const grd = ctx.createLinearGradient(-s,-s,s,s);
+          grd.addColorStop(0,'rgba(255,255,255,0.18)');
+          grd.addColorStop(1,'rgba(255,255,255,0.06)');
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.moveTo(-s*0.9, s*0.25);
+          ctx.lineTo(0, -s*0.9);
+          ctx.lineTo(s*0.9, s*0.25);
+          ctx.lineTo(s*0.5, s*0.25);
+          ctx.lineTo(0, -s*0.4);
+          ctx.lineTo(-s*0.5, s*0.25);
+          ctx.closePath();
+          ctx.fill();
+          // barra
+          ctx.fillStyle='rgba(255,80,100,0.25)';
+          ctx.fillRect(-s*0.32, s*0.12, s*0.64, s*0.08);
+          // halo
+          const g2 = ctx.createRadialGradient(0,-s*0.2,10,0,-s*0.2,s*1.2);
+          g2.addColorStop(0,'rgba(239,68,68,0.25)');
+          g2.addColorStop(1,'rgba(239,68,68,0)');
+          ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(0,-s*0.2,s*1.1,0,Math.PI*2); ctx.fill();
+          ctx.restore();
+        }
+        loop();
+      })();
+
+      // Fondo 3D (holográfico)
+      (function draw3D(){
+        const c3 = document.createElement('div');
+        c3.id='c3'; c3.style.cssText='position:fixed;inset:0';
+        bg3d.appendChild(c3);
+        const w = ()=>c3.clientWidth||innerWidth, h=()=>c3.clientHeight||innerHeight;
+        const scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x050407,0.024);
+        const cam=new THREE.PerspectiveCamera(42,w()/h(),0.1,90);
+        cam.position.set(0,1.2,5.2);
+        const ren=new THREE.WebGLRenderer({antialias:true,alpha:true});
+        ren.setPixelRatio(Math.min(devicePixelRatio,2)); ren.setSize(w(),h()); ren.setClearColor(0,0);
+        c3.appendChild(ren.domElement);
+        const amb=new THREE.AmbientLight(0x2a0d16,0.7); scene.add(amb);
+        const rim=new THREE.DirectionalLight(0xff2244,2.6); rim.position.set(-3,2,-3); scene.add(rim);
+        const key=new THREE.DirectionalLight(0xffffff,1.6); key.position.set(2,3,3); scene.add(key);
+        const car=new THREE.Group(); scene.add(car);
+        const paint=new THREE.MeshStandardMaterial({color:0xe6ebf2,metalness:0.92,roughness:0.22,envMapIntensity:1.4});
+        const glass=new THREE.MeshPhysicalMaterial({color:0x06070a,metalness:0.08,roughness:0.05,transparent:true,opacity:0.5});
+        const body=new THREE.Mesh(new THREE.BoxGeometry(1.8,0.18,3.2),paint); body.position.y=0.4; car.add(body);
+        const nose=new THREE.Mesh(new THREE.CylinderGeometry(0.42,1.0,0.4,4),paint); nose.rotation.y=Math.PI/4; nose.position.set(0,0.36,1.4); nose.scale.set(1,0.6,1.5); car.add(nose);
+        const cab=new THREE.Mesh(new THREE.CylinderGeometry(0.8,1.1,0.4,4),glass); cab.rotation.y=Math.PI/4; cab.position.set(0,0.6,-0.05); cab.scale.set(1,1,1.5); car.add(cab);
+        const cage=new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.BoxGeometry(2.0,0.6,3.6)),new THREE.LineBasicMaterial({color:0xff0044,transparent:true,opacity:0.22}));
+        cage.position.y=0.45; car.add(cage);
+        const ring=new THREE.Mesh(new THREE.RingGeometry(2.2,2.24,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0xff1144,side:THREE.DoubleSide,transparent:true,opacity:0.28}));
+        ring.position.y=0.05; scene.add(ring);
+        let t=0; const clock=new THREE.Clock();
+        addEventListener('resize',()=>{cam.aspect=w()/h();cam.updateProjectionMatrix();ren.setSize(w(),h());});
+        function anim(){ requestAnimationFrame(anim); t=clock.getElapsedTime(); car.rotation.y=t*0.12; car.rotation.x=Math.sin(t*0.5)*0.01; car.position.y=Math.sin(t*0.9)*0.01; ring.rotation.z=t*0.15; cage.material.opacity=0.16+Math.sin(t*2)*0.1; ren.render(scene,cam); }
+        anim();
+      })();
+    })();
+  </script>
+</body>
+</html>
