@@ -87,7 +87,7 @@ class _SceneWebViewState extends State<_SceneWebView> {
           },
         ),
       )
-      ..loadRequest(Uri.parse('$kBaseUrl/cyberpunk?bg=0&hud=0'));
+      ..loadRequest(Uri.parse('$kBaseUrl/cyberpunk-bg'));
 
     widget.handle._run = (js) => _controller.runJavaScript(js);
   }

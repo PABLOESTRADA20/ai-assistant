@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<title>ARIA BG</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:transparent;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  #stage{position:fixed;inset:0;width:100%;height:100%;}
+  canvas{display:block;touch-action:none;}
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+
+<script src="https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js"></script>
+<script>
+(function(){
+  var stage = document.getElementById('stage');
+  var isNarrow = Math.min(window.innerWidth, window.innerHeight) < 620;
+  var dpr = window.devicePixelRatio || 1;
+
+  var W = function(){ return stage.clientWidth || window.innerWidth; };
+  var H = function(){ return stage.clientHeight || window.innerHeight; };
+
+  var scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x050407, 0.028);
+
+  var CAM = isNarrow ? {pos:[0, 1.4, 6.8], fov:48} : {pos:[0, 1.6, 5.6], fov:42};
+  var camera = new THREE.PerspectiveCamera(CAM.fov, W()/H(), 0.1, 120);
+  camera.position.set(CAM.pos[0], CAM.pos[1], CAM.pos[2]);
+
+  var renderer = new THREE.WebGLRenderer({antialias:true, alpha:true, powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(dpr, 2));
+  renderer.setSize(W(), H());
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.setClearColor(0x000000, 0);
+  stage.appendChild(renderer.domElement);
+
+  // entorno
+  function envTexture(){
+    var c = document.createElement('canvas');
+    c.width = 512; c.height = 256;
+    var g = c.getContext('2d');
+    var grd = g.createLinearGradient(0,0,0,256);
+    grd.addColorStop(0.00, '#3a0d1a');
+    grd.addColorStop(0.40, '#15131a');
+    grd.addColorStop(0.60, '#1a1922');
+    grd.addColorStop(1.00, '#000000');
+    g.fillStyle = grd; g.fillRect(0,0,512,256);
+    var t = new THREE.CanvasTexture(c);
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    return t;
+  }
+  var pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromEquirectangular(envTexture()).texture;
+
+  // luces
+  var ambient = new THREE.AmbientLight(0x2a0d16, 0.7);
+  scene.add(ambient);
+  var hemi = new THREE.HemisphereLight(0x8ea8d8, 0x140306, 0.4);
+  scene.add(hemi);
+  var key = new THREE.DirectionalLight(0xffffff, 2.0);
+  key.position.set(4, 5, 4);
+  scene.add(key);
+  var rim = new THREE.DirectionalLight(0xff2244, 3.2);
+  rim.position.set(-4.5, 3, -4);
+  scene.add(rim);
+
+  // pista
+  var floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(70, 70),
+    new THREE.MeshStandardMaterial({color:0x09080d, metalness:0.9, roughness:0.24, envMapIntensity:0.9})
+  );
+  floor.rotation.x = -Math.PI/2;
+  scene.add(floor);
+
+  var grid = new THREE.GridHelper(60, 50, 0xff0033, 0x1c0b11);
+  grid.position.y = 0.02;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.16;
+  scene.add(grid);
+
+  // auto simplificado: cuña + cabina + ruedas
+  var car = new THREE.Group();
+  scene.add(car);
+
+  var paint = new THREE.MeshStandardMaterial({color:0xe6ebf2, metalness:0.93, roughness:0.20, envMapIntensity:1.6});
+  var glass = new THREE.MeshPhysicalMaterial({color:0x06070a, metalness:0.08, roughness:0.05, transparent:true, opacity:0.58, envMapIntensity:2.2});
+  var carbon = new THREE.MeshStandardMaterial({color:0x0e1013, metalness:0.45, roughness:0.40});
+  var gold = new THREE.MeshStandardMaterial({color:0xd4af37, metalness:1.0, roughness:0.22, envMapIntensity:1.6});
+  var rubber = new THREE.MeshStandardMaterial({color:0x101114, metalness:0.05, roughness:0.92});
+
+  // chasis bajo
+  var bodyGeo = new THREE.BoxGeometry(2.10, 0.24, 3.90);
+  var body = new THREE.Mesh(bodyGeo, paint);
+  body.position.y = 0.42;
+  car.add(body);
+
+  // nose
+  var noseGeo = new THREE.CylinderGeometry(0.52, 1.24, 0.46, 4);
+  noseGeo.rotateY(Math.PI/4);
+  var nose = new THREE.Mesh(noseGeo, paint);
+  nose.position.set(0, 0.38, 1.52);
+  nose.scale.set(1, 0.6, 1.6);
+  car.add(nose);
+
+  // cabina
+  var cabGeo = new THREE.CylinderGeometry(0.94, 1.26, 0.46, 4);
+  cabGeo.rotateY(Math.PI/4);
+  var cab = new THREE.Mesh(cabGeo, glass);
+  cab.position.set(0, 0.66, -0.08);
+  cab.scale.set(1, 1, 1.6);
+  car.add(cab);
+
+  var roof = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.05, 1.02), paint);
+  roof.position.set(-0.20, 0.90, -0.08);
+  roof.rotation.z = 0.02;
+  car.add(roof);
+
+  // ruedas
+  var tireGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 24);
+  tireGeo.rotateZ(Math.PI/2);
+  var rimGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.20, 18);
+  rimGeo.rotateZ(Math.PI/2);
+  var tires = [];
+  [[1.26,0.38,1.20],[1.26,0.38,-1.22],[-1.26,0.38,1.20],[-1.26,0.38,-1.22]].forEach(function(p){
+    var g = new THREE.Group();
+    g.position.set(p[0], p[1], p[2]);
+    var t = new THREE.Mesh(tireGeo, rubber);
+    var r = new THREE.Mesh(rimGeo, gold);
+    g.add(t); g.add(r);
+    for (var s=0;s<5;s++){
+      var sp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.42, 0.09), gold);
+      sp.rotation.x = (s/5)*Math.PI;
+      g.add(sp);
+    }
+    car.add(g);
+    tires.push(t);
+  });
+
+  // holograma
+  var cage = new THREE.LineSegments(
+    new THREE.WireframeGeometry(new THREE.BoxGeometry(2.30, 0.70, 4.30)),
+    new THREE.LineBasicMaterial({color:0xff0044, transparent:true, opacity:0.20})
+  );
+  cage.position.y = 0.50;
+  car.add(cage);
+
+  var ring1G = new THREE.RingGeometry(2.6, 2.65, 56);
+  ring1G.rotateX(-Math.PI/2);
+  var ring1 = new THREE.Mesh(ring1G, new THREE.MeshBasicMaterial({color:0xff1144, side:THREE.DoubleSide, transparent:true, opacity:0.34}));
+  ring1.position.y = 0.05;
+  scene.add(ring1);
+
+  var ring2G = new THREE.RingGeometry(3.3, 3.33, 56);
+  ring2G.rotateX(-Math.PI/2);
+  var ring2 = new THREE.Mesh(ring2G, new THREE.MeshBasicMaterial({color:0xff3366, side:THREE.DoubleSide, transparent:true, opacity:0.20}));
+  ring2.position.y = 0.04;
+  scene.add(ring2);
+
+  var N = isNarrow ? 50 : 110;
+  var pG = new THREE.BufferGeometry();
+  var pP = new Float32Array(N*3);
+  for (var i=0;i<N*3;i+=3){
+    pP[i] = (Math.random()-0.5)*12;
+    pP[i+1] = Math.random()*3.6;
+    pP[i+2] = (Math.random()-0.5)*12;
+  }
+  pG.setAttribute('position', new THREE.BufferAttribute(pP,3));
+  var parts = new THREE.Points(pG, new THREE.PointsMaterial({color:0xff2255, size:0.04, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, depthWrite:false}));
+  scene.add(parts);
+
+  // loop
+  var clock = new THREE.Clock();
+  var t = 0;
+  function resize(){
+    var w = W(), h = H();
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function(){ setTimeout(resize, 150); });
+
+  function animate(){
+    requestAnimationFrame(animate);
+    t = clock.getElapsedTime();
+    car.rotation.y = t * 0.16;
+    car.rotation.x = Math.sin(t * 0.6) * 0.016;
+    car.position.y = Math.sin(t * 1.2) * 0.018;
+    tires.forEach(function(x){ x.rotation.x -= 0.016; });
+    ring1.rotation.z = t * 0.18;
+    ring2.rotation.z = -t * 0.14;
+    cage.material.opacity = 0.16 + Math.sin(t * 2.6) * 0.12;
+
+    var arr = parts.geometry.attributes.position.array;
+    for (var i=1;i<N*3;i+=3){
+      arr[i] += 0.004;
+      if (arr[i] > 4.0) arr[i] = 0;
+    }
+    parts.geometry.attributes.position.needsUpdate = true;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>
