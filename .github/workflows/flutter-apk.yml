@@ -110,5 +110,8 @@ jobs:
             # Sin [skip ci]: este commit tiene que disparar el Deploy para que
             # el dominio sirva la version nueva.
             git commit -m "chore: actualiza los APK en el dominio de ARIA"
+            # El build de PC empuja en paralelo: hay que rebasear antes de
+            # subir o el push es rejected.
+            git pull --rebase origin main
             git push origin main
           fi

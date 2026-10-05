@@ -96,6 +96,9 @@ jobs:
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
             git commit -m "chore: actualiza el build de PC en el dominio de ARIA"
+            # El build de Android empuja en paralelo: hay que rebasear
+            # antes de subir o el push es rejected.
+            git pull --rebase origin main
             git push origin main
           } else {
             Write-Output "El build del dominio ya estaba actualizado."
