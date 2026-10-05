@@ -4,10 +4,10 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/chat_controller.dart';
 import '../theme/app_theme.dart';
-import 'scene_screen.dart';
 import '../widgets/aria_logo.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/scene_backdrop.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,8 +18,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scroll = ScrollController();
+  final SceneHandle _scene = SceneHandle();
   int _lastCount = 0;
   int _lastStreamLen = 0;
+
+  /// Escena 3D de fondo. Se puede apagar para dejar el chat limpio.
+  bool _escena = true;
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -74,14 +78,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: kBg,
+      extendBodyBehindAppBar: true,
       drawer: _buildDrawer(context, c),
       appBar: AppBar(
+        backgroundColor: _escena ? const Color(0x8C07080B) : null,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: Text(
           c.active?.title ?? 'ARIA',
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
         actions: [
+          _buildSceneButton(),
           _buildModelButton(context, c),
           IconButton(
             tooltip: 'Recargar',
@@ -90,41 +99,118 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: AriaBackground(
-        child: Column(
-          children: [
-            if (c.error != null) _buildError(context, c),
-            if (c.notice != null) _buildNotice(c.notice!),
-            Expanded(
-              child: c.loading && messages.isEmpty
-                  ? const Center(
-                      child: CircularProgressIndicator(color: kAccent),
-                    )
-                  : messages.isEmpty && !c.sending
-                      ? _buildWelcome(context, c)
-                      : ListView.builder(
-                          controller: _scroll,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          itemCount: total,
-                          itemBuilder: (context, i) {
-                            if (i < messages.length) {
-                              return MessageBubble(message: messages[i]);
-                            }
-                            return MessageBubble(
-                              message: Message(
-                                id: '__streaming__',
-                                role: 'assistant',
-                                content: c.streaming,
-                              ),
-                              streaming: true,
-                            );
-                          },
-                        ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_escena) SceneBackdrop(handle: _scene),
+          AriaBackground(
+            transparent: _escena,
+            veil: 0x73000000,
+            child: Column(
+              children: [
+                if (c.error != null) _buildError(context, c),
+                if (c.notice != null) _buildNotice(c.notice!),
+                Expanded(
+                  child: c.loading && messages.isEmpty
+                      ? const Center(
+                          child: CircularProgressIndicator(color: kAccent),
+                        )
+                      : messages.isEmpty && !c.sending
+                          ? _buildWelcome(context, c)
+                          : ListView.builder(
+                              controller: _scroll,
+                              padding: const EdgeInsets.only(top: 56, bottom: 12),
+                              itemCount: total,
+                              itemBuilder: (context, i) {
+                                if (i < messages.length) {
+                                  return MessageBubble(
+                                    message: messages[i],
+                                    glass: _escena,
+                                  );
+                                }
+                                return MessageBubble(
+                                  message: Message(
+                                    id: '__streaming__',
+                                    role: 'assistant',
+                                    content: c.streaming,
+                                  ),
+                                  streaming: true,
+                                  glass: _escena,
+                                );
+                              },
+                            ),
+                ),
+                ChatInput(
+                  sending: c.sending,
+                  onSend: c.send,
+                  onStop: c.stop,
+                  glass: _escena,
+                ),
+              ],
             ),
-            ChatInput(
-              sending: c.sending,
-              onSend: c.send,
-              onStop: c.stop,
+          ),
+          if (_escena) _buildSceneControls(),
+        ],
+      ),
+    );
+  }
+
+  /// Boton para apagar/encender la escena 3D.
+  Widget _buildSceneButton() {
+    return IconButton(
+      tooltip: _escena ? 'Ocultar escena 3D' : 'Mostrar escena 3D',
+      onPressed: () => setState(() => _escena = !_escena),
+      icon: Icon(
+        _escena ? Icons.view_in_ar : Icons.view_in_ar_outlined,
+        color: _escena ? kAccent : kTextMuted,
+      ),
+    );
+  }
+
+  /// Botones de la escena, flotando sobre el chat.
+  Widget _buildSceneControls() {
+    Widget btn(IconData icon, String tip, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.all(4),
+          child: Material(
+            color: const Color(0xCC0D0E14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: kAccent.withOpacity(0.35)),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: onTap,
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: Icon(icon, size: 19, color: kAccent),
+              ),
+            ),
+          ),
+        );
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: 'Reiniciar camara',
+              child: btn(Icons.center_focus_strong, 'Reiniciar', _scene.reset),
+            ),
+            Tooltip(
+              message: 'Holograma',
+              child: btn(Icons.grid_3x3, 'Holograma', _scene.toggleHolograma),
+            ),
+            Tooltip(
+              message: 'Luz',
+              child: btn(Icons.flare, 'Luz', _scene.toggleLuz),
+            ),
+            Tooltip(
+              message: 'Piso',
+              child: btn(Icons.blur_on, 'Piso', _scene.toggleGrid),
             ),
           ],
         ),
@@ -238,40 +324,52 @@ class _HomeScreenState extends State<HomeScreen> {
       'Explicame un concepto difícil',
     ];
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const AriaLogo(size: 64),
-          const SizedBox(height: 16),
-          const Text(
-            'Hola, soy ARIA',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+      padding: const EdgeInsets.fromLTRB(24, 72, 24, 24),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: BoxDecoration(
+          color: _escena ? const Color(0xB30A0A12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: _escena ? const Color(0x26FF2E4D) : Colors.transparent,
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'Preguntá lo que quieras. Tengo memoria, herramientas y voz.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: kTextMuted),
-          ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: suggestions
-                .map(
-                  (s) => ActionChip(
-                    label: Text(s),
-                    backgroundColor: kSurface2,
-                    side: const BorderSide(color: kBorder),
-                    labelStyle: const TextStyle(color: kTextSecondary, fontSize: 12),
-                    onPressed: c.sending ? null : () => c.send(s),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
+        ),
+        child: Column(
+          children: [
+            const AriaLogo(size: 64),
+            const SizedBox(height: 16),
+            const Text(
+              'Hola, soy ARIA',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Preguntá lo que quieras. Tengo memoria, herramientas y voz.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: kTextMuted),
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: suggestions
+                  .map(
+                    (s) => ActionChip(
+                      label: Text(s),
+                      backgroundColor: kSurface2,
+                      side: const BorderSide(color: kBorder),
+                      labelStyle: const TextStyle(
+                        color: kTextSecondary,
+                        fontSize: 12,
+                      ),
+                      onPressed: c.sending ? null : () => c.send(s),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -324,28 +422,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const Divider(height: 24),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                  Icons.view_in_ar,
-                  size: 18,
-                  color: kAccent,
-                ),
-                title: const Text(
-                  'Escena 3D',
-                  style: TextStyle(fontSize: 14, color: kTextSecondary),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SceneScreen()),
-                  );
-                },
-              ),
-            ),
             Expanded(
               child: c.conversations.isEmpty
                   ? const Center(

@@ -8,11 +8,15 @@ class ChatInput extends StatefulWidget {
     required this.onSend,
     required this.sending,
     required this.onStop,
+    this.glass = false,
   });
 
   final void Function(String text) onSend;
   final bool sending;
   final VoidCallback onStop;
+
+  /// Campo translucido para cuando hay escena 3D detras.
+  final bool glass;
 
   @override
   State<ChatInput> createState() => _ChatInputState();
@@ -53,7 +57,9 @@ class _ChatInputState extends State<ChatInput> {
                   hintText: 'Preguntá cualquier cosa…',
                   hintStyle: const TextStyle(color: kTextMuted),
                   filled: true,
-                  fillColor: kSurface2,
+                  fillColor: widget.glass
+                      ? const Color(0xE60B0B12)
+                      : kSurface2,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 12,
@@ -64,7 +70,11 @@ class _ChatInputState extends State<ChatInput> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: kBorder),
+                    borderSide: BorderSide(
+                      color: widget.glass
+                          ? const Color(0x40FF2E4D)
+                          : kBorder,
+                    ),
                   ),
                 ),
               ),

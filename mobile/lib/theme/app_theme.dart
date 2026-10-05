@@ -40,20 +40,34 @@ ThemeData buildAriaTheme() {
 
 /// Fondo con un halo carmesí sutil, para no caer en el típico negro plano.
 class AriaBackground extends StatelessWidget {
-  const AriaBackground({super.key, required this.child});
+  const AriaBackground({
+    super.key,
+    required this.child,
+    this.transparent = false,
+    this.veil = 0x00000000,
+  });
 
   final Widget child;
+
+  /// Cuando hay una escena 3D detras, el fondo tiene que dejar pasar el
+  /// render en vez de taparlo con un color opaco.
+  final bool transparent;
+
+  /// Velo oscuro extra para que el chat se lea sobre la escena.
+  final int veil;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(0.75, -1.1),
-          radius: 1.3,
-          colors: [Color(0x26FF2E4D), Color(0x0008080B)],
-        ),
-        color: kBg,
+      decoration: BoxDecoration(
+        gradient: transparent
+            ? null
+            : const RadialGradient(
+                center: Alignment(0.75, -1.1),
+                radius: 1.3,
+                colors: [Color(0x26FF2E4D), Color(0x0008080B)],
+              ),
+        color: transparent ? Color(veil) : kBg,
       ),
       child: child,
     );
