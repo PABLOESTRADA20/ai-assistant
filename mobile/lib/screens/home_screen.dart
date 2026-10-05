@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/chat_controller.dart';
 import '../theme/app_theme.dart';
+import 'scene_screen.dart';
 import '../widgets/aria_logo.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
@@ -323,6 +324,28 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const Divider(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.view_in_ar,
+                  size: 18,
+                  color: kAccent,
+                ),
+                title: const Text(
+                  'Escena 3D',
+                  style: TextStyle(fontSize: 14, color: kTextSecondary),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SceneScreen()),
+                  );
+                },
+              ),
+            ),
             Expanded(
               child: c.conversations.isEmpty
                   ? const Center(
