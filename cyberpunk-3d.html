@@ -112,7 +112,7 @@
 (function(){
   var params = new URLSearchParams(location.search);
   var TRANSPARENT = params.get('bg') === '0';
-  var HIDE_HUD = params.get('hud') === '0';
+  var HIDE_HUD = params.get('hud') === '0' || params.get('app') === '1';
   if (TRANSPARENT) document.body.classList.add('transparent');
   if (HIDE_HUD) {
     // Cuando la escena vive dentro de la app, los botones los maneja Flutter.
