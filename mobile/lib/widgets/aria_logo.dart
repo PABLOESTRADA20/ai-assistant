@@ -32,7 +32,7 @@ class _AriaMarkPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final strokeSub = Paint()
-      ..color = kAccent.withValues(alpha: 0.28)
+      ..color = kAccent.withOpacity(0.28)
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.035
       ..strokeCap = StrokeCap.round
