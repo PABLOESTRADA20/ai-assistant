@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Descargar ARIA para Android</title>
+<title>Descargar ARIA — Android y Windows</title>
 <style>
   :root{--bg:#0a0508;--surface:#150a10;--border:#3a1520;--accent:#e11d48;--text:#f5e6ea;--muted:#b08a95}
   *{box-sizing:border-box}
@@ -16,6 +16,8 @@
   a.btn:active{transform:scale(.98)}
   .primary{background:linear-gradient(135deg,#e11d48,#9f1239);color:#fff}
   .secondary{background:transparent;border:1px solid var(--border);color:var(--text)}
+  .sep{display:flex;align-items:center;gap:12px;margin:22px 0 16px;color:var(--muted);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase}
+  .sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--border)}
   .hint{font-size:.78rem;color:var(--muted);text-align:left;line-height:1.5;margin-top:18px}
   .hint b{color:var(--text)}
   code{background:#220d15;padding:1px 5px;border-radius:5px;color:#fda4af}
@@ -25,17 +27,30 @@
   <div class="card">
     <img class="logo" src="/icon.svg" alt="ARIA">
     <h1>Descargar ARIA</h1>
-    <p>App nativa para Android</p>
+    <p>La misma app, en el celular y en la PC</p>
 
-    <a class="btn primary" href="/apk/ARIA-arm64-v8a.apk" download>Descargar para Android (recomendado)</a>
+    <a class="btn primary" href="/apk/ARIA-arm64-v8a.apk" download>Android (recomendado)</a>
     <a class="btn secondary" href="/apk/ARIA-armeabi-v7a.apk" download>Android antiguo (32 bits)</a>
 
+    <div class="sep">o en la PC</div>
+
+    <a class="btn primary" href="/desktop/ARIA-Windows-x64.zip" download>Windows 64 bits</a>
+
     <div class="hint">
-      <b>¿Cómo instalar?</b><br>
+      <b>Android</b><br>
       1. Tocá el botón de descarga.<br>
       2. Si Android lo pide, permití <em>instalar apps de esta fuente</em>.<br>
       3. Abrí el archivo <code>ARIA-arm64-v8a.apk</code> y tocá <b>Instalar</b>.<br>
       4. Iniciá con tu clave de acceso.
+    </div>
+
+    <div class="hint">
+      <b>Windows</b><br>
+      1. Bajá el <code>.zip</code> y descomprimilo.<br>
+      2. Abrí la carpeta y hacé doble clic en <code>ARIA.exe</code>.<br>
+      3. Iniciá con tu clave de acceso.<br>
+      4. Te va a salir el cartel de <em>Windows Defender</em>: elegí
+         <b>Más información</b> → <b>Ejecutar de todas formas</b>.
     </div>
   </div>
 </body>

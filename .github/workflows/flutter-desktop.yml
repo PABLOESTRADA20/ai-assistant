@@ -1,0 +1,102 @@
+name: Build PC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/flutter-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Compilar para Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+
+      - name: Generar el andamiaje de Windows y copiar el codigo
+        shell: pwsh
+        run: |
+          flutter create --org com.pabloestrada --project-name aria_app --platforms=windows --no-pub build_src
+          Remove-Item -Recurse -Force build_src\lib
+          Copy-Item -Recurse -Force mobile\lib build_src\lib
+          Copy-Item -Force mobile\pubspec.yaml build_src\pubspec.yaml
+
+      - name: Nombrar la app ARIA (ventana, ejecutable y propiedades)
+        shell: pwsh
+        run: |
+          $main = 'build_src\windows\runner\main.cpp'
+          (Get-Content $main -Raw) -replace 'L"aria_app"', 'L"ARIA"' | Set-Content $main -NoNewline
+          $cmake = 'build_src\windows\CMakeLists.txt'
+          (Get-Content $cmake -Raw) -replace 'set\(BINARY_NAME "aria_app"\)', 'set(BINARY_NAME "ARIA")' | Set-Content $cmake -NoNewline
+          $rc = 'build_src\windows\runner\Runner.rc'
+          (Get-Content $rc -Raw) -replace '"aria_app"', '"ARIA"' | Set-Content $rc -NoNewline
+          Select-String -Path $main -Pattern 'ARIA' | Select-Object -First 1
+          Select-String -Path $cmake -Pattern 'BINARY_NAME' | Select-Object -First 1
+
+      - name: Instalar dependencias
+        working-directory: build_src
+        run: flutter pub get
+
+      - name: Compilar para Windows
+        working-directory: build_src
+        run: flutter build windows --release
+
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          $src = 'build_src\build\windows\x64\runner\Release'
+          Compress-Archive -Path "$src\*" -DestinationPath ARIA-Windows-x64.zip -Force
+          $mb = [math]::Round((Get-Item ARIA-Windows-x64.zip).Length / 1MB, 2)
+          Write-Output "ARIA-Windows-x64.zip  $mb MB"
+          Test-Path "$src\ARIA.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ARIA-windows
+          path: ARIA-Windows-x64.zip
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v1
+          name: ARIA PC (Windows x64)
+          body: |
+            Versión de escritorio para Windows de 64 bits.
+
+            1. Descomprimí el zip (no abras el `.exe` desde dentro del zip).
+            2. Entrá a la carpeta `ARIA` y hacé doble clic en `ARIA.exe`.
+            3. Iniciá con tu clave de acceso.
+
+            La escena 3D necesita **Microsoft Edge WebView2 Runtime**, que ya viene
+            instalado en Windows 10 y 11. Si igual no aparece la escena 3D, el
+            chat funciona igual.
+          files: ARIA-Windows-x64.zip
+          make_latest: false
+
+      # Igual que los APK, el build de PC se sirve desde el dominio propio.
+      - name: Publicar en el dominio de ARIA
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ai-assistant\public\desktop | Out-Null
+          Copy-Item -Force ARIA-Windows-x64.zip ai-assistant\public\desktop\
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ai-assistant/public/desktop
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "chore: actualiza el build de PC en el dominio de ARIA"
+            git push origin main
+          } else {
+            Write-Output "El build del dominio ya estaba actualizado."
+          }

@@ -21,11 +21,11 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.47.6'
           channel: stable
           cache: true
 
@@ -107,6 +107,8 @@ jobs:
           if git diff --cached --quiet; then
             echo "Los APK del dominio ya estaban actualizados."
           else
-            git commit -m "chore: actualiza los APK en el dominio de ARIA [skip ci]"
+            # Sin [skip ci]: este commit tiene que disparar el Deploy para que
+            # el dominio sirva la version nueva.
+            git commit -m "chore: actualiza los APK en el dominio de ARIA"
             git push origin main
           fi
