@@ -149,7 +149,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          if (_escena) _buildSceneControls(),
+          // En escritorio no mostramos los botones de la escena
+          if (_escena && Theme.of(context).platform != TargetPlatform.windows) _buildSceneControls(),
         ],
       ),
     );
@@ -157,6 +158,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Boton para apagar/encender la escena 3D.
   Widget _buildSceneButton() {
+    final isDesktop = Theme.of(context).platform == TargetPlatform.windows ||
+        Theme.of(context).platform == TargetPlatform.linux ||
+        Theme.of(context).platform == TargetPlatform.macOS;
+    if (isDesktop) return const SizedBox.shrink();
     return IconButton(
       tooltip: _escena ? 'Ocultar escena 3D' : 'Mostrar escena 3D',
       onPressed: () => setState(() => _escena = !_escena),
