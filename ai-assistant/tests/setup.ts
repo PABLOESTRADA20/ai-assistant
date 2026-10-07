@@ -1,3 +1,9 @@
+// Driver adapter pg (TCP) para este proceso Node: los tests hablan con el
+// Postgres de pruebas (Docker/VPS o Neon). En Workers este hook no se carga y
+// app/lib/prisma.ts sigue usando el adapter HTTP de Neon. Omitir con
+// PRISMA_ADAPTER=neon.
+import '../scripts/register-pg-adapter.mjs'
+
 import dotenv from 'dotenv'
 import { register } from 'node:module'
 

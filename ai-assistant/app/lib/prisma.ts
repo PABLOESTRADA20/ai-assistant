@@ -16,8 +16,25 @@ import { PrismaNeon } from '@prisma/adapter-neon'
  * (`cloudflareContextALS.run({ env, ctx, cf }, handler)`) y es único por request.
  */
 
+/**
+ * Fábrica del driver adapter que registran los entornos Node (tests y scripts)
+ * vía scripts/register-pg-adapter.mjs: @prisma/adapter-pg, el único que habla
+ * TCP con un Postgres propio (Docker/VPS) — y también con el TCP de Neon.
+ *
+ * Workers nunca la registra y usa el adapter de Neon (HTTP), por lo que
+ * @prisma/adapter-pg no aparece en el bundle del Worker (pg necesita node:net
+ * y rompería el build de OpenNext/Cloudflare).
+ */
+type AdapterFactory = (connectionString: string) => NonNullable<ConstructorParameters<typeof PrismaClient>[0]>['adapter']
+
+// Symbol.for = registro global: la misma clave que usa el hook de Node.
+const ADAPTER_FACTORY_KEY = Symbol.for('aria.prismaAdapterFactory')
+
 function createClient(): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL! }) })
+  const connectionString = process.env.DATABASE_URL!
+  const factory = (globalThis as Record<symbol, unknown>)[ADAPTER_FACTORY_KEY] as AdapterFactory | undefined
+  const adapter = factory ? factory(connectionString) : new PrismaNeon({ connectionString })
+  return new PrismaClient({ adapter })
 }
 
 // Contexto del request actual, inyectado por @opennextjs/cloudflare.

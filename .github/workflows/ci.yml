@@ -50,11 +50,28 @@ jobs:
     defaults:
       run:
         working-directory: ./ai-assistant
+
+    # Postgres propio con pgvector (la misma imagen que docker-compose.yml):
+    # los tests corren herméticamente, sin secretos y sin tocar Neon.
+    # POSTGRES_DB deja creada la BD de pruebas; la extensión vector y el
+    # esquema los aplica `prisma migrate deploy` dentro del paso de tests.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: aria
+          POSTGRES_DB: aria_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aria_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     env:
-      # Base de pruebas aislada (p. ej. aria_test en Neon). Si el secret no
-      # está definido queda vacío y los pasos se omiten con un aviso: los
-      # tests NUNCA tocan la base de producción.
-      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      TEST_DATABASE_URL: postgres://postgres:aria@localhost:5432/aria_test
 
     steps:
       - uses: actions/checkout@v4
@@ -68,15 +85,12 @@ jobs:
       - name: Install dependencies
         env:
           NODE_ENV: development
+          # El cliente generado (app/generated/prisma) está commiteado: no hace
+          # falta `prisma generate` en el postinstall (mismo patrón que deploy.yml).
           PRISMA_SKIP_POSTINSTALL_GENERATE: 1
         run: npm ci
 
-      # Migra la BD de pruebas (con reintentos por cold start de Neon) y
-      # ejecuta tests/integration. Sin secret, este paso se salta.
+      # Migra el service container (con reintentos) y ejecuta tests/integration
+      # contra él. Siempre corre: no necesita ningún secret del repositorio.
       - name: Integration tests
-        if: env.TEST_DATABASE_URL != ''
         run: npm run test:integration
-
-      - name: Warn when integration tests are skipped
-        if: env.TEST_DATABASE_URL == ''
-        run: 'echo "::warning::TEST_DATABASE_URL secret not set: integration tests skipped"'

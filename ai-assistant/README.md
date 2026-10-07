@@ -77,6 +77,9 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `npm run test:unit` | Solo tests unitarios (sin red ni BD) |
 | `npm run test:integration` | Migra la BD de pruebas y ejecuta los tests de integración |
 | `npm run test:watch` | Vitest en modo watch |
+| `npm run db:up` | Levantar el Postgres propio con pgvector (Docker, puerto 5433) |
+| `npm run db:down` | Parar el Postgres propio (el volumen persiste) |
+| `npm run db:psql` | Consola `psql` en la BD `aria` |
 | `npm run db:migrate` | Ejecutar migraciones Prisma |
 | `npm run db:studio` | Abrir Prisma Studio |
 | `npm run db:reindex` | Regenerar embeddings del vault en pgvector |
@@ -93,7 +96,7 @@ Vitest con dos capas dentro de `tests/`:
 - **Unitarios** (`tests/unit/`): lógica pura — extractor de memorias, WhatsApp, ZIP, auth, ARIA core. No tocan red ni base de datos.
 - **Integración** (`tests/integration/`): memoria a largo plazo y memoria de trabajo contra PostgreSQL de verdad (dedupe, búsqueda semántica, refuerzo, consolidación, TTL…).
 
-**Regla de oro:** los tests nunca usan la base de producción. Los de integración apuntan a `TEST_DATABASE_URL`; si no está definida, se omiten (no fallan). El hook `tests/setup.ts` reescribe `DATABASE_URL` con la de pruebas, fuerza embeddings locales (`EMBEDDING_PROVIDER=local`, deterministas y sin gastar cuota de Workers AI) y registra el loader WASM de Prisma.
+**Regla de oro:** los tests nunca usan la base de producción. Los de integración apuntan a `TEST_DATABASE_URL`; si no está definida, se omiten (no fallan). El hook `tests/setup.ts` reescribe `DATABASE_URL` con la de pruebas, instala el driver adapter `@prisma/adapter-pg` (TCP, con el que hablan el Postgres propio), fuerza embeddings locales (`EMBEDDING_PROVIDER=local`, deterministas y sin gastar cuota de Workers AI) y registra el loader WASM de Prisma.
 
 ```bash
 npm test                 # todo
@@ -102,20 +105,51 @@ npm run test:integration # migra la BD de pruebas y ejecuta integración
 npm run test:watch       # watch
 ```
 
-Para los de integración necesitas una base aislada (p. ej. `aria_test` en el mismo proyecto Neon):
+Para los de integración necesitas un Postgres con pgvector; el de esta misma repo es el más fácil (ver [Postgres propio](#postgres-propio-docker)):
 
 ```bash
-# 1. Crear la base y la extensión pgvector (una sola vez):
-#    CREATE DATABASE aria_test;  →  \c aria_test  →  CREATE EXTENSION vector;
-
-# 2. En .env.local apuntar a ella (NUNCA a la de producción):
-echo 'TEST_DATABASE_URL=postgresql://user:pass@host/aria_test' >> .env.local
-
-# 3. Listo: `npm run test:integration` aplica las migraciones sola
-#    (scripts/test-migrate.mjs, con reintentos por cold start de Neon).
+npm run db:up            # pgvector en el puerto 5433; docker/init.sql
+                         # crea la BD aria_test en el primer arranque
+npm run test:integration # aplica las migraciones solas y ejecuta los tests
 ```
 
-En CI (`.github/workflows/ci.yml`), cada PR ejecuta lint + typecheck + unit; los de integración corren si el secret `TEST_DATABASE_URL` está definido (si falta, se omiten con un aviso).
+`.env.local` ya apunta a `postgres://postgres:aria@localhost:5433/aria_test` (nunca a producción). Sin Docker, la alternativa es una BD aislada en Neon: descomenta la segunda línea de `TEST_DATABASE_URL` en `.env.local`.
+
+En CI (`.github/workflows/ci.yml`), cada PR ejecuta lint + typecheck + unit, y el job de integración levanta un service container `pgvector/pgvector:pg17`: los tests corren siempre, **sin secretos**.
+
+## Postgres propio (Docker)
+
+El desarrollo, los tests y el CI usan un PostgreSQL propio con **pgvector** en vez de Neon:
+
+```bash
+npm run db:up      # docker compose up -d → pgvector/pgvector:pg17 en el puerto 5433
+npm run db:psql    # consola psql en la BD "aria"
+npm run db:down    # para el servidor (el volumen aria-pgdata persiste)
+```
+
+- **Puerto 5433** para no chocar con un PostgreSQL ya instalado en la máquina (suele ocupar el 5432).
+- **Bases**: `aria` (app) y `aria_test` (pruebas), creadas por `docker/init.sql` en el primer arranque del volumen; `vector` se instala allí y las migraciones de Prisma lo confirman con `CREATE EXTENSION IF NOT EXISTS vector`.
+- **Esquema**: siempre vía migraciones — `npm run test:integration` aplica las de pruebas solo; `npm run db:migrate` aplica las tuyas contra la URL de `.env`.
+- **En el VPS**: sube `docker-compose.yml` + `docker/init.sql`, define `POSTGRES_PASSWORD` en un `.env` al lado del compose y levanta con `docker compose up -d` (el `restart: unless-stopped` lo mantiene vivo).
+
+### Cómo se elige el driver adapter
+
+Prisma necesita dos caminos distintos según dónde corra el código (ver `app/lib/prisma.ts`):
+
+| Entorno | Adapter | Motivo |
+|---------|---------|--------|
+| Workers (producción) | `@prisma/adapter-neon` (HTTP) | workerd no tiene `node:net`: `pg` rompería el bundle |
+| Node (tests y scripts) | `@prisma/adapter-pg` (TCP) | lo registra `scripts/register-pg-adapter.mjs` (`--import` en los scripts, import en `tests/setup.ts`); habla TCP con el Postgres propio y también con el TCP de Neon |
+
+`app/lib/prisma.ts` lee la fábrica del adapter de `globalThis`: si existe (Node) usa `pg`; si no (Workers), usa Neon. `@prisma/adapter-pg` solo se importa desde archivos Node-only, así que **nunca entra en el bundle del Worker**.
+
+Para forzar el adapter HTTP de Neon en Node (p. ej. correr los tests contra la BD de pruebas de Neon cuya URL está comentada en `.env.local`):
+
+```bash
+PRISMA_ADAPTER=neon npm test
+```
+
+La producción sigue apuntando a Neon: moverla al Postgres propio exige un puente TCP compatible con Workers (p. ej. Cloudflare Hyperdrive) y queda fuera de esta rama.
 
 ## Variables de entorno
 
@@ -124,7 +158,7 @@ En CI (`.github/workflows/ci.yml`), cada PR ejecuta lint + typecheck + unit; los
 | `GROQ_API_KEY` | API key de Groq | ✅ |
 | `DATABASE_URL` | URL pooled de Neon (app) | ✅ |
 | `DATABASE_URL_UNPOOLED` | URL directa de Neon (CLI de Prisma) | ✅ |
-| `TEST_DATABASE_URL` | BD de pruebas aislada para `npm run test:integration` (sin ella, esos tests se omiten) | tests |
+| `TEST_DATABASE_URL` | BD de pruebas aislada para `npm run test:integration` (por defecto, `postgres://…@localhost:5433/aria_test`; sin ella, esos tests se omiten) | tests |
 | `CLOUDFLARE_API_TOKEN` | Token con permiso Workers AI (embeddings) | ✅ |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
