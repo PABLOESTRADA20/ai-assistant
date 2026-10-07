@@ -79,4 +79,4 @@ jobs:
 
       - name: Warn when integration tests are skipped
         if: env.TEST_DATABASE_URL == ''
-        run: echo "::warning::TEST_DATABASE_URL secret not set: integration tests skipped"
+        run: 'echo "::warning::TEST_DATABASE_URL secret not set: integration tests skipped"'
