@@ -11,6 +11,11 @@
     "db:reindex": "node --import ./scripts/wasm-module-hook.mjs --import tsx scripts/reindex.ts",
     "db:smoke": "node --import ./scripts/wasm-module-hook.mjs --import tsx scripts/smoke-memory.ts",
     "db:brain": "node --import ./scripts/wasm-module-hook.mjs --import tsx scripts/smoke-brain.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "node scripts/test-migrate.mjs && vitest run tests/integration",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
     "agent": "node local-agent/aria-local-agent.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "lint": "next lint",
@@ -34,7 +39,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^24.19.1",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/react-syntax-highlighter": "^15.5.13",
@@ -48,6 +53,7 @@
     "tailwindcss": "^3.4.1",
     "tsx": "^4.23.13",
     "typescript": "^5",
+    "vitest": "^5.0.3",
     "wrangler": "4.130.0"
   }
 }

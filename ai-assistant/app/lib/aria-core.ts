@@ -132,7 +132,7 @@ const LOOKS_LIKE_ORDER =
   /\b(busca|buscar|buscame|busqueda|investiga|investigar|googlea|googlear|search (?:the )?(?:web|internet)|look ?up|look for|find (?:me )?(?:online|on the web|information)|check online|verifica online)\b/i
 
 const WANTS_CURRENT =
-  /\b(noticias|news|actualidad|ultima vers[ió]n|ultimo lanzamiento|lo (?:ultimo|m[áa]s reciente)|novedades|que hay de nuevo|que trae|release notes?|changelog|how (?:is|are) .{1,20} (?:today|now these days)|estado actual|currently (?:is|are) (?:supported|available|maintained)|still (?:supported|maintained|available))\b/i
+  /\b(noticias|news|actualidad|ultima vers[ió]n|ultimo lanzamiento|lo (?:ultimo|m[áa]s reciente)|novedades|qu[eé] hay de nuevo|que trae|release notes?|changelog|how (?:is|are) .{1,20} (?:today|now these days)|estado actual|currently (?:is|are) (?:supported|available|maintained)|still (?:supported|maintained|available))\b/i
 
 const OWN_THING =
   /\b(?:mi|mis|el|la)\s+(?:\w+\s+){0,2}(?:base de datos|proyecto|app|aplicacion|servidor|server|repo|repositorio|codigo|archivo|carpeta|cuenta|cr[ée]dito)/i
