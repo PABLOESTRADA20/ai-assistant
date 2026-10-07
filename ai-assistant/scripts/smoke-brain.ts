@@ -4,6 +4,7 @@ dotenv.config({ path: '.env.local' })
 import { v4 as uuidv4 } from 'uuid'
 
 const SOURCE = 'brain-smoke'
+let smokeNoteId = ''
 
 async function main() {
   const memory = await import('../app/lib/memory')
@@ -13,6 +14,11 @@ async function main() {
 
   const cleanup = async () => {
     await prisma.memory.deleteMany({ where: { source: SOURCE } })
+    if (smokeNoteId) {
+      await prisma.$executeRaw`DELETE FROM "Memory" WHERE "tags" @> ${JSON.stringify([`note:${smokeNoteId}`])}::jsonb`
+      const gone = await prisma.$executeRaw`DELETE FROM "Note" WHERE "id" = ${smokeNoteId}`
+      if (gone !== 1) console.warn('   (la nota de smoke ya no existia)')
+    }
     await prisma.sessionContext.deleteMany({ where: { key: { startsWith: 'session:brain-smoke' } } })
   }
 
@@ -60,6 +66,29 @@ async function main() {
     await prisma.memory.update({ where: { id: created.id }, data: { isCompressed: false } })
     console.log('   archivada oculta correctamente')
 
+    console.log('4b) cerebro unificado: notas de ARIA y espejo en Memoria...')
+    const notes = await import('../app/lib/notes')
+    const brain = await import('../app/lib/brain')
+    const note = await notes.saveNote({
+      title: `Nota brain-smoke ${marker}`,
+      content: `${marker} el plugin favorito es telescope`,
+      tags: ['smoke'],
+      source: 'smoke',
+    })
+    smokeNoteId = note.id
+    await brain.mirrorNoteToMemory(note)
+    const brainHits = await brain.searchBrain(`plugin ${marker}`, { minScore: 0 })
+    const mirroredHit = brainHits.find(
+      (h) => h.kind === 'memory' && h.source === 'note' && h.content.includes('telescope'),
+    )
+    if (!mirroredHit) throw new Error('El espejo de la nota no aparecio en la busqueda unificada')
+    console.log('   espejo encontrado:', mirroredHit.snippet)
+    const removed = await brain.removeMirroredNote(note.id)
+    if (!removed) throw new Error('No se pudo retirar el espejo de la nota')
+    await notes.deleteNote(note.id)
+    smokeNoteId = ''
+    console.log('   espejo retirado correctamente')
+
     console.log('5) getMemoryStats...')
     const stats = await memory.getMemoryStats()
     console.log('   total:', stats.total, '| archivadas:', stats.compressed, '| media:', stats.avgImportance)
@@ -67,14 +96,15 @@ async function main() {
 
     console.log('6) consolidateMemories (purga de una archivada antigua)...')
     await prisma.$executeRaw`
-      UPDATE "Memory" SET "isCompressed" = true, "createdAt" = NOW() - INTERVAL '60 days'
+      UPDATE "Memory" SET "isCompressed" = true, "createdAt" = NOW() - INTERVAL '10000 days'
       WHERE "id" = ${created.id}
     `
-    // minImportance -1 => no archiva nada; purgeDays 30 => purga solo lo muy viejo/archivado
+    // minImportance -1 => no archiva nada; purgeDays 9999 => prueba la purga solo
+    // sobre su propia fila (10.000 dias de vieja), sin tocar datos reales.
     const result = await memory.consolidateMemories({
       staleDays: 0,
       minImportance: -1,
-      purgeDays: 30,
+      purgeDays: 9999,
     })
     console.log('   resultado:', JSON.stringify(result))
     const gone = await prisma.memory.findUnique({ where: { id: created.id } })

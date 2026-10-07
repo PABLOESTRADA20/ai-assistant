@@ -278,26 +278,47 @@ export async function buildAriaContext(
     /* memoria de trabajo no disponible */
   }
 
-  // Recupera memorias relevantes para dar contexto sobre el usuario.
+  // Recupera recuerdos relevantes para dar contexto sobre el usuario: memoria
+  // a largo plazo + notas (carpeta de ARIA y vault de Obsidian) + mensajes
+  // viejos de ESTA conversación. Eso lo decide el cerebro unificado
+  // (app/lib/brain.ts); las preferencias y episodios vuelven igual que antes.
   let memoryBlock: string[] | null = null
   let injectedMemoryIds: string[] = []
   if (lastUserMsg?.content) {
     try {
-      const { searchSemanticMemories, searchMemories } = await import('@/app/lib/memory')
-      const [relevant, prefs, episodic] = await Promise.all([
-        searchSemanticMemories(lastUserMsg.content, 4, 0.45),
+      const { searchBrain, labelHit } = await import('@/app/lib/brain')
+      const { searchMemories } = await import('@/app/lib/memory')
+      const [brain, prefs, episodic] = await Promise.all([
+        searchBrain(lastUserMsg.content, {
+          limit: 4,
+          minScore: 0.4,
+          conversationId: conversationId ?? null,
+        }).catch(() => []),
         searchMemories({ category: 'preference', minImportance: 0.7, limit: 3 }).catch(() => []),
         searchMemories({ type: 'episodic', limit: 2 }).catch(() => []),
       ])
       const seen = new Set<string>()
-      const items = [...relevant, ...prefs, ...episodic]
-        .filter((m) => (seen.has(m.content) ? false : (seen.add(m.content), true)))
-        .slice(0, 6)
-      if (items.length > 0) {
-        memoryBlock = items.map(
-          (m) => `- [${m.type}/${m.category} · importancia ${m.importance}] ${m.content}`,
-        )
-        injectedMemoryIds = items.map((m) => m.id)
+      const lines: { line: string; memoryId?: string }[] = []
+      for (const hit of brain) {
+        if (seen.has(hit.content)) continue
+        seen.add(hit.content)
+        lines.push({
+          line: `- ${labelHit(hit)} ${hit.snippet}`,
+          memoryId: hit.kind === 'memory' ? hit.id : undefined,
+        })
+      }
+      for (const m of [...prefs, ...episodic]) {
+        if (seen.has(m.content)) continue
+        seen.add(m.content)
+        lines.push({
+          line: `- [${m.type}/${m.category} · importancia ${m.importance}] ${m.content}`,
+          memoryId: m.id,
+        })
+      }
+      const picked = lines.slice(0, 6)
+      if (picked.length > 0) {
+        memoryBlock = picked.map((p) => p.line)
+        injectedMemoryIds = picked.flatMap((p) => (p.memoryId ? [p.memoryId] : []))
       }
     } catch {
       /* memoria no disponible: seguir sin ella */
@@ -310,7 +331,7 @@ export async function buildAriaContext(
       ? [
           {
             role: 'system',
-            content: `[Memoria de ARIA sobre el usuario — usa estos datos solo cuando aporten contexto relevante, sin mencionar que vienen de la memoria salvo que el usuario lo pregunte:]`,
+            content: `[Memoria y notas de ARIA — usa estos datos solo cuando aporten contexto relevante, sin mencionar su origen salvo que el usuario lo pregunte:]`,
           },
           { role: 'system', content: memoryBlock.join('\n') },
         ]

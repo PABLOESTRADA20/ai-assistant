@@ -44,6 +44,10 @@ export async function POST(req: Request) {
       tags: body.tags,
       source: 'web',
     })
+    // Cerebro: indexa la nota como memoria para que la búsqueda unificada y el
+    // contexto la encuentren (best-effort, no debe frenar el guardado).
+    const { mirrorNoteToMemory } = await import('@/app/lib/brain')
+    await mirrorNoteToMemory(note).catch(() => {})
     return NextResponse.json({ note })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

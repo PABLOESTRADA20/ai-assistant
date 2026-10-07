@@ -598,6 +598,10 @@ async function saveCloudNote(title?: unknown, content?: unknown, tags?: unknown)
   }
   const notes = await import('@/app/lib/notes')
   const note = await notes.saveNote({ title, content, tags })
+  // Cerebro: espejo en Memoria para que la búsqueda unificada la encuentre.
+  // Best-effort: el guardado de la nota no debe fallar por esto.
+  const { mirrorNoteToMemory } = await import('@/app/lib/brain')
+  await mirrorNoteToMemory(note).catch(() => {})
   return JSON.stringify({
     success: true,
     message: 'Nota guardada en la carpeta de ARIA.',
