@@ -216,6 +216,20 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
 
 ]
 
+/**
+ * Modelo de la reserva (modo cuota agotada).
+ *
+ * DeepSeek R1 distilado por Cloudflare: gratis dentro de las 10.000
+ * neuronas/día del plan Free y sin function calling, así que cuando toca la
+ * reserva ARIA responde igual pero sin herramientas.
+ */
+export const RESERVE_MODEL = '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b'
+
+/** Ids de los modelos de Groq del catálogo, en orden de preferencia. */
+export function groqChatModels(): string[] {
+  return MODEL_CATALOG.filter((m) => m.provider.id === 'groq').map((m) => m.id)
+}
+
 const CATALOG_BY_ID = new Map(MODEL_CATALOG.map((m) => [m.id, m]))
 
 export function catalogEntry(model: string): ModelCatalogEntry | undefined {
@@ -241,14 +255,29 @@ export function isModelAvailable(model: string): boolean {
   return Boolean(process.env[provider.apiKeyEnv])
 }
 
-/** Catalogo con el flag `available` ya calculado, para el endpoint publico. */
-export function catalogWithAvailability() {
-  return MODEL_CATALOG.map((m) => ({
-    id: m.id,
-    name: m.name,
-    description: m.description,
-    badge: m.badge,
-    provider: m.provider.label,
-    available: isModelAvailable(m.id),
-  }))
+/**
+ * Catalogo con el flag `available` ya calculado, para el endpoint publico.
+ *
+ * `quota` es opcional: el mapa de cuota de Groq (modelo -> ISO de
+ * recuperación). Si un modelo esta sin cuota diaria, sale `available: false`
+ * con su `until`, para que el selector lo muestre apagado en vez de mandar al
+ * usuario a un 429. Se lee por request, asi que al volver la cuota el mismo
+ * endpoint ya lo devuelve disponible de nuevo.
+ */
+export function catalogWithAvailability(quota?: Record<string, string>) {
+  const now = Date.now()
+  return MODEL_CATALOG.map((m) => {
+    const until = quota?.[m.id]
+    const quotaUntil =
+      until && m.provider.id === 'groq' && Date.parse(until) > now ? until : undefined
+    return {
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      badge: m.badge,
+      provider: m.provider.label,
+      available: isModelAvailable(m.id) && !quotaUntil,
+      ...(quotaUntil ? { quotaUntil } : {}),
+    }
+  })
 }

@@ -34,6 +34,18 @@ import {
   UNAUTHORIZED_EVENT,
 } from './lib/auth-client'
 
+/** "Xh Ym" / "Ym" / "Xs" para el banner de cuenta regresiva de la cuota. */
+function formatRemaining(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'muy pronto'
+  const totalMin = Math.ceil(ms / 60000)
+  if (totalMin >= 60) {
+    const h = Math.floor(totalMin / 60)
+    const m = totalMin % 60
+    return m > 0 ? `${h} h ${m} min` : `${h} h`
+  }
+  return totalMin < 2 ? `1 min` : `${totalMin} min`
+}
+
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -50,6 +62,8 @@ export default function Home() {
   const [localAgent, setLocalAgent] = useState<boolean | null>(null)
   const [autoSpeak, setAutoSpeak] = useState(false)
   const [modelNotice, setModelNotice] = useState<string | null>(null)
+  const [quotaUntil, setQuotaUntil] = useState<string | null>(null)
+  const [quotaTick, setQuotaTick] = useState(0)
   const [githubOpen, setGithubOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
@@ -174,6 +188,21 @@ export default function Home() {
     const id = setTimeout(() => setModelNotice(null), 9000)
     return () => clearTimeout(id)
   }, [modelNotice])
+
+  // Banner de cuota: cuenta regresiva persistente hasta que la cuota vuelve.
+  // Se re-renderiza cada 15 s para actualizar el "Xh Ym" y se autolimpia unos
+  // segundos después del restablecimiento.
+  useEffect(() => {
+    if (!quotaUntil) return
+    const id = setInterval(() => setQuotaTick((t) => t + 1), 15_000)
+    return () => clearInterval(id)
+  }, [quotaUntil])
+  useEffect(() => {
+    if (!quotaUntil) return
+    const ms = Date.parse(quotaUntil) - Date.now()
+    const id = setTimeout(() => setQuotaUntil(null), Math.max(ms, 0) + 8000)
+    return () => clearTimeout(id)
+  }, [quotaUntil])
 
   // Detectar si el agente local está corriendo (para abrir apps en el PC).
   // Se revalida cada 30 s por si el usuario lo arranca o lo cierra.
@@ -333,6 +362,7 @@ export default function Home() {
               : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
           )
         },
+        onQuota: (until) => setQuotaUntil(until),
       })
 
       if (result.switchedFrom) setModel(result.model)
@@ -399,12 +429,23 @@ export default function Home() {
         content: `⚠️ **Error**: ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu GROQ_API_KEY en el archivo .env.local'}`,
         createdAt: new Date(),
       }
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== convId) return c
-          return { ...c, messages: [...c.messages, errorMessage], updatedAt: new Date() }
-        })
-      )
+      // El turno del usuario ya estaba en el estado local pero todavía no en el
+      // servidor (solo se guarda al terminar). En caso de error se persiste
+      // igual, usuario + error, para que un recargue no se lleve el mensaje.
+      const failedMessages = [...updatedMessages, errorMessage]
+      try {
+        const updated = await updateConversation(convId!, { messages: failedMessages })
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convId ? updated : c))
+        )
+      } catch {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c
+            return { ...c, messages: failedMessages, updatedAt: new Date() }
+          })
+        )
+      }
     } finally {
       setIsLoading(false)
       setStreamingContent('')
@@ -463,6 +504,7 @@ export default function Home() {
               : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
           )
         },
+        onQuota: (until) => setQuotaUntil(until),
       })
 
       if (result.switchedFrom) setModel(result.model)
@@ -490,7 +532,31 @@ export default function Home() {
       if (autoSpeak && result.content.trim()) speak(result.content)
     } catch (err) {
       if (err instanceof UnauthorizedError) return
-      if (err instanceof Error && err.name !== 'AbortError') console.error(err)
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error(err)
+        // Igual que en el envío normal: persistir el error para que un
+        // recargue no se lleve el historial regenerado.
+        const errorMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: `⚠️ **Error**: ${err.message}`,
+          createdAt: new Date(),
+        }
+        const failedMessages = [...trimmed, errorMessage]
+        try {
+          const updated = await updateConversation(convId, { messages: failedMessages })
+          setConversations((prev) =>
+            prev.map((c) => (c.id === convId ? updated : c))
+          )
+        } catch {
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id !== convId) return c
+              return { ...c, messages: failedMessages, updatedAt: new Date() }
+            })
+          )
+        }
+      }
     } finally {
       setIsLoading(false)
       setStreamingContent('')
@@ -807,6 +873,36 @@ export default function Home() {
               onClick={() => setModelNotice(null)}
               className="hover:opacity-70"
               aria-label="Cerrar aviso"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {quotaUntil && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 text-xs flex-shrink-0"
+            style={{
+              background: 'var(--accent-muted)',
+              color: 'var(--accent)',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <span className="flex-1">
+              {Date.parse(quotaUntil) > Date.now() ? (
+                <>
+                  ⏳ La cuota diaria de Groq está agotada. Sigo respondiendo con
+                  DeepSeek (reserva gratis). Se recupera en{' '}
+                  {formatRemaining(Date.parse(quotaUntil) - Date.now())}.
+                </>
+              ) : (
+                <>✅ Se restableció la cuota diaria. ARIA vuelve a trabajar con Groq.</>
+              )}
+            </span>
+            <button
+              onClick={() => setQuotaUntil(null)}
+              className="hover:opacity-70"
+              aria-label="Cerrar aviso de cuota"
             >
               <X size={13} />
             </button>

@@ -30,6 +30,10 @@ export interface AIModel {
   name: string
   description: string
   badge: string
+  /** false si el servidor lo marca sin cuota diaria (solo de /api/models). */
+  available?: boolean
+  /** ISO de recuperación cuando la cuota diaria está agotada. */
+  quotaUntil?: string
 }
 
 export interface MemoryRecord {

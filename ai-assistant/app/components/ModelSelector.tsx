@@ -19,25 +19,35 @@ export default function ModelSelector({ value, onChange }: Props) {
 
   // El servidor dice que modelos pueden responder (los gratis sin clave y los
   // que ya tienen clave configurada). Si no responde, se usa la lista local.
+  // La lista no se filtra: un modelo sin cuota queda visible pero apagado, y se
+  // refresca cada 2 min + al recuperar el foco para que reaparezca al volver
+  // su cuota diaria.
   useEffect(() => {
     let alive = true
-    fetch('/api/models')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!alive || !data || !Array.isArray(data.models)) return
-        const available: AIModel[] = data.models
-          .filter((m: { available?: boolean }) => m.available !== false)
-          .map((m: AIModel) => ({
+    const load = () =>
+      fetch('/api/models')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!alive || !data || !Array.isArray(data.models)) return
+          const available: AIModel[] = data.models.map((m: AIModel) => ({
             id: m.id,
             name: m.name,
             description: m.description,
             badge: m.badge,
+            available: m.available !== false,
+            quotaUntil: typeof m.quotaUntil === 'string' ? m.quotaUntil : undefined,
           }))
-        if (available.length) setModels(available)
-      })
-      .catch(() => {})
+          if (available.length) setModels(available)
+        })
+        .catch(() => {})
+    load()
+    const id = setInterval(load, 120_000)
+    const onFocus = () => load()
+    window.addEventListener('focus', onFocus)
     return () => {
       alive = false
+      clearInterval(id)
+      window.removeEventListener('focus', onFocus)
     }
   }, [])
 
@@ -78,37 +88,53 @@ export default function ModelSelector({ value, onChange }: Props) {
             boxShadow: '0 -8px 32px rgba(0,0,0,0.25)',
           }}
         >
-          {models.map((model: AIModel) => (
-            <button
-              key={model.id}
-              onClick={() => { onChange(model.id); setOpen(false) }}
-              className="w-full px-4 py-3 flex flex-col gap-0.5 text-left transition-all duration-150 hover:opacity-80"
-              style={{
-                background: model.id === value ? 'var(--accent-muted)' : 'transparent',
-                borderBottom: '1px solid var(--border)',
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className="text-sm font-medium"
-                  style={{ color: model.id === value ? 'var(--accent)' : 'var(--text-primary)' }}
-                >
-                  {model.name}
-                </span>
-                {model.id === value && (
+          {models.map((model: AIModel) => {
+            const outOfQuota = model.available === false && model.id !== value
+            return (
+              <button
+                key={model.id}
+                disabled={outOfQuota}
+                onClick={() => { onChange(model.id); setOpen(false) }}
+                className="w-full px-4 py-3 flex flex-col gap-0.5 text-left transition-all duration-150 hover:opacity-80"
+                style={{
+                  background: model.id === value ? 'var(--accent-muted)' : 'transparent',
+                  borderBottom: '1px solid var(--border)',
+                  opacity: outOfQuota ? 0.55 : 1,
+                  cursor: outOfQuota ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
                   <span
-                    className="text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: 'var(--accent)', color: '#fff' }}
+                    className="text-sm font-medium"
+                    style={{ color: model.id === value ? 'var(--accent)' : 'var(--text-primary)' }}
                   >
-                    Activo
+                    {model.name}
                   </span>
-                )}
-              </div>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {model.description}
-              </span>
-            </button>
-          ))}
+                  {model.id === value && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ background: 'var(--accent)', color: '#fff' }}
+                    >
+                      Activo
+                    </span>
+                  )}
+                  {outOfQuota && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ background: 'rgba(255,107,107,0.15)', color: '#ff6b6b' }}
+                    >
+                      {model.quotaUntil && Date.parse(model.quotaUntil) > Date.now()
+                        ? 'Sin cuota'
+                        : 'Vuelve en breve'}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {model.description}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

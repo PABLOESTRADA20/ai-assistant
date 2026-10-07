@@ -12,9 +12,24 @@ import {
   buildAriaContext,
   rememberTurn,
   DEFAULT_MODEL,
+  CHEAP_MODEL,
   MODEL_CONFIG,
   type ChatMessage,
 } from '@/app/lib/aria-core'
+import {
+  providerForModel,
+  groqChatModels,
+  WORKERS_AI,
+  RESERVE_MODEL,
+  type Provider,
+} from '@/app/lib/providers'
+import {
+  chargeFallback,
+  fallbackBudgetLeft,
+  firstAvailableGroqModel,
+  modelQuotaUntil,
+} from '@/app/lib/quota'
+import { workersAiChatStream } from '@/app/lib/workers-ai'
 
 export interface TextReplyOptions {
   apiKey: string
@@ -63,16 +78,49 @@ async function drainToText(stream: ReadableStream): Promise<string> {
 
 export async function generateTextReply(opts: TextReplyOptions): Promise<TextReplyResult> {
   const { apiKey, messages, model = DEFAULT_MODEL, conversationId, allowedTools } = opts
+
+  // --- Modo reserva (el mismo del chat web, pero sin chain del cliente) -----
+  // WhatsApp no tiene el auto-cambio de modelo de la web, así que acá se
+  // resuelve la cuota una sola vez: si el modelo pedido está agotado se pasa a
+  // otro de Groq con cuota; si no queda ninguno, a Workers AI (DeepSeek, sin
+  // herramientas) en este mismo turno.
+  let current = model
+  let provider: Provider = providerForModel(current)
+  let reserveMode = false
+  if (provider.id === 'groq') {
+    const until = await modelQuotaUntil(current)
+    if (until) {
+      const alt = await firstAvailableGroqModel(groqChatModels())
+      if (alt) {
+        console.warn(`[aria-reply] ${current} sin cuota; respondo con ${alt}`)
+        current = alt
+      } else if (await fallbackBudgetLeft()) {
+        console.warn('[aria-reply] Groq completo: modo reserva con Workers AI')
+        current = RESERVE_MODEL
+        provider = WORKERS_AI
+        reserveMode = true
+      } else {
+        return {
+          text: '',
+          toolCalls: [],
+          error:
+            'Se agotó la cuota diaria de Groq y la reserva de Workers AI. Se recupera a medianoche UTC.',
+        }
+      }
+    }
+  }
+
+  const config = MODEL_CONFIG[current] || { max_tokens: 8192, temperature: 0.6 }
   const { allMessages, injectedMemoryIds, lastUserMsg } = await buildAriaContext(
     messages,
     conversationId,
   )
 
-  const config = MODEL_CONFIG[model] || { max_tokens: 8192, temperature: 0.6 }
-
-  // Memoria del turno y refuerzo, igual que en el chat web.
+  // Memoria del turno y refuerzo, igual que en el chat web. Solo si el modelo
+  // auxiliar de Groq (gpt-oss-20b) tiene cuota: en reserva recibiría 429s.
   const { registerBackground } = await import('@/app/lib/background')
-  if (lastUserMsg?.content) {
+  const groqQuotaLeft = Boolean(apiKey) && !(await modelQuotaUntil(CHEAP_MODEL))
+  if (groqQuotaLeft && lastUserMsg?.content) {
     await registerBackground(rememberTurn(apiKey, lastUserMsg.content, conversationId))
   }
   if (injectedMemoryIds.length > 0) {
@@ -80,11 +128,36 @@ export async function generateTextReply(opts: TextReplyOptions): Promise<TextRep
     await registerBackground(reinforceMemories(injectedMemoryIds))
   }
 
+  // Reserva: DeepSeek (Workers AI) va por stream directo y sin herramientas.
+  if (reserveMode) {
+    const NO_TOOLS_NOTICE =
+      'AVISO: en esta respuesta no tenes herramientas disponibles y estás en ' +
+      'modo reserva porque Groq se quedó sin cuota diaria. Responde con lo que ' +
+      'sepas; si la pregunta requiere información actual, dilo con claridad.'
+    try {
+      const withNotice = allMessages.some((m) => m.content === NO_TOOLS_NOTICE)
+        ? allMessages
+        : [...allMessages, { role: 'system' as const, content: NO_TOOLS_NOTICE }]
+      const stream = await workersAiChatStream(
+        current,
+        withNotice,
+        config.max_tokens,
+        config.temperature,
+      )
+      const text = await drainToText(stream)
+      // Contabilizar el turno en el presupuesto de la reserva.
+      await chargeFallback(JSON.stringify(allMessages).length, text.length)
+      return { text, toolCalls: [] }
+    } catch (err) {
+      return { text: '', toolCalls: [], error: String(err) }
+    }
+  }
+
   try {
     const { stream, toolCalls } = await callGroqWithTools(
       apiKey,
       allMessages,
-      model,
+      current,
       config.max_tokens,
       config.temperature,
       opts.forceSearch ?? false,
@@ -100,7 +173,7 @@ export async function generateTextReply(opts: TextReplyOptions): Promise<TextRep
         .map((tc) => `- ${tc.name}(${JSON.stringify(tc.args)}): ${tc.result}`)
         .join('\n')
       const retry = await groqFetch(apiKey, {
-        model,
+        model: current,
         messages: [
           ...allMessages,
           {
@@ -128,7 +201,7 @@ export async function generateTextReply(opts: TextReplyOptions): Promise<TextRep
     // Fallback sin herramientas (p. ej. el modelo no admite tool calling).
     try {
       const res = await groqFetch(apiKey, {
-        model,
+        model: current,
         messages: allMessages,
         stream: true,
         max_tokens: config.max_tokens,

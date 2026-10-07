@@ -1,6 +1,16 @@
 import { GROQ, type Provider } from '@/app/lib/providers'
+import { markGroqQuota, nextMidnightUtc, parseResetWindow, untilFromError } from '@/app/lib/quota'
 
 const GROQ_API = GROQ.apiUrl!
+
+/** Modelo de un body de chat completions, '' si no lo trae. */
+function bodyModel(body: unknown): string {
+  if (body && typeof body === 'object' && 'model' in body) {
+    const model = (body as { model?: unknown }).model
+    if (typeof model === 'string') return model
+  }
+  return ''
+}
 
 /**
  * `fetch` a Groq reintentando ante rate limits (HTTP 429).
@@ -56,7 +66,28 @@ export async function groqFetch(
       continue
     }
 
-    if (res.ok) return res
+    if (res.ok) {
+      /**
+       * Cuota diaria agotada ANTES del primer 429.
+       *
+       * `x-ratelimit-remaining-requests` de Groq siempre es RPD (peticiones
+       * por día, se reinicia a medianoche UTC) y `x-ratelimit-reset-requests`
+       * dice cuánto falta (`2m59.56s`, `23h59m59s`). Si llega a 0, el
+       * siguiente request va a fallar igual: se deja constancia ahora para que
+       * la ruta de chat salte directo al modo reserva sin gastar el intento.
+       */
+      if (provider.id === 'groq') {
+        const remaining = res.headers.get('x-ratelimit-remaining-requests')
+        const model = bodyModel(body)
+        if (model && remaining !== null && Number(remaining) <= 0) {
+          const until =
+            parseResetWindow(res.headers.get('x-ratelimit-reset-requests')) ??
+            nextMidnightUtc().toISOString()
+          void markGroqQuota(model, until)
+        }
+      }
+      return res
+    }
 
     // Consumir el body para no dejar el stream colgado antes de reintentar.
     const errText = await res.text()
@@ -75,6 +106,13 @@ export async function groqFetch(
      */
     const dailyExhausted = /tokens per day|TPD|free-models-per-day|per day|daily limit|neurons/i.test(errText)
     if (dailyExhausted) {
+      // Se registra el hasta-cuándo en la base: el próximo request de chat no
+      // tendrá que pagarlo para saberlo (ver app/lib/quota.ts). Solo aplica a
+      // Groq: los demás proveedores no comparten este límite ni este código.
+      if (provider.id === 'groq') {
+        const model = bodyModel(body)
+        if (model) void markGroqQuota(model, untilFromError(errText))
+      }
       throw new Error(`${provider.label} API error: ${errText}`)
     }
 

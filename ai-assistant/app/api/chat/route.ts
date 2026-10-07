@@ -1,7 +1,23 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { callGroqWithTools, groqFetch } from '@/app/lib/tools'
-import { providerForModel, isWorkersAiModel, GROQ, type Provider } from '@/app/lib/providers'
+import {
+  providerForModel,
+  isWorkersAiModel,
+  groqChatModels,
+  GROQ,
+  WORKERS_AI,
+  RESERVE_MODEL,
+  type Provider,
+} from '@/app/lib/providers'
+import {
+  chargeFallback,
+  fallbackBudgetLeft,
+  firstAvailableGroqModel,
+  latestGroqQuotaUntil,
+  modelQuotaUntil,
+  nextMidnightUtc,
+} from '@/app/lib/quota'
 import { workersAiChatStream } from '@/app/lib/workers-ai'
 import { requireAuth } from '@/app/lib/auth'
 import { rateLimit } from '@/app/lib/rate-limit'
@@ -36,8 +52,11 @@ import {
  *   - 8.000 TPM (por minuto)
  *   - 200.000 TPD (por dia), que es el que mas duele: se agota en unas horas de uso
  *     real y no se recupera hasta el dia siguiente.
+ *
+ * Cuando `code` es `quota_daily` se agrega `until` (ISO): es lo que el cliente
+ * usa para mostrar la cuenta regresiva del banner de cuota.
  */
-function groqErrorResponse(status: number, errText: string, provider: Provider = GROQ): Response {
+async function groqErrorResponse(status: number, errText: string, provider: Provider = GROQ): Promise<Response> {
   // Workers AI (DeepSeek gratis) no comparte los códigos de Groq: el fallo más
   // común es quedarse sin las 10.000 neuronas/día del plan Free.
   if (provider.id === 'workers-ai') {
@@ -49,6 +68,7 @@ function groqErrorResponse(status: number, errText: string, provider: Provider =
           ? 'Se agotó la cuota diaria gratuita de Workers AI (10.000 neuronas/día). Se recupera a medianoche UTC; mientras tanto prueba con un modelo de Groq.'
           : 'DeepSeek (Workers AI) no pudo responder ahora mismo. Prueba de nuevo o cambia a un modelo de Groq.',
         code: neurons ? 'quota_daily' : 'upstream_error',
+        ...(neurons ? { until: nextMidnightUtc().toISOString() } : {}),
       },
       { status: neurons ? 429 : 502, headers: { 'Content-Type': 'application/json' } },
     )
@@ -91,9 +111,12 @@ function groqErrorResponse(status: number, errText: string, provider: Provider =
         error: perDay
           ? 'Se agoto la cuota diaria de ARIA (limite gratuito de Groq: 200.000 tokens al dia).' +
               espera +
-              ' Se recupera a medianoche. Mientras tanto no puedo responder.'
+              ' Se recupera a medianoche. Mientras tanto sigo respondiendo en modo reserva.'
           : 'Se alcanzo el limite de peticiones de ARIA por minuto. Vuelve a intentarlo en un momento.',
         code: perDay ? 'quota_daily' : 'rate_limit',
+        ...(perDay
+          ? { until: (await latestGroqQuotaUntil()) ?? nextMidnightUtc().toISOString() }
+          : {}),
       },
       { status: 429, headers: { 'Content-Type': 'application/json' } },
     )
@@ -166,12 +189,61 @@ export async function POST(req: NextRequest) {
       [...messages].reverse().find((m: ChatMessage) => m?.role === 'user') ?? null
     const requestNeedsTools = needsTools(messages, rawLastUser)
 
+    // --- Modo reserva: la cuota diaria de Groq ya está marcada -------------
+    //
+    // Se resuelve ANTES de tocar Groq. En vez de gastar un request para recibir
+    // el mismo 429 (y encadenar 4 intentos como antes), la ruta responde de una
+    // vez con el primer modelo de Groq que sí tenga cuota, o —si no queda
+    // ninguno— con Workers AI (DeepSeek, gratis) en ESTE mismo request. El
+    // cliente se entera por el evento `model_switch` con `reason: 'quota'`,
+    // que además trae `until` para el banner con cuenta regresiva.
+    let switchedForQuota = false
+    let reserveMode = false
+    let quotaUntil: string | null = null
+    if (provider.id === 'groq') {
+      quotaUntil = await modelQuotaUntil(model)
+      if (quotaUntil) {
+        const available = await firstAvailableGroqModel(groqChatModels())
+        if (available) {
+          console.warn(`[chat] ${model} sin cuota diaria; respondo con ${available}`)
+          model = available
+          provider = providerForModel(available)
+          switchedForQuota = true
+        } else if (await fallbackBudgetLeft()) {
+          console.warn('[chat] Groq completo: modo reserva con Workers AI (DeepSeek)')
+          model = RESERVE_MODEL
+          provider = WORKERS_AI
+          reserveMode = true
+          switchedForQuota = true
+        } else {
+          // Sin Groq y sin reserva para hoy: se contesta con la cuenta regresiva.
+          return Response.json(
+            {
+              error:
+                'Se agotó la cuota diaria de Groq y la reserva gratuita de Workers AI. Se recupera a medianoche UTC.',
+              code: 'quota_daily',
+              until: quotaUntil,
+            },
+            { status: 429, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+      }
+    }
+
     let switchedForTools = false
-    if (!provider.supportsTools && requestNeedsTools) {
-      console.warn(`[chat] ${model} no soporta herramientas; se responde con ${CHEAP_MODEL}`)
-      switchedForTools = true
-      model = CHEAP_MODEL
-      provider = GROQ
+    if (!provider.supportsTools && requestNeedsTools && !reserveMode) {
+      // Si el modelo barato de Groq está sin cuota, cambiar a él solo para
+      // recibir el mismo 429 no ayuda: se responde sin herramientas y el
+      // NO_TOOLS_NOTICE le pide al modelo que lo diga con claridad.
+      const cheapAvailable = !(await modelQuotaUntil(CHEAP_MODEL))
+      if (cheapAvailable) {
+        console.warn(`[chat] ${model} no soporta herramientas; se responde con ${CHEAP_MODEL}`)
+        switchedForTools = true
+        model = CHEAP_MODEL
+        provider = GROQ
+      } else {
+        console.warn('[chat] pedido con herramientas pero Groq sin cuota: se responde sin tools')
+      }
     }
 
     // Clave del proveedor que responde el chat. Workers AI va por binding (sin clave).
@@ -193,10 +265,16 @@ export async function POST(req: NextRequest) {
 
     const config = MODEL_CONFIG[model] || { max_tokens: 8192, temperature: 0.6 }
 
+    // ¿Tiene cuota el modelo de las tareas de fondo? Extracción de memoria y
+    // resumen van contra `openai/gpt-oss-20b` aunque el chat esté en reserva;
+    // con ese modelo sin cuota solo recibirían 429s. (La consolidación es solo
+    // SQL: esa no se salta.)
+    const groqQuotaLeft = Boolean(groqKey) && !(await modelQuotaUntil(CHEAP_MODEL))
+
     // Extracción de memoria del turno en segundo plano (no bloquea la respuesta).
     // `registerBackground` lo registra con ctx.waitUntil() para que workerd no lo
     // cancele al terminar el request (lo que además corrompería el cliente Prisma).
-    if (groqKey && lastUserMsg?.content) {
+    if (groqKey && groqQuotaLeft && lastUserMsg?.content) {
       await registerBackground(rememberTurn(groqKey, lastUserMsg.content, conversationId))
     }
 
@@ -208,7 +286,7 @@ export async function POST(req: NextRequest) {
     }
 
     // If messages were truncated but no summary exists yet, generate one
-    if (groqKey && messages.length > MAX_VISIBLE_MESSAGES && !summary) {
+    if (groqKey && groqQuotaLeft && messages.length > MAX_VISIBLE_MESSAGES && !summary) {
       const oldMessages = messages.slice(0, -MAX_VISIBLE_MESSAGES)
       const newSummary = await generateSummary(groqKey, oldMessages)
       if (newSummary && conversationId) {
@@ -255,11 +333,19 @@ export async function POST(req: NextRequest) {
             let reasoningChars = 0
             let finishReason: string | null = null
 
-            // Aviso de auto-cambio por herramientas (DeepSeek -> Groq).
-            if (switchedForTools) {
+            // Aviso de auto-cambio: cuota agotada (modo reserva) u herramientas
+            // (DeepSeek -> Groq). `until` permite al cliente mostrar la cuenta
+            // regresiva de la cuota.
+            if (switchedForTools || switchedForQuota) {
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ type: 'model_switch', from: requestedModel, to: model, reason: 'no_tools' })}\n\n`,
+                  `data: ${JSON.stringify({
+                    type: 'model_switch',
+                    from: requestedModel,
+                    to: model,
+                    reason: switchedForQuota ? 'quota' : 'no_tools',
+                    ...(quotaUntil ? { until: quotaUntil } : {}),
+                  })}\n\n`,
                 ),
               )
             }
@@ -406,6 +492,7 @@ export async function POST(req: NextRequest) {
                 ? 'Se agoto la cuota diaria de ARIA (limite gratuito de Groq: 200.000 tokens al dia). Se recupera a medianoche.'
                 : 'Se alcanzo el limite de peticiones de ARIA por minuto. Intentalo en unos segundos.',
               code: perDay ? 'quota_daily' : 'rate_limit',
+              ...(perDay ? { until: (await modelQuotaUntil(model)) ?? nextMidnightUtc().toISOString() } : {}),
             },
             { status: 429, headers: { 'Content-Type': 'application/json' } },
           )
@@ -434,9 +521,32 @@ export async function POST(req: NextRequest) {
       // DeepSeek gratis (Workers AI) va por el binding, no por fetch. El stream
       // ya viene normalizado a SSE estilo OpenAI, así el drenado de abajo no cambia.
       if (isWorkersAiModel(model)) {
-        const withNotice = messages.some((m) => m.content === NO_TOOLS_NOTICE)
+        // Tope de seguridad del modo reserva: si ya se gastaron las neuronas
+        // del día, no se llama ni al binding (evita facturar en cuentas Paid
+        // y el error crudo del proveedor en las Free).
+        if (!(await fallbackBudgetLeft())) {
+          return Response.json(
+            {
+              error:
+                'Se agotó la reserva diaria gratuita de Workers AI. Se recupera a medianoche UTC; mientras tanto prueba con un modelo de Groq.',
+              code: 'quota_daily',
+              until: nextMidnightUtc().toISOString(),
+            },
+            { status: 429, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        const notices: string[] = [NO_TOOLS_NOTICE]
+        if (reserveMode) {
+          notices.push(
+            'AVISO 2: estás respondiendo en MODO RESERVA porque Groq se quedó ' +
+              'sin cuota diaria. No hay herramientas disponibles en este modo. ' +
+              'Si la pregunta requiere buscar en internet, leer notas o abrir ' +
+              'algo, dilo con claridad en vez de inventar que lo hiciste.',
+          )
+        }
+        const withNotice = notices.every((n) => messages.some((m) => m.content === n))
           ? messages
-          : [...messages, { role: 'system', content: NO_TOOLS_NOTICE }]
+          : [...messages, ...notices.map((n) => ({ role: 'system' as const, content: n }))]
         try {
           const stream = await workersAiChatStream(
             model,
@@ -448,7 +558,7 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           const detail = String(err instanceof Error ? err.message : err)
           console.error('Workers AI error:', detail)
-          return Response.json({ error: detail }, { status: 502 })
+          return groqErrorResponse(502, detail, WORKERS_AI)
         }
       }
       return groqFetch(apiKey, {
@@ -468,10 +578,29 @@ export async function POST(req: NextRequest) {
     }
 
     const encoder = new TextEncoder()
+    // Neuronas consumidas por el turno de reserva: se cobran al terminar, con
+    // los caracteres realmente emitidos (ver app/lib/quota.ts).
+    const reserveInputChars = isWorkersAiModel(model) ? JSON.stringify(allMessages).length : 0
     const readable = new ReadableStream({
       async start(controller) {
         let emitted = 0
+        let contentChars = 0
         let reasoningChars = 0
+
+        // Aviso de auto-cambio por cuota (modo reserva) o por herramientas.
+        if (switchedForQuota || switchedForTools) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'model_switch',
+                from: requestedModel,
+                to: model,
+                reason: switchedForQuota ? 'quota' : 'no_tools',
+                ...(quotaUntil ? { until: quotaUntil } : {}),
+              })}\n\n`,
+            ),
+          )
+        }
 
         const drain = async (res: Response): Promise<number> => {
           const reader = res.body!.getReader()
@@ -499,6 +628,7 @@ export async function POST(req: NextRequest) {
                 const content = delta.content || ''
                 if (content) {
                   emitted++
+                  contentChars += content.length
                   controller.enqueue(
                     encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
                   )
@@ -538,6 +668,11 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           console.error('Stream error:', err)
         } finally {
+          // Cierre del turno de reserva: se contabiliza lo emitido para que el
+          // tope diario de neuronas refleje el uso real (o su cota superior).
+          if (reserveInputChars > 0) {
+            await chargeFallback(reserveInputChars, contentChars)
+          }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
         }

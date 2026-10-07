@@ -38,6 +38,11 @@ export interface StreamChatOptions {
   onTool: (tool: ToolInvocation, all: ToolInvocation[]) => void
   /** Se llama justo antes de reintentar con otro modelo. */
   onFallback?: (from: string, to: string, reason: string) => void
+  /**
+   * Se llama cuando el servidor comunica que la cuota diaria está agotada y
+   * cuándo vuelve (ISO). El banner con cuenta regresiva se alimenta de esto.
+   */
+  onQuota?: (until: string) => void
 }
 
 export interface StreamChatResult {
@@ -88,9 +93,12 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
       const payload = (await res.json().catch(() => ({}))) as {
         error?: unknown
         code?: unknown
+        until?: unknown
       }
       const message = typeof payload.error === 'string' ? payload.error : `Error ${res.status}`
       const code = typeof payload.code === 'string' ? payload.code : undefined
+      const until = typeof payload.until === 'string' ? payload.until : undefined
+      if (until) opts.onQuota?.(until)
       const next = chain[i + 1]
 
       if (next && isRetryable(res.status, code, message)) {
@@ -128,10 +136,12 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
             const parsed = JSON.parse(data)
             if (parsed.type === 'model_switch') {
               servedModel = typeof parsed.to === 'string' ? parsed.to : candidate
+              const reason = typeof parsed.reason === 'string' ? parsed.reason : 'no_tools'
+              if (typeof parsed.until === 'string') opts.onQuota?.(parsed.until)
               opts.onFallback?.(
                 typeof parsed.from === 'string' ? parsed.from : candidate,
                 servedModel,
-                'no_tools',
+                reason,
               )
               continue
             }
