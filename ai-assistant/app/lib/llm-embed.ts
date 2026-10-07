@@ -39,7 +39,40 @@ async function viaRest(text: string): Promise<number[]> {
   return vec
 }
 
+/**
+ * Embedding local determinista: hashing de tokens (FNV-1a) a 1024 dims,
+ * normalizado. Sin red y reproducible.
+ *
+ * Existe SOLO para los tests (`EMBEDDING_PROVIDER=local`, que es lo que
+ * fija `tests/setup.ts`): los tests de integración necesitan vectores
+ * estables para poder asertar sobre similitudes, y no deben depender de
+ * Workers AI ni gastar su cuota. En producción la variable no está definida
+ * y se usa el modelo real (`@cf/baai/bge-m3`).
+ */
+function localEmbed(text: string): number[] {
+  const v = new Array<number>(EMBEDDING_DIM).fill(0)
+  const tokens = text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3)
+  for (const token of tokens) {
+    let h = 2166136261
+    for (let i = 0; i < token.length; i++) {
+      h ^= token.charCodeAt(i)
+      h = Math.imul(h, 16777619)
+    }
+    v[Math.abs(h) % EMBEDDING_DIM] += 1
+  }
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1
+  return v.map((x) => x / norm)
+}
+
 export async function embed(text: string): Promise<string> {
+  if (process.env.EMBEDDING_PROVIDER === 'local') {
+    return vectorText(localEmbed(text))
+  }
   let vec: number[]
   try {
     vec = await viaBinding(text)

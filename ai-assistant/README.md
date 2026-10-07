@@ -72,6 +72,11 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `npm run build` | Build de producción (Next) |
 | `npm start` | Servidor de producción (Node) |
 | `npm run lint` | Linter |
+| `npm run typecheck` | Comprobación de tipos (`tsc --noEmit`) |
+| `npm test` | Toda la suite: unit + integración |
+| `npm run test:unit` | Solo tests unitarios (sin red ni BD) |
+| `npm run test:integration` | Migra la BD de pruebas y ejecuta los tests de integración |
+| `npm run test:watch` | Vitest en modo watch |
 | `npm run db:migrate` | Ejecutar migraciones Prisma |
 | `npm run db:studio` | Abrir Prisma Studio |
 | `npm run db:reindex` | Regenerar embeddings del vault en pgvector |
@@ -81,6 +86,37 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `npm run preview` | Build OpenNext + preview local en workerd |
 | `npm run deploy` | Build OpenNext + deploy a Cloudflare Workers |
 
+## Tests
+
+Vitest con dos capas dentro de `tests/`:
+
+- **Unitarios** (`tests/unit/`): lógica pura — extractor de memorias, WhatsApp, ZIP, auth, ARIA core. No tocan red ni base de datos.
+- **Integración** (`tests/integration/`): memoria a largo plazo y memoria de trabajo contra PostgreSQL de verdad (dedupe, búsqueda semántica, refuerzo, consolidación, TTL…).
+
+**Regla de oro:** los tests nunca usan la base de producción. Los de integración apuntan a `TEST_DATABASE_URL`; si no está definida, se omiten (no fallan). El hook `tests/setup.ts` reescribe `DATABASE_URL` con la de pruebas, fuerza embeddings locales (`EMBEDDING_PROVIDER=local`, deterministas y sin gastar cuota de Workers AI) y registra el loader WASM de Prisma.
+
+```bash
+npm test                 # todo
+npm run test:unit        # solo unitarios
+npm run test:integration # migra la BD de pruebas y ejecuta integración
+npm run test:watch       # watch
+```
+
+Para los de integración necesitas una base aislada (p. ej. `aria_test` en el mismo proyecto Neon):
+
+```bash
+# 1. Crear la base y la extensión pgvector (una sola vez):
+#    CREATE DATABASE aria_test;  →  \c aria_test  →  CREATE EXTENSION vector;
+
+# 2. En .env.local apuntar a ella (NUNCA a la de producción):
+echo 'TEST_DATABASE_URL=postgresql://user:pass@host/aria_test' >> .env.local
+
+# 3. Listo: `npm run test:integration` aplica las migraciones sola
+#    (scripts/test-migrate.mjs, con reintentos por cold start de Neon).
+```
+
+En CI (`.github/workflows/ci.yml`), cada PR ejecuta lint + typecheck + unit; los de integración corren si el secret `TEST_DATABASE_URL` está definido (si falta, se omiten con un aviso).
+
 ## Variables de entorno
 
 | Variable | Descripción | Requerida |
@@ -88,6 +124,7 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `GROQ_API_KEY` | API key de Groq | ✅ |
 | `DATABASE_URL` | URL pooled de Neon (app) | ✅ |
 | `DATABASE_URL_UNPOOLED` | URL directa de Neon (CLI de Prisma) | ✅ |
+| `TEST_DATABASE_URL` | BD de pruebas aislada para `npm run test:integration` (sin ella, esos tests se omiten) | tests |
 | `CLOUDFLARE_API_TOKEN` | Token con permiso Workers AI (embeddings) | ✅ |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
