@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X, FileText, MoreVertical } from 'lucide-react'
+import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X, FileText, MoreVertical, Box } from 'lucide-react'
 
 import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
@@ -24,7 +24,7 @@ import {
   generateTitle,
 } from './lib/store'
 import LoginScreen from './components/LoginScreen'
-import NeuralNetwork from './components/NeuralNetwork'
+import CountachViewer from './components/scene/CountachViewer'
 import AriaMark from './components/AriaMark'
 import InstallButton from './components/InstallButton'
 import {
@@ -61,6 +61,8 @@ export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [localAgent, setLocalAgent] = useState<boolean | null>(null)
   const [autoSpeak, setAutoSpeak] = useState(false)
+  // Escena 3D del Countach: flag OFF por defecto (localStorage `aria_3d_enabled`).
+  const [threeDEnabled, setThreeDEnabled] = useState(false)
   const [modelNotice, setModelNotice] = useState<string | null>(null)
   const [quotaUntil, setQuotaUntil] = useState<string | null>(null)
   const [quotaTick, setQuotaTick] = useState(0)
@@ -575,6 +577,27 @@ export default function Home() {
     else stopSpeech()
   }, [autoSpeak, prime, stopSpeech])
 
+  // Lee el flag 3D al montar y lo conmuta desde el header (opt-in, sin recargar).
+  useEffect(() => {
+    try {
+      setThreeDEnabled(localStorage.getItem('aria_3d_enabled') === '1')
+    } catch {
+      setThreeDEnabled(false)
+    }
+  }, [])
+
+  const toggleThreeDEnabled = useCallback(() => {
+    setThreeDEnabled((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('aria_3d_enabled', next ? '1' : '0')
+      } catch {
+        // sin localStorage (modo privado): el flag dura solo la sesión
+      }
+      return next
+    })
+  }, [])
+
   const handleExportMarkdown = () => {
     if (!activeConversation) return
     const { title, messages, model } = activeConversation
@@ -641,7 +664,7 @@ export default function Home() {
   if (authState === 'checking' || (authState === 'ready' && initialLoading)) {
     return (
       <div className="relative flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
-        <NeuralNetwork opacity={0.35} />
+        <CountachViewer neuralOpacity={0.35} enabled={threeDEnabled} />
         <div className="relative z-10 flex flex-col items-center gap-3">
           <div
             className="flex items-center justify-center rounded-2xl"
@@ -728,6 +751,17 @@ export default function Home() {
         ]
       : []),
     {
+      key: 'scene3d',
+      label: '3D',
+      title: threeDEnabled
+        ? 'Escena 3D del Countach activada: clic para volver al fondo de red neuronal'
+        : 'Escena 3D del Countach desactivada por defecto: clic para activarla',
+      icon: <Box size={14} />,
+      onClick: toggleThreeDEnabled,
+      active: threeDEnabled,
+      disabled: false,
+    },
+    {
       key: 'github',
       label: 'GitHub',
       title: 'Repositorios de GitHub que ARIA puede leer y revisar',
@@ -749,7 +783,7 @@ export default function Home() {
 
   return (
     <div className="relative flex h-dvh overflow-hidden" style={{ background: 'var(--app-bg)' }}>
-      <NeuralNetwork opacity={0.4} />
+      <CountachViewer neuralOpacity={0.4} enabled={threeDEnabled} />
       <Sidebar
         conversations={conversations}
         activeId={activeId}
