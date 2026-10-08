@@ -91,28 +91,44 @@ Always aim to be the best engineer and teacher you can be.`
 export interface GroqModelConfig {
   max_tokens: number
   temperature: number
+  /**
+   * Presupuesto de tokens de ENTRADA (system + memoria + historial) antes de
+   * recortar/compactar. Groq free es el cuello de botella real (~8000 TPM
+   * compartidos por TODOS sus modelos), así que ahí se queda corto; Workers AI
+   * y los proveedores de ventana grande admiten más.
+   *
+   * Es opcional para no romper los fallbacks
+   * `MODEL_CONFIG[x] || { max_tokens, temperature }` de chat/route.ts y
+   * aria-reply.ts; quien lo consuma usa `contextBudget ?? DEFAULT_CONTEXT_BUDGET`
+   * (app/lib/tokens.ts).
+   */
+  contextBudget?: number
 }
 
+// Presupuestos de entrada por familia:
+//   - Groq free: 5000 (límite ~8000 TPM es el recurso escaso).
+//   - Workers AI y proveedores free de ventana grande: 12000.
+//   - Gemini: 14000 (ventana muy amplia).
 export const MODEL_CONFIG: Record<string, GroqModelConfig> = {
-  'openai/gpt-oss-120b': { max_tokens: 8192, temperature: 0.6 },
-  'qwen/qwen3.8-27b': { max_tokens: 8192, temperature: 0.6 },
-  'openai/gpt-oss-20b': { max_tokens: 4096, temperature: 0.7 },
+  'openai/gpt-oss-120b': { max_tokens: 8192, temperature: 0.6, contextBudget: 5000 },
+  'qwen/qwen3.8-27b': { max_tokens: 8192, temperature: 0.6, contextBudget: 5000 },
+  'openai/gpt-oss-20b': { max_tokens: 4096, temperature: 0.7, contextBudget: 5000 },
   // Workers AI (gratis, sin clave). Comparten las 10.000 neuronas/dia.
-  '@cf/openai/gpt-oss-120b': { max_tokens: 8192, temperature: 0.6 },
-  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { max_tokens: 8192, temperature: 0.6 },
-  '@cf/google/gemma-4-26b-a4b-it': { max_tokens: 8192, temperature: 0.6 },
-  '@cf/mistralai/mistral-small-3.1-24b-instruct': { max_tokens: 8192, temperature: 0.6 },
+  '@cf/openai/gpt-oss-120b': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
+  '@cf/google/gemma-4-26b-a4b-it': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
+  '@cf/mistralai/mistral-small-3.1-24b-instruct': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
   // DeepSeek R1 distilado por Cloudflare Workers AI (gratis dentro de las
   // 10.000 neuronas/día). Es de razonamiento: gasta tokens pensando antes de
   // responder, por eso se le deja un margen amplio.
-  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': { max_tokens: 8192, temperature: 0.6 },
+  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
   // Proveedores con free tier (requieren clave).
-  'gemini-3.5-flash': { max_tokens: 8192, temperature: 0.6 },
-  'gemini-3.5-flash-lite': { max_tokens: 8192, temperature: 0.6 },
-  'mistral-small-4': { max_tokens: 8192, temperature: 0.6 },
-  'openai/gpt-oss-20b:free': { max_tokens: 4096, temperature: 0.7 },
-  'nvidia/nemotron-3-super-120b-a12b:free': { max_tokens: 8192, temperature: 0.6 },
-  'glm-4.7-flash': { max_tokens: 8192, temperature: 0.6 },
+  'gemini-3.5-flash': { max_tokens: 8192, temperature: 0.6, contextBudget: 14000 },
+  'gemini-3.5-flash-lite': { max_tokens: 8192, temperature: 0.6, contextBudget: 14000 },
+  'mistral-small-4': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
+  'openai/gpt-oss-20b:free': { max_tokens: 4096, temperature: 0.7, contextBudget: 12000 },
+  'nvidia/nemotron-3-super-120b-a12b:free': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
+  'glm-4.7-flash': { max_tokens: 8192, temperature: 0.6, contextBudget: 12000 },
 }
 
 export const MAX_VISIBLE_MESSAGES = 8
