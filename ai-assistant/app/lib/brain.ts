@@ -265,13 +265,23 @@ type MemoryRow = {
 }
 
 /** Fila de la búsqueda vectorial de `VaultNote`. */
-type VaultRow = {
+type VaultVectorRow = {
   path: string
   name: string
   title: string | null
   content: string
   updatedAt: Date
   sim: number
+}
+
+/** Fila de la búsqueda léxica de `VaultNote`. */
+type VaultLexRow = {
+  path: string
+  name: string
+  title: string | null
+  content: string
+  updatedAt: Date
+  rank: number
 }
 
 /** Fila de la búsqueda léxica de `Note`. */
@@ -300,6 +310,27 @@ async function safeQuery<T>(label: string, run: () => Promise<T[]>): Promise<T[]
   } catch (err) {
     console.warn(`[brain] fuente ${label} no disponible:`, err)
     return []
+  }
+}
+
+/** Candidato de vault a partir de un aporte puntuado (vectorial, léxico). */
+function vaultCandidate(
+  row: { path: string; name: string; title: string | null; content: string; updatedAt: Date },
+  scores: number[],
+): Candidate {
+  return {
+    scores,
+    hit: {
+      kind: 'vault',
+      id: row.path,
+      title: row.title ?? row.name,
+      content: row.content,
+      snippet: preview(row.content),
+      tags: [],
+      source: 'vault',
+      createdAt: toIso(row.updatedAt),
+      score: 0,
+    },
   }
 }
 
@@ -333,10 +364,10 @@ function toIso(value: Date | string): string {
  * Búsqueda unificada del cerebro.
  *
  * Orden: 1) memoria a largo plazo (vectorial + léxica), 2) vault de Obsidian
- * (vectorial), 3) notas de la carpeta de ARIA (léxica), 4) mensajes viejos de
- * la conversación en curso (léxica). Cada fuente produce similitudes que se
- * funden con `orFuse`; el resultado se recorta por `minScore`, se ordena y se
- * limita.
+ * (vectorial + léxica), 3) notas de la carpeta de ARIA (léxica), 4) mensajes
+ * viejos de la conversación en curso (léxica). Cada fuente produce
+ * similitudes que se funden con `orFuse`; el resultado se recorta por
+ * `minScore`, se ordena y se limita.
  */
 export async function searchBrain(
   query: string,
@@ -371,7 +402,7 @@ export async function searchBrain(
   // Todas las consultas son independientes: se lanzan con Promise.all y la
   // latencia es la de la más lenta, no la suma. Cada una viaja en `safeQuery`:
   // si una tabla falla (caída, esquema, red) las demás igual responden.
-  const [memVectorial, memLexical, vaultRows, noteRows, msgRows] = await Promise.all([
+  const [memVectorial, memLexical, vaultRows, vaultLexRows, noteRows, msgRows] = await Promise.all([
     vec
       ? safeQuery('memoria vectorial', () =>
           prisma.$queryRaw<MemoryRow[]>`
@@ -397,8 +428,8 @@ export async function searchBrain(
       `,
     ),
     vec
-      ? safeQuery('vault', () =>
-          prisma.$queryRaw<VaultRow[]>`
+      ? safeQuery('vault vectorial', () =>
+          prisma.$queryRaw<VaultVectorRow[]>`
             SELECT "path", "name", "title", "content", "updatedAt",
                    1 - (embedding <=> ${vec}::vector) AS sim
             FROM "VaultNote"
@@ -408,7 +439,19 @@ export async function searchBrain(
             LIMIT 10
           `,
         )
-      : Promise.resolve([] as VaultRow[]),
+      : Promise.resolve([] as VaultVectorRow[]),
+    // Vía léxica del vault: sin esto, una entrada sin vector (o con cuota de
+    // embeddings agotada) quedaba invisible aunque tuviera la keyword exacta.
+    safeQuery('vault léxico', () =>
+      prisma.$queryRaw<VaultLexRow[]>`
+        SELECT "path", "name", "title", "content", "updatedAt",
+               ts_rank_cd(to_tsvector('spanish', concat_ws(' ', COALESCE("title", ''), "content")), ${queryTs}) AS rank
+        FROM "VaultNote"
+        WHERE to_tsvector('spanish', concat_ws(' ', COALESCE("title", ''), "content")) @@ ${queryTs}
+        ORDER BY "updatedAt" DESC
+        LIMIT 10
+      `,
+    ),
     safeQuery('notas', () =>
       prisma.$queryRaw<NoteRow[]>`
         SELECT "id", "title", "content", "tags", "source", "createdAt", "updatedAt",
@@ -437,22 +480,8 @@ export async function searchBrain(
   for (const row of memVectorial) push(memoryHit(row))
   // Vía léxica: el ts_rank_cd crudo se normaliza a [0,1] antes de fundir.
   for (const row of memLexical) push(memoryHit(row, normalizeLexical))
-  for (const row of vaultRows) {
-    push({
-      scores: [clamp01(row.sim)],
-      hit: {
-        kind: 'vault',
-        id: row.path,
-        title: row.title ?? row.name,
-        content: row.content,
-        snippet: preview(row.content),
-        tags: [],
-        source: 'vault',
-        createdAt: toIso(row.updatedAt),
-        score: 0,
-      },
-    })
-  }
+  for (const row of vaultRows) push(vaultCandidate(row, [clamp01(row.sim)]))
+  for (const row of vaultLexRows) push(vaultCandidate(row, [normalizeLexical(row.rank)]))
   for (const row of noteRows) {
     const lex = lexicalSim(row.title, row.content, q)
     const rank = normalizeLexical(row.rank)

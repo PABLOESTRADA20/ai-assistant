@@ -88,6 +88,21 @@ describe.skipIf(!RUN)('cerebro: búsqueda unificada (integración)', () => {
     expect(note?.title).toContain(marker)
   })
 
+  it('encuentra una entrada del vault SIN embedding por su keyword (vía léxica)', async () => {
+    // Simula el caso real del hallazgo: sin vector (entrada vieja o cuota de
+    // embeddings), el vault quedaba invisible aunque tuviera la palabra exacta.
+    await prisma.$executeRaw`
+      INSERT INTO "VaultNote" ("path", "name", "title", "content", "embedding", "updatedAt")
+      VALUES (${`vitest-brain-${marker}/respaldo.md`}, 'respaldo.md', NULL,
+              ${marker + ' reglas de respaldo nocturno y rotación de copias'},
+              NULL::vector, NOW())
+    `
+
+    const hits = await searchBrain(marker, { minScore: 0.3 })
+    const vaultLex = hits.find((h) => h.kind === 'vault' && h.content.includes('respaldo nocturno'))
+    expect(vaultLex).toBeTruthy()
+  })
+
   it('sin conversationId no incluye mensajes', async () => {
     const hits = await searchBrain(marker, { minScore: 0 })
     expect(hits.some((h) => h.kind === 'message')).toBe(false)
