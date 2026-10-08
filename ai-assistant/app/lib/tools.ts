@@ -1,5 +1,6 @@
 import { GROQ, type Provider } from '@/app/lib/providers'
 import { markGroqQuota, nextMidnightUtc, parseResetWindow, untilFromError } from '@/app/lib/quota'
+import { oneLineStub, sliceWindow } from '@/app/lib/truncate'
 
 const GROQ_API = GROQ.apiUrl!
 
@@ -194,11 +195,12 @@ export const TOOL_DEFINITIONS = [
     type: 'function' as const,
     function: {
       name: 'read_note',
-      description: 'Read the full content of a note from the Obsidian vault',
+      description: 'Read the content of a note from the Obsidian vault (long notes are windowed; continue with offset)',
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'Relative path from vault root, e.g. "06-Programacion/TypeScript.md"' },
+          offset: { type: 'integer', description: 'Optional character offset to continue a long note (use next_offset from the previous call)' },
         },
         required: ['path'],
       },
@@ -376,14 +378,16 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: 'github_read_file',
       description:
-        'Read the full text content of a file in a GitHub repository (read-only). Use it after ' +
-        'github_list_files to inspect the code you are asked to review or fix.',
+        'Read the text content of a file in a GitHub repository (read-only), windowed to a ' +
+        'maximum per call; continue with offset. Use it after github_list_files to inspect the ' +
+        'code you are asked to review or fix.',
       parameters: {
         type: 'object',
         properties: {
           repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
           path: { type: 'string', description: 'File path inside the repo, e.g. "src/index.ts"' },
           ref: { type: 'string', description: 'Optional branch, tag or commit SHA' },
+          offset: { type: 'integer', description: 'Optional character offset to continue a long file (use next_offset from the previous call)' },
         },
         required: ['repo', 'path'],
       },
@@ -452,12 +456,13 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: 'read_cloud_note',
       description:
-        "Read the full content of a note in the user's cloud ARIA folder, by title (a partial " +
-        'match is fine) or by id.',
+        "Read the content of a note in the user's cloud ARIA folder, by title (a partial " +
+        'match is fine) or by id. Long notes are windowed; continue with offset.',
       parameters: {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Note title or id' },
+          offset: { type: 'integer', description: 'Optional character offset to continue a long note (use next_offset from the previous call)' },
         },
         required: ['title'],
       },
@@ -475,7 +480,7 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
     case 'search_vault':
       return searchVault(args.query)
     case 'read_note':
-      return readNote(args.path)
+      return readNote(args.path, args.offset)
     case 'save_note':
       return saveNote(args.path, args.content)
     case 'calculate':
@@ -497,7 +502,7 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
     case 'github_list_files':
       return githubListFiles(args.repo, args.path, args.ref)
     case 'github_read_file':
-      return githubReadFile(args.repo, args.path, args.ref)
+      return githubReadFile(args.repo, args.path, args.ref, args.offset)
     case 'github_list_issues':
       return githubListIssues(args.repo, args.state)
     case 'save_cloud_note':
@@ -505,7 +510,7 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
     case 'list_cloud_notes':
       return listCloudNotes(args.query)
     case 'read_cloud_note':
-      return readCloudNote(args.title)
+      return readCloudNote(args.title, args.offset)
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` })
   }
@@ -571,12 +576,17 @@ async function githubListFiles(repo?: unknown, prefix?: unknown, ref?: unknown):
   )
 }
 
-async function githubReadFile(repo?: unknown, filePath?: unknown, ref?: unknown): Promise<string> {
+async function githubReadFile(
+  repo?: unknown,
+  filePath?: unknown,
+  ref?: unknown,
+  offset?: unknown,
+): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim() || typeof filePath !== 'string') {
     return JSON.stringify({ error: 'Faltan el repositorio o la ruta del archivo' })
   }
   const gh = await import('@/app/lib/github')
-  return gh.readFile(repo, filePath, typeof ref === 'string' ? ref : undefined)
+  return gh.readFile(repo, filePath, typeof ref === 'string' ? ref : undefined, offset)
 }
 
 async function githubListIssues(repo?: unknown, state?: unknown): Promise<string> {
@@ -588,6 +598,9 @@ async function githubListIssues(repo?: unknown, state?: unknown): Promise<string
 }
 
 /* ----------------------- herramientas de notas nube ---------------------- */
+
+/** Tope de lectura de una nota (vault o nube) por llamada; el resto se pide con `offset`. */
+export const NOTE_READ_MAX = 6000
 
 async function saveCloudNote(title?: unknown, content?: unknown, tags?: unknown): Promise<string> {
   if (typeof title !== 'string' || !title.trim()) {
@@ -624,19 +637,23 @@ async function listCloudNotes(query?: unknown): Promise<string> {
   })
 }
 
-async function readCloudNote(title?: unknown): Promise<string> {
+async function readCloudNote(title?: unknown, offset?: unknown): Promise<string> {
   if (typeof title !== 'string' || !title.trim()) {
     return JSON.stringify({ error: 'Falta el título o el id de la nota' })
   }
   const notes = await import('@/app/lib/notes')
   const note = await notes.findNote(title)
   if (!note) return JSON.stringify({ error: `No encontré la nota "${title}".` })
+  const window = sliceWindow(note.content, offset, NOTE_READ_MAX)
   return JSON.stringify({
     id: note.id,
     title: note.title,
     tags: note.tags,
     updatedAt: note.updatedAt,
-    content: note.content,
+    offset: window.offset,
+    truncated: window.truncated,
+    next_offset: window.nextOffset,
+    content: window.content,
   })
 }
 
@@ -997,7 +1014,7 @@ async function searchVault(query: string): Promise<string> {
   }
 }
 
-async function readNote(notePath: string): Promise<string> {
+async function readNote(notePath: string, offset?: unknown): Promise<string> {
   const vaultPath = process.env.VAULT_PATH
   if (!vaultPath) {
     return JSON.stringify({ error: 'VAULT_PATH no configurada' })
@@ -1014,7 +1031,15 @@ async function readNote(notePath: string): Promise<string> {
       return JSON.stringify({ error: `Nota no encontrada: ${notePath}` })
     }
     const content = fs.readFileSync(fullPath, 'utf-8')
-    return JSON.stringify({ path: notePath, content })
+    const window = sliceWindow(content, offset, NOTE_READ_MAX)
+    return JSON.stringify({
+      path: notePath,
+      size: content.length,
+      offset: window.offset,
+      truncated: window.truncated,
+      next_offset: window.nextOffset,
+      content: window.content,
+    })
   } catch (err) {
     return JSON.stringify({ error: String(err) })
   }
@@ -1111,6 +1136,11 @@ export async function callGroqWithTools(
    * paso siguiente.
    */
   let searched = !forceSearch || !canForceSearch
+  // Índices de los mensajes `tool` de la ronda anterior. Cuando el modelo pide
+  // OTRA ronda, esos resultados ya se usaron para decidir: se sustituyen por un
+  // stub de una línea para no reenviarlos enteros. Así solo la última ronda
+  // viaja completa al stream final.
+  let previousToolIndexes: number[] = []
 
   while (toolCallCount < MAX_TOOL_ROUNDS) {
     const body = {
@@ -1153,7 +1183,13 @@ export async function callGroqWithTools(
       break
     }
 
+    // Hay una nueva ronda: los resultados anteriores ya cumplieron su funcion.
+    for (const index of previousToolIndexes) {
+      finalMessages[index].content = oneLineStub(finalMessages[index].content)
+    }
+
     // Execute tool calls
+    const roundIndexes: number[] = []
     for (const toolCall of msg.tool_calls) {
       let record: ToolCallRecord
       let result: string
@@ -1176,7 +1212,9 @@ export async function callGroqWithTools(
         tool_call_id: toolCall.id,
         content: result,
       })
+      roundIndexes.push(finalMessages.length - 1)
     }
+    previousToolIndexes = roundIndexes
 
     toolCallCount++
 

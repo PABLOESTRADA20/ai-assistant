@@ -1,5 +1,6 @@
 import { prisma } from '@/app/lib/prisma'
 import type { Prisma } from '../generated/prisma/wasm.js'
+import { sliceWindow } from '@/app/lib/truncate'
 
 /**
  * Integración de SOLO LECTURA con GitHub.
@@ -21,6 +22,19 @@ import type { Prisma } from '../generated/prisma/wasm.js'
  */
 
 const GITHUB_API = 'https://api.github.com'
+
+/**
+ * Topes de tamaño de los resultados de GitHub (caracteres o número de items).
+ * Se aplican en el origen para no arrastrar miles de tokens al contexto del
+ * modelo en cada ronda. `readFile` se compensa con `offset`/`next_offset`.
+ */
+export const GITHUB_LIMITS = {
+  readme: 1500,
+  listFiles: 150,
+  readFile: 6000,
+  issues: 10,
+  issueBody: 200,
+} as const
 
 export interface GithubRepoRef {
   /** Formato canónico `owner/repo`. */
@@ -197,7 +211,7 @@ export async function repoOverview(input: string): Promise<string> {
   if (readmeRes.ok) {
     const r = readmeRes.data as { content?: string; encoding?: string }
     if (r.content && r.encoding === 'base64') {
-      readme = decodeBase64(r.content).slice(0, 4000)
+      readme = decodeBase64(r.content).slice(0, GITHUB_LIMITS.readme)
     }
   }
 
@@ -256,7 +270,7 @@ export async function listFiles(input: string, pathPrefix = '', ref?: string): P
     .filter((e) => typeof e.path === 'string')
     .filter((e) => (prefix ? e.path === prefix || e.path!.startsWith(`${prefix}/`) : true))
     .map((e) => `${e.path}${e.type === 'tree' ? '/' : ''}`)
-    .slice(0, 300)
+    .slice(0, GITHUB_LIMITS.listFiles)
 
   return JSON.stringify({
     repo: `${owner}/${repo}`,
@@ -265,11 +279,19 @@ export async function listFiles(input: string, pathPrefix = '', ref?: string): P
     total_in_repo: data.tree?.length ?? 0,
     truncated: data.truncated === true,
     files: entries,
-    note: entries.length === 300 ? 'Listado recortado a 300 entradas; usa un prefijo más específico.' : undefined,
+    note:
+      entries.length === GITHUB_LIMITS.listFiles
+        ? `Listado recortado a ${GITHUB_LIMITS.listFiles} entradas; usa un prefijo más específico.`
+        : undefined,
   })
 }
 
-export async function readFile(input: string, filePath: string, ref?: string): Promise<string> {
+export async function readFile(
+  input: string,
+  filePath: string,
+  ref?: string,
+  offset?: unknown,
+): Promise<string> {
   const parsed = repoFrom(input)
   if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
   if (!filePath?.trim()) return JSON.stringify({ error: 'Falta la ruta del archivo.' })
@@ -292,13 +314,15 @@ export async function readFile(input: string, filePath: string, ref?: string): P
   }
 
   const text = decodeBase64(d.content)
-  const MAX = 20000
+  const window = sliceWindow(text, offset, GITHUB_LIMITS.readFile)
   return JSON.stringify({
     repo: `${owner}/${repo}`,
     path: clean,
     size: d.size ?? text.length,
-    truncated: text.length > MAX,
-    content: text.length > MAX ? text.slice(0, MAX) + '\n…(recortado)' : text,
+    offset: window.offset,
+    truncated: window.truncated,
+    next_offset: window.nextOffset,
+    content: window.content,
   })
 }
 
@@ -309,7 +333,7 @@ export async function listIssues(input: string, state = 'open'): Promise<string>
   const safeState = ['open', 'closed', 'all'].includes(state) ? state : 'open'
 
   const res = await ghFetch(
-    `/repos/${owner}/${repo}/issues?state=${safeState}&per_page=25&sort=updated&direction=desc`,
+    `/repos/${owner}/${repo}/issues?state=${safeState}&per_page=${GITHUB_LIMITS.issues}&sort=updated&direction=desc`,
   )
   if (!res.ok) return JSON.stringify({ error: describeError(res.status, res.data) })
 
@@ -317,6 +341,7 @@ export async function listIssues(input: string, state = 'open'): Promise<string>
   const issues = items
     // La API mezcla pull requests en /issues: se filtran.
     .filter((i) => !i.pull_request)
+    .slice(0, GITHUB_LIMITS.issues)
     .map((i) => ({
       number: i.number,
       title: i.title,
@@ -326,7 +351,7 @@ export async function listIssues(input: string, state = 'open'): Promise<string>
         : [],
       comments: i.comments,
       updated_at: i.updated_at,
-      body: typeof i.body === 'string' ? i.body.slice(0, 600) : '',
+      body: typeof i.body === 'string' ? i.body.slice(0, GITHUB_LIMITS.issueBody) : '',
       url: i.html_url,
     }))
 
