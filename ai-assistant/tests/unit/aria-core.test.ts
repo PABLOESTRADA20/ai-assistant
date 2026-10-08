@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildContextMessages,
+  compactConversation,
   composeMemoryBlock,
   DEFAULT_MODEL,
   CHEAP_MODEL,
@@ -8,7 +9,9 @@ import {
   MEMORY_BLOCK_MAX_CHARS,
   MEMORY_LINE_MAX_CHARS,
   MEMORY_MAX_LINES,
+  MIN_COMPACT_MESSAGES,
   MODEL_CONFIG,
+  planCompaction,
   SYSTEM_PROMPT,
   trimMemoryLine,
   wantsWebSearch,
@@ -178,5 +181,90 @@ describe('composeMemoryBlock', () => {
   it('nunca deja el bloque vacío si hay algo que inyectar', () => {
     const out = composeMemoryBlock([{ key: 'x', line: `- ${'x'.repeat(5000)}` }])
     expect(out.lines).toHaveLength(1)
+  })
+})
+
+describe('planCompaction', () => {
+  const msgs = (n: number): ChatMessage[] =>
+    Array.from({ length: n }, (_, i) => ({
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: `m${i}`,
+    }))
+
+  it('no resume nada si el historial cabe en la ventana visible', () => {
+    expect(planCompaction(msgs(MAX_VISIBLE_MESSAGES), 0)).toEqual({
+      toSummarize: [],
+      newSummarizedCount: 0,
+    })
+  })
+
+  it('pliega solo lo antiguo que no está cubierto', () => {
+    const plan = planCompaction(msgs(12), 0)
+    expect(plan.toSummarize).toHaveLength(4) // 12 - 8
+    expect(plan.toSummarize[0].content).toBe('m0')
+    expect(plan.newSummarizedCount).toBe(4)
+  })
+
+  it('es incremental: respeta summarizedCount y solo añade lo nuevo', () => {
+    const plan = planCompaction(msgs(14), 4)
+    expect(plan.toSummarize.map((m) => m.content)).toEqual(['m4', 'm5'])
+    expect(plan.newSummarizedCount).toBe(6)
+  })
+
+  it('no repite trabajo cuando ya está todo cubierto', () => {
+    expect(planCompaction(msgs(10), 2)).toEqual({ toSummarize: [], newSummarizedCount: 2 })
+  })
+
+  it('tolera summarizedCount fuera de rango', () => {
+    expect(planCompaction(msgs(10), 99)).toEqual({ toSummarize: [], newSummarizedCount: 10 })
+    expect(planCompaction(msgs(10), -5).newSummarizedCount).toBe(2)
+  })
+})
+
+describe('compactConversation', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const msgs = (n: number): ChatMessage[] =>
+    Array.from({ length: n }, (_, i) => ({ role: 'user', content: `m${i}` }))
+
+  it('devuelve null y no llama al modelo si no hay nada nuevo', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await compactConversation('k', msgs(MAX_VISIBLE_MESSAGES), null, 0)).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('no gasta una llamada por un único mensaje nuevo', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    // 9 mensajes => 1 fuera de la ventana, por debajo del mínimo.
+    expect(await compactConversation('k', msgs(MAX_VISIBLE_MESSAGES + 1), null, 0)).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(MIN_COMPACT_MESSAGES).toBeGreaterThan(1)
+  })
+
+  it('fusiona el resumen previo y avanza summarizedCount', async () => {
+    let body: { messages: { role: string; content: string }[] } = { messages: [] }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body))
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: 'resumen nuevo' } }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }),
+    )
+
+    const result = await compactConversation('k', msgs(12), 'resumen viejo', 0)
+    expect(result).toEqual({ summary: 'resumen nuevo', summarizedCount: 4 })
+    // El prompt incluye el resumen previo para fusionarlo en vez de resumir todo.
+    expect(body.messages[0].role).toBe('system')
+    expect(body.messages[0].content).toContain('resumen viejo')
+  })
+
+  it('devuelve null si el modelo no responde un resumen', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })))
+    expect(await compactConversation('k', msgs(12), null, 0)).toBeNull()
   })
 })

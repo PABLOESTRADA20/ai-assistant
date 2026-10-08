@@ -25,12 +25,11 @@ import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
 import {
   MODEL_CONFIG,
-  MAX_VISIBLE_MESSAGES,
   CHEAP_MODEL,
   DEFAULT_MODEL,
   wantsWebSearch,
   selectTools,
-  generateSummary,
+  compactConversation,
   buildAriaContext,
   rememberTurn,
   type ChatMessage,
@@ -246,7 +245,7 @@ export async function POST(req: NextRequest) {
 
     // Contexto compartido (resumen + memoria del usuario + memoria de trabajo).
     // Es el mismo cerebro que usan WhatsApp y el correo.
-    const { allMessages, contextMessages, injectedMemoryIds, summary, lastUserMsg } =
+    const { allMessages, contextMessages, injectedMemoryIds, summary, summarizedCount, lastUserMsg } =
       await buildAriaContext(messages, conversationId)
 
     const config = MODEL_CONFIG[model] || { max_tokens: 8192, temperature: 0.6 }
@@ -271,15 +270,28 @@ export async function POST(req: NextRequest) {
       await registerBackground(maybeConsolidate())
     }
 
-    // If messages were truncated but no summary exists yet, generate one
-    if (groqKey && groqQuotaLeft && messages.length > MAX_VISIBLE_MESSAGES && !summary) {
-      const oldMessages = messages.slice(0, -MAX_VISIBLE_MESSAGES)
-      const newSummary = await generateSummary(groqKey, oldMessages)
-      if (newSummary && conversationId) {
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: { summary: newSummary },
-        }).catch(() => {})
+    // Compactación incremental: pliega SOLO los mensajes antiguos que aún no
+    // estaban cubiertos por el resumen y lo actualiza, en vez de resumir todo
+    // una sola vez (que dejaba el resumen obsoleto y gastaba un prompt enorme).
+    // Con el modelo barato sin cuota se salta: recibiría un 429.
+    if (groqKey && groqQuotaLeft && conversationId) {
+      const compacted = await compactConversation(
+        groqKey,
+        messages,
+        summary,
+        summarizedCount,
+      )
+      if (compacted) {
+        // SQL crudo por el mismo motivo: el cliente WASM no conoce summarizedCount.
+        await prisma
+          .$executeRaw`
+            UPDATE "Conversation"
+            SET "summary" = ${compacted.summary},
+                "summarizedCount" = ${compacted.summarizedCount},
+                "updatedAt" = NOW()
+            WHERE "id" = ${conversationId}
+          `
+          .catch(() => {})
       }
     }
 

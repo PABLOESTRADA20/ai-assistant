@@ -220,19 +220,23 @@ export function selectTools(
  * Contexto: resumen, memoria del usuario y memoria de trabajo         *
  * ------------------------------------------------------------------ */
 
-export async function generateSummary(apiKey: string, messages: ChatMessage[]): Promise<string> {
+export async function generateSummary(
+  apiKey: string,
+  messages: ChatMessage[],
+  previousSummary?: string | null,
+): Promise<string> {
   const text = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n')
+  const system = previousSummary
+    ? 'Actualiza el resumen de una conversación técnica fusionando el resumen previo con los mensajes nuevos. Sé conciso (máx 200 palabras). Conserva decisiones técnicas, problemas, soluciones y contexto importante, sin repetir lo que ya estaba.\n\nResumen previo:\n' +
+      previousSummary
+    : 'Resume la siguiente conversación técnica. Sé conciso (máx 200 palabras). Conserva decisiones técnicas, problemas, soluciones y contexto importante.'
   const res = await fetch(GROQ_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: CHEAP_MODEL,
       messages: [
-        {
-          role: 'system',
-          content:
-            'Resume la siguiente conversación técnica. Sé conciso (máx 200 palabras). Conserva decisiones técnicas, problemas, soluciones y contexto importante.',
-        },
+        { role: 'system', content: system },
         { role: 'user', content: text },
       ],
       max_tokens: 512,
@@ -242,6 +246,63 @@ export async function generateSummary(apiKey: string, messages: ChatMessage[]): 
   if (!res.ok) return ''
   const data = await res.json()
   return data.choices?.[0]?.message?.content || ''
+}
+
+/* ------------------------------------------------------------------ *
+ * Compactación incremental del historial                              *
+ * ------------------------------------------------------------------ */
+
+/** Mínimo de mensajes nuevos que ameritan otra llamada al modelo barato. */
+export const MIN_COMPACT_MESSAGES = 2
+
+export interface CompactionPlan {
+  /** Mensajes antiguos que hay que plegar ahora (aún fuera del resumen). */
+  toSummarize: ChatMessage[]
+  /** Nº de mensajes que quedarán cubiertos por el resumen tras plegarlos. */
+  newSummarizedCount: number
+}
+
+/**
+ * Decide qué mensajes nuevos hay que plegar en el resumen. La ventana visible
+ * (últimos `MAX_VISIBLE_MESSAGES`) NUNCA se resume; de lo anterior sólo lo que
+ * aún no estaba cubierto. Si no hay nada nuevo, `toSummarize` va vacío y no se
+ * llama al modelo (coste cero).
+ */
+export function planCompaction(
+  messages: ChatMessage[],
+  summarizedCount: number,
+): CompactionPlan {
+  const covered = Math.max(0, Math.min(summarizedCount, messages.length))
+  const boundary = Math.max(0, messages.length - MAX_VISIBLE_MESSAGES)
+  if (boundary <= covered) return { toSummarize: [], newSummarizedCount: covered }
+  return {
+    toSummarize: messages.slice(covered, boundary),
+    newSummarizedCount: boundary,
+  }
+}
+
+export interface CompactionResult {
+  summary: string
+  summarizedCount: number
+}
+
+/**
+ * Compacta de forma incremental: resume SOLO los mensajes antiguos que aún no
+ * estaban cubiertos y los fusiona con el resumen previo. Devuelve `null` si no
+ * hay nada que plegar o si el modelo no devolvió resumen. No persiste: el
+ * llamador decide cuándo guardar.
+ */
+export async function compactConversation(
+  apiKey: string,
+  messages: ChatMessage[],
+  previousSummary: string | null,
+  summarizedCount: number,
+): Promise<CompactionResult | null> {
+  const plan = planCompaction(messages, summarizedCount)
+  if (plan.toSummarize.length < MIN_COMPACT_MESSAGES) return null
+  const summary = await generateSummary(apiKey, plan.toSummarize, previousSummary)
+  if (!summary) return null
+  return { summary, summarizedCount: plan.newSummarizedCount }
 }
 
 export function buildContextMessages(
@@ -374,6 +435,8 @@ export interface AriaContext {
   injectedMemoryIds: string[]
   /** Resumen persistido que existía antes de este turno. */
   summary: string | null
+  /** Nº de mensajes ya plegados en ese resumen (compactación incremental). */
+  summarizedCount: number
   /** Último mensaje del usuario, si lo hay. */
   lastUserMsg: ChatMessage | null
 }
@@ -389,13 +452,19 @@ export async function buildAriaContext(
 ): Promise<AriaContext> {
   const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user') ?? null
 
-  // Resumen persistido de la conversación (si existe).
+  // Resumen persistido de la conversación (si existe) y cuántos mensajes cubre.
+  // Se lee con SQL crudo: el cliente WASM versionado en el repo no conoce
+  // `summarizedCount` (las columnas nuevas van por raw en este repo).
   let summary: string | null = null
+  let summarizedCount = 0
   if (conversationId) {
-    const conv = await prisma.conversation
-      .findUnique({ where: { id: conversationId }, select: { summary: true } })
-      .catch(() => null)
-    summary = conv?.summary || null
+    const rows = await prisma
+      .$queryRaw<{ summary: string | null; summarizedCount: number }[]>`
+        SELECT "summary", "summarizedCount" FROM "Conversation" WHERE "id" = ${conversationId} LIMIT 1
+      `
+      .catch(() => [])
+    summary = rows[0]?.summary || null
+    summarizedCount = rows[0]?.summarizedCount ?? 0
   }
 
   const contextMessages = buildContextMessages(messages, summary)
@@ -500,5 +569,5 @@ export async function buildAriaContext(
     /* GitHub no disponible: seguir sin la lista */
   }
 
-  return { allMessages, contextMessages, injectedMemoryIds, summary, lastUserMsg }
+  return { allMessages, contextMessages, injectedMemoryIds, summary, summarizedCount, lastUserMsg }
 }
