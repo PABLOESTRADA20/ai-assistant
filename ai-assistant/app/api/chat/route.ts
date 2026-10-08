@@ -20,6 +20,7 @@ import {
 } from '@/app/lib/quota'
 import { workersAiChatStream } from '@/app/lib/workers-ai'
 import { requireAuth } from '@/app/lib/auth'
+import { getRepos } from '@/app/lib/github'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
 import {
@@ -28,6 +29,7 @@ import {
   CHEAP_MODEL,
   DEFAULT_MODEL,
   wantsWebSearch,
+  selectTools,
   generateSummary,
   buildAriaContext,
   rememberTurn,
@@ -129,31 +131,6 @@ async function groqErrorResponse(status: number, errText: string, provider: Prov
   )
 }
 
-/**
- * ¿La petición necesita herramientas?
- *
- * Solo se usa para modelos que NO soportan function calling (DeepSeek/Workers
- * AI). Si el usuario pide leer un repo de GitHub, buscar en la web o abrir una
- * app, no tiene sentido contestar "no puedo": la ruta responde con un modelo de
- * Groq que sí ejecuta herramientas. Para charla normal, DeepSeek sigue igual.
- */
-function needsTools(messages: ChatMessage[], lastUserMsg?: ChatMessage | null): boolean {
-  const text = (lastUserMsg?.content ?? '').toLowerCase()
-  if (!text) return false
-  if (wantsWebSearch(messages)) return true
-  if (/(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente)/i.test(text)) {
-    return true
-  }
-  if (
-    /\b(abre|abrir|abrime|ejecuta|lanza)\b[^.]{0,40}\b(app|aplicaci[oó]n|spotify|vscode|vs ?code|carpeta|navegador|programa)/i.test(
-      text,
-    )
-  ) {
-    return true
-  }
-  return false
-}
-
 export async function POST(req: NextRequest) {
   const denied = requireAuth(req)
   if (denied) return denied
@@ -179,15 +156,24 @@ export async function POST(req: NextRequest) {
 
     provider = providerForModel(model)
 
-    // ¿El pedido necesita herramientas? Se decide por el mensaje del usuario, no
-    // por lo que el modelo crea. Sirve para dos cosas:
-    //   - DeepSeek (Workers AI) no ejecuta function calling: si el pedido las
-    //     necesita, se responde con un modelo de Groq en vez de decir "no puedo".
-    //   - GPT-OSS 20B va sin herramientas por defecto (más rápido y barato); se
-    //     activan solo para estos pedidos (leer un repo, buscar, abrir una app).
     const rawLastUser =
       [...messages].reverse().find((m: ChatMessage) => m?.role === 'user') ?? null
-    const requestNeedsTools = needsTools(messages, rawLastUser)
+
+    // ¿Hay repos de GitHub configurados? Solo decide si ofrecer las `github_*`
+    // (sin repos no tienen a qué apuntar por defecto). Es una lectura por clave
+    // primaria, barata frente a los tokens que ahorra.
+    const hasRepos = await getRepos()
+      .then((repos) => repos.length > 0)
+      .catch(() => false)
+
+    // Herramientas que se ofrecen ESTE turno, decididas con palabras clave
+    // locales (app/lib/aria-core.ts). En charla normal la lista es vacía: no se
+    // manda ningún schema y no se gasta ese contexto del free tier. Se decide por
+    // el mensaje del usuario, no por lo que crea el modelo, y aplica a TODOS los
+    // modelos (no solo al barato). Sirve además para que un modelo sin function
+    // calling (DeepSeek/Workers AI) se cambie a Groq cuando el pedido las pide.
+    const selectedTools = selectTools(rawLastUser, hasRepos)
+    const requestNeedsTools = selectedTools.length > 0
 
     // --- Modo reserva: la cuota diaria de Groq ya está marcada -------------
     //
@@ -304,10 +290,10 @@ export async function POST(req: NextRequest) {
       await registerBackground(reinforceMemories(injectedMemoryIds))
     }
 
-    // Check if we should use tool calling (skip for the fast model on normal chat:
-    // only the requests that actually need a tool pay for the extra round).
+    // Tool calling solo si el turno trae alguna herramienta seleccionada, para
+    // TODOS los modelos: la charla normal ya no paga el contexto de ~18 schemas.
     // Workers AI (DeepSeek) es de razonamiento y no soporta tools: va por simple mode.
-    const useTools = provider.supportsTools && (model !== CHEAP_MODEL || requestNeedsTools)
+    const useTools = provider.supportsTools && requestNeedsTools
 
     if (useTools) {
       try {
@@ -322,7 +308,7 @@ export async function POST(req: NextRequest) {
           config.max_tokens,
           config.temperature,
           forceSearch,
-          undefined,
+          selectedTools,
           provider,
         )
 

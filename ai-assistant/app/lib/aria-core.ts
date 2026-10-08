@@ -179,6 +179,85 @@ export function wantsWebSearch(messages: ChatMessage[]): boolean {
 }
 
 /* ------------------------------------------------------------------ *
+ * Selección de herramientas por palabras clave (100% local, $0)       *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Grupos de herramientas que `selectTools` puede ofrecer. Los nombres deben
+ * coincidir EXACTAMENTE con `TOOL_DEFINITIONS` (app/lib/tools.ts); hay un test
+ * que lo verifica para detectar desincronizaciones.
+ */
+export const TOOL_GROUPS = {
+  web: ['web_search'],
+  vault: ['search_vault', 'semantic_search_vault', 'read_note', 'save_note'],
+  cloudNotes: ['list_cloud_notes', 'read_cloud_note', 'save_cloud_note'],
+  github: ['github_repo_overview', 'github_list_files', 'github_read_file', 'github_list_issues'],
+  memory: ['recall_memory'],
+  time: ['get_time'],
+  math: ['calculate'],
+  weather: ['get_weather'],
+  apps: ['open_app'],
+  email: ['send_email'],
+} as const
+
+const RX_GITHUB =
+  /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request)\b/i
+const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
+const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
+const RX_CLOUD_NOTES =
+  /\b(nube|cloud|notas? de (?:aria|la nube)|guarda(?:me)? (?:una )?nota|mis notas)\b/i
+const RX_MEMORY =
+  /\b(recuerd[ao]s?|te acord[aá]s|qu[eé] sabes de m[ií]|mis? preferencias?|preferencia sobre|acordate de)/i
+const RX_TIME =
+  /\b(qu[eé] hora|hora es|la hora|fecha de hoy|qu[eé] d[ií]a|d[ií]a es hoy|zona horaria|horario)\b/i
+const RX_MATH =
+  /\b(c[aá]lcul[oa]|calculadora|cu[aá]nto (?:es|son|da|vale|queda)|resultado de|suma(?:r|me)?|resta(?:r|me)?|multiplica(?:r|me)?|divide|dividir|porcentaje|promedio|ra[ií]z cuadrada)\b|\d\s*[+\-*/^]\s*\d|\d+\s*%\s*de\b/i
+const RX_WEATHER =
+  /\b(clima|tiempo atmosf[eé]rico|temperatura|llueve|va a llover|pron[oó]stico|nieve|soleado|nublado|hace fr[ií]o|hace calor)\b/i
+const RX_APPS =
+  /\b([aá]bre|abrir|abr[ií]me|[aá]breme|ejecuta|lanza)\b[^.]{0,40}\b(app|aplicaci[oó]n|spotify|vscode|vs ?code|carpeta|navegador|programa)/i
+const RX_EMAIL =
+  /\b(env[ií]a(?:me|le|les)?|mand[aá](?:me|le|les)?|escr[ií]b)\b[^.]{0,40}\b(correo|mail|e-?mail)\b/i
+
+/**
+ * Decide QUÉ herramientas se ofrecen en un turno, por palabras clave locales.
+ *
+ * Regla de oro: en charla normal no se manda NINGUNA herramienta. Cada schema
+ * cuesta tokens del free tier y su mera presencia empuja al modelo a querer
+ * usarla. Solo se ofrecen las que el mensaje pide de forma detectable; jamás se
+ * consulta a un modelo para decidirlo (coste cero).
+ *
+ * `hasRepos` gatea `github_*`: sin repos configurados no hay a qué apuntar por
+ * defecto. Si el mensaje trae un repo explícito (github.com/owner/repo) se
+ * ofrecen igualmente.
+ */
+export function selectTools(
+  lastUserMsg: ChatMessage | null | undefined,
+  hasRepos = false,
+): string[] {
+  const text = (lastUserMsg?.content ?? '').trim()
+  if (!text) return []
+
+  const tools = new Set<string>()
+  const add = (group: readonly string[]) => group.forEach((name) => tools.add(name))
+
+  // Búsqueda web: reutiliza la heurística que ya forzaba la herramienta.
+  if (wantsWebSearch([{ role: 'user', content: text }])) add(TOOL_GROUPS.web)
+
+  if (RX_GITHUB.test(text) && (hasRepos || RX_GITHUB_URL.test(text))) add(TOOL_GROUPS.github)
+  if (RX_VAULT.test(text)) add(TOOL_GROUPS.vault)
+  if (RX_CLOUD_NOTES.test(text)) add(TOOL_GROUPS.cloudNotes)
+  if (RX_MEMORY.test(text)) add(TOOL_GROUPS.memory)
+  if (RX_TIME.test(text)) add(TOOL_GROUPS.time)
+  if (RX_MATH.test(text)) add(TOOL_GROUPS.math)
+  if (RX_WEATHER.test(text)) add(TOOL_GROUPS.weather)
+  if (RX_APPS.test(text)) add(TOOL_GROUPS.apps)
+  if (RX_EMAIL.test(text)) add(TOOL_GROUPS.email)
+
+  return [...tools]
+}
+
+/* ------------------------------------------------------------------ *
  * Contexto: resumen, memoria del usuario y memoria de trabajo         *
  * ------------------------------------------------------------------ */
 
