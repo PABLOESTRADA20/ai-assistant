@@ -22,9 +22,9 @@
     "agent": "node local-agent/aria-local-agent.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "lint": "next lint",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload"
+    "preview": "opennextjs-cloudflare build && node scripts/patch-opennext-wasm.mjs && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && node scripts/patch-opennext-wasm.mjs && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && node scripts/patch-opennext-wasm.mjs && opennextjs-cloudflare upload"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "1.20.6",
