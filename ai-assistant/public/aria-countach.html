@@ -2,7 +2,7 @@
 <html class="dark" lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport" />
   <meta content="web_dashboard" name="shell-type" />
   <title>ARIA · Countach LPI 800-4</title>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
@@ -16,8 +16,33 @@
     #bg3d{display:none;}
     #bg3d canvas{display:block;touch-action:none;cursor:grab;}
     #bg3d canvas:active{cursor:grabbing;}
+    #bg3d:focus{outline:none;}
+    #bg3d:focus-visible{outline:2px solid rgba(239,68,68,0.55);outline-offset:-2px;}
     .chat-scroll{-ms-overflow-style:none;scrollbar-width:none;}
     .chat-scroll::-webkit-scrollbar{display:none;}
+
+    /* Pins de telemetría ancladas al modelo 3D */
+    .pinshost{position:absolute;inset:0;pointer-events:none;z-index:5;}
+    .pin3d{position:absolute;transform:translate(-50%,-50%);display:none;align-items:center;gap:6px;}
+    .pin3d .dot{position:relative;flex:none;width:10px;height:10px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px #ef4444;}
+    .pin3d .dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(248,113,113,0.7);animation:pinPulse 1.6s ease-out infinite;}
+    @keyframes pinPulse{0%{transform:scale(0.6);opacity:0.9;}100%{transform:scale(1.9);opacity:0;}}
+    .pin3d .lbl{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.08em;color:#e4e4e7;background:rgba(13,14,20,0.9);border:1px solid rgba(239,68,68,0.4);padding:5px 8px;border-radius:6px;white-space:nowrap;backdrop-filter:blur(6px);}
+
+    /* Indicador "ARIA escribiendo" */
+    .typing{display:inline-flex;gap:4px;align-items:center;padding:11px 15px;background:#12141c;border:1px solid rgba(239,68,68,0.25);border-radius:14px 14px 14px 4px;}
+    .typing i{width:6px;height:6px;border-radius:50%;background:#f87171;animation:bounceDot 1s infinite ease-in-out;}
+    .typing i:nth-child(2){animation-delay:0.15s;}
+    .typing i:nth-child(3){animation-delay:0.3s;}
+    @keyframes bounceDot{0%,80%,100%{transform:translateY(0);opacity:0.4;}40%{transform:translateY(-5px);opacity:1;}}
+
+    /* Safe area del bottom sheet en móvil */
+    @media (max-width:1023px){#chatAside{padding-bottom:env(safe-area-inset-bottom);}}
+
+    /* Accesibilidad: respetar menos animación */
+    @media (prefers-reduced-motion: reduce){
+      *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;}
+    }
   </style>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script id="tailwind-config">
@@ -31,17 +56,17 @@
     <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] h-[65vh] rounded-full bg-[radial-gradient(ellipse_at_center,_rgba(239,68,68,0.14)_0%,_rgba(153,27,27,0.06)_40%,_transparent_75%)] blur-3xl"></div>
     <div class="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-[#07080b] via-[#07080b]/60 to-transparent"></div>
     <div class="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-[#07080b]/80 to-transparent"></div>
-    <div class="absolute inset-x-0 bottom-0 h-80 opacity-20 bg-[linear-gradient(to_right,rgba(239,68,68,0.15)_1px,transparent_1px),linear-gradient(to_bottom,rgba(239,68,68,0.15)_1px,transparent_1px)] bg-[size:48px_24px] [transform:perspective(500px)_rotateX(65deg)_translateY(80px)] pointer-events-none"></div>
+    <div id="cssGrid" class="absolute inset-x-0 bottom-0 h-80 opacity-20 bg-[linear-gradient(to_right,rgba(239,68,68,0.15)_1px,transparent_1px),linear-gradient(to_bottom,rgba(239,68,68,0.15)_1px,transparent_1px)] bg-[size:48px_24px] [transform:perspective(500px)_rotateX(65deg)_translateY(80px)] pointer-events-none"></div>
   </div>
 
   <!-- MODE 1: Static vehicle showcase (default background for the chat) -->
-  <div id="showcase" class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none pr-0 lg:pr-[420px] transition-all duration-300">
+  <div id="showcase" class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none pr-0 pb-[56vh] lg:pr-[420px] lg:pb-0 transition-all duration-300">
     <div class="relative w-full max-w-5xl px-8 flex flex-col items-center">
-      <div class="relative group pointer-events-auto cursor-grab active:cursor-grabbing">
+      <div id="carShowcase" class="relative group pointer-events-auto cursor-pointer" title="Toca para abrir el visor 3D interactivo">
         <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[85%] h-12 bg-red-600/25 blur-2xl rounded-full"></div>
-        <img alt="Lamborghini Countach LPI 800-4" class="relative z-10 w-full h-auto max-h-[62vh] object-contain drop-shadow-[0_25px_35px_rgba(0,0,0,0.9)] select-none" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABdFyBAvrYwmMOvtaAJ9ONWsLtJUfATsRxctRgAhtcFY-hI3poZ6y76pbyzBayXy7im0sYT9SFvjexV3MIlLowatSOFDuxfJByXYO7hx8vWykvMsKMhttvpLZK72lgCJTYwm_ls80UxsmfnP-z52AgluBlmggdEoG4fM9Udexd5ulUW_aqDSJ9M9FZZOj99Q6K6tQ9InOw0n3V0-guS9nTxhFUiL_s5IlgnmWqe9DiyhLCF8m2kYf9LbvIPHWdO8-69Ss" />
+        <img alt="Lamborghini Countach LPI 800-4" class="relative z-10 w-full h-auto max-h-[38vh] sm:max-h-[44vh] lg:max-h-[62vh] object-contain drop-shadow-[0_25px_35px_rgba(0,0,0,0.9)] select-none" src="countach-lpi.jpg" onerror="this.onerror=null;this.src='https://lh3.googleusercontent.com/aida-public/AB6AXuABdFyBAvrYwmMOvtaAJ9ONWsLtJUfATsRxctRgAhtcFY-hI3poZ6y76pbyzBayXy7im0sYT9SFvjexV3MIlLowatSOFDuxfJByXYO7hx8vWykvMsKMhttvpLZK72lgCJTYwm_ls80UxsmfnP-z52AgluBlmggdEoG4fM9Udexd5ulUW_aqDSJ9M9FZZOj99Q6K6tQ9InOw0n3V0-guS9nTxhFUiL_s5IlgnmWqe9DiyhLCF8m2kYf9LbvIPHWdO8-69Ss'" />
         <!-- Interactive floating telemetry pins over vehicle -->
-        <div class="absolute top-[48%] left-[28%] z-20 pointer-events-auto">
+        <div data-pin class="absolute top-[48%] left-[28%] z-20 pointer-events-auto">
           <div class="relative flex items-center group/pin cursor-pointer">
             <span class="relative flex h-3 w-3">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -52,7 +77,7 @@
             </div>
           </div>
         </div>
-        <div class="absolute top-[36%] right-[32%] z-20 pointer-events-auto">
+        <div data-pin class="absolute top-[36%] right-[32%] z-20 pointer-events-auto">
           <div class="relative flex items-center group/pin cursor-pointer">
             <span class="relative flex h-3 w-3">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -67,8 +92,8 @@
     </div>
   </div>
 
-  <!-- MODE 2: Interactive holographic 3D vehicle (Three.js) -->
-  <div id="bg3d" class="fixed inset-0 w-full h-full z-10 bg-transparent"></div>
+  <!-- MODE 2: Interactive holographic 3D vehicle (Three.js, cargado bajo demanda) -->
+  <div id="bg3d" class="fixed inset-0 w-full h-full z-10 bg-transparent" tabindex="0" role="application" aria-label="Visor 3D del Countach: flechas para rotar, más y menos para zoom"></div>
 
   <!-- Floating Minimal HUD Overlays -->
   <header class="fixed top-0 left-0 right-0 p-6 z-30 flex items-center justify-between pointer-events-none">
@@ -79,7 +104,7 @@
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
           <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
         </span>
-        <span class="font-label-caps text-xs tracking-[0.2em] text-zinc-200 uppercase font-semibold">ARIA CO-PILOT // ACTIVE</span>
+        <span class="font-label-caps text-xs tracking-[0.2em] text-zinc-200 uppercase font-semibold"><span class="hidden sm:inline">ARIA CO-PILOT // ACTIVE</span><span class="sm:hidden">ARIA</span></span>
       </div>
       <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0d0e14]/60 backdrop-blur-md border border-white/5 text-zinc-400 text-[11px] font-label-caps">
         <span class="text-red-400 font-medium">GPT-OSS 120B</span>
@@ -90,19 +115,19 @@
 
     <!-- Top-Right: orientation hint + HOLOGRAPHIC MODE TOGGLE -->
     <div class="pointer-events-auto flex items-center gap-2 pr-0 lg:pr-[410px] transition-all">
-      <div class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-[#0d0e14]/60 backdrop-blur-xl border border-white/10 text-zinc-400 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
+      <div class="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-[#0d0e14]/60 backdrop-blur-xl border border-white/10 text-zinc-400 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
         <span class="material-symbols-outlined text-[16px] text-red-500 animate-spin" style="animation-duration: 8s;">orbit</span>
-        <span id="hintRotate" class="font-label-caps text-xs tracking-widest uppercase text-zinc-300">INTERACTIVO · ROTAR 360°</span>
+        <span id="hintRotate" class="font-label-caps text-xs tracking-widest uppercase text-zinc-300">TOCA EL AUTO · ABRIR VISOR 3D</span>
       </div>
-      <button id="btnHolo" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-zinc-200 shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_18px_rgba(239,68,68,0.15)] transition-all active:scale-95" title="Alternar entre el auto real y el visor holográfico 3D">
+      <button id="btnHolo" class="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-zinc-200 shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_18px_rgba(239,68,68,0.15)] transition-all active:scale-95 shrink-0 disabled:opacity-60 disabled:cursor-wait" title="Alternar entre el auto real y el visor holográfico 3D">
         <span class="material-symbols-outlined text-[16px] text-red-400" id="iconHolo">auto_awesome</span>
-        <span class="font-label-caps text-xs tracking-widest uppercase" id="txtHolo">Holográfico · OFF</span>
+        <span class="font-label-caps text-xs tracking-widest uppercase hidden sm:inline" id="txtHolo">Holográfico · OFF</span>
       </button>
     </div>
   </header>
 
-  <!-- Right Floating AI Assistant Chat Panel -->
-  <aside aria-label="ARIA Assistant" class="fixed top-5 bottom-5 right-5 w-full max-w-[400px] z-40 flex flex-col backdrop-blur-2xl bg-[#0d0f14]/85 border border-red-500/20 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.12)] overflow-hidden">
+  <!-- Right floating AI Assistant Chat Panel (bottom sheet en móvil/tablet) -->
+  <aside id="chatAside" aria-label="ARIA Assistant" class="fixed left-0 right-0 bottom-0 top-auto h-[56vh] w-full max-w-none z-40 flex flex-col backdrop-blur-2xl bg-[#0d0f14]/92 border-t border-red-500/20 rounded-t-2xl shadow-[0_-25px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.12)] overflow-hidden lg:top-5 lg:bottom-5 lg:left-auto lg:right-5 lg:h-auto lg:w-full lg:max-w-[400px] lg:border lg:rounded-2xl lg:bg-[#0d0f14]/85">
     <!-- Assistant Header -->
     <div class="p-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-red-950/30 to-transparent">
       <div class="flex items-center gap-3">
@@ -119,21 +144,26 @@
         </div>
       </div>
       <div class="flex items-center gap-1 text-zinc-400">
-        <button id="btnClear" class="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition-colors" title="Limpiar sesión">
+        <button id="btnClear" class="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition-colors" title="Limpiar sesión" aria-label="Limpiar sesión">
           <span class="material-symbols-outlined text-[18px]">restart_alt</span>
         </button>
-        <button class="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition-colors" title="Opciones">
+        <button id="btnHelp" class="p-1.5 rounded-lg hover:text-white hover:bg-white/5 transition-colors" title="Ayuda de comandos" aria-label="Ayuda de comandos">
           <span class="material-symbols-outlined text-[18px]">more_vert</span>
         </button>
       </div>
     </div>
 
     <!-- Chat Message Stream -->
-    <div id="stream" class="flex-1 overflow-y-auto p-4 space-y-4 font-body-sm text-[13px] leading-relaxed chat-scroll">
+    <div id="stream" class="flex-1 overflow-y-auto p-4 space-y-4 font-body-sm text-[13px] leading-relaxed chat-scroll select-text">
       <!-- System Timestamp / Notice -->
       <div class="text-center">
         <span class="font-label-sm text-[10px] uppercase text-zinc-500 bg-white/[0.03] px-2.5 py-1 rounded-full border border-white/5">
           CONEXIÓN CAN-BUS ESTABLECIDA · V12 HYBRID
+        </span>
+      </div>
+      <div class="text-center">
+        <span class="font-label-sm text-[10px] uppercase text-zinc-500 bg-white/[0.03] px-2.5 py-1 rounded-full border border-white/5">
+          TOCA EL AUTO · ABRIR EL VISOR 3D INTERACTIVO
         </span>
       </div>
 
@@ -188,14 +218,14 @@
     <!-- Chat Input Bar -->
     <div class="p-3 border-t border-white/10 bg-[#0b0c10]/95">
       <form id="chatForm" class="relative flex items-center gap-2">
-        <button class="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors" title="Adjuntar telemetría" type="button">
+        <button id="btnAttach" class="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors" title="Adjuntar telemetría" type="button" aria-label="Adjuntar telemetría">
           <span class="material-symbols-outlined text-[20px]">attachment</span>
         </button>
         <input id="chatInput" class="flex-1 bg-white/[0.04] text-zinc-100 placeholder-zinc-500 text-xs px-3.5 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/40 transition-all font-body-sm" placeholder="Pregunta a ARIA o introduce comando..." type="text" autocomplete="off" />
-        <button class="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors" title="Comando de voz" type="button">
+        <button id="btnMic" class="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors" title="Comando de voz" type="button" aria-label="Comando de voz">
           <span class="material-symbols-outlined text-[20px]">mic</span>
         </button>
-        <button class="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-red-600 to-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] hover:scale-105 active:scale-95 transition-all" title="Enviar" type="submit">
+        <button class="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-red-600 to-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] hover:scale-105 active:scale-95 transition-all" title="Enviar" type="submit" aria-label="Enviar">
           <span class="material-symbols-outlined text-[18px]">arrow_upward</span>
         </button>
       </form>
@@ -203,34 +233,43 @@
         <span>COMANDOS POR VOZ ACTIVOS</span>
         <span id="modeStatus">VISOR: MODO REAL</span>
       </div>
+      <input id="fileTelemetry" type="file" accept="image/*,.csv,.json,.log" class="hidden" tabindex="-1" aria-hidden="true" />
     </div>
   </aside>
 
   <!-- Bottom Floating Minimal Controls Glass Bar -->
-  <div class="fixed bottom-8 left-6 md:left-12 z-30 pointer-events-none">
+  <div class="fixed bottom-[calc(56vh_+_1rem)] left-6 md:left-12 z-30 pointer-events-none lg:bottom-8">
     <nav aria-label="Controles 3D" class="pointer-events-auto flex items-center gap-2 p-1.5 rounded-2xl bg-[#0d0e14]/75 backdrop-blur-2xl border border-red-500/25 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_30px_rgba(239,68,68,0.1)]">
-      <button id="btnCenter" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider">
+      <button id="btnCenter" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider" title="Restablecer cámara y zoom" aria-label="Centrar visor">
         <span class="material-symbols-outlined text-[16px] text-red-400">filter_center_focus</span>
-        <span>Centrar Visor</span>
+        <span class="hidden md:inline">Centrar Visor</span>
       </button>
       <div class="h-4 w-px bg-white/10"></div>
-      <button id="btnWire" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider">
+      <button id="btnWire" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider" title="Alternar holograma de wireframe y modelo sólido" aria-label="Modo holograma">
         <span class="material-symbols-outlined text-[16px] text-red-400">grid_3x3</span>
-        <span id="txtWire">Modo Holograma</span>
+        <span id="txtWire" class="hidden md:inline">Holograma</span>
       </button>
       <div class="h-4 w-px bg-white/10"></div>
-      <button id="btnLight" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider">
+      <button id="btnLight" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider" title="Alternar iluminación carmesí / studio" aria-label="Iluminación">
         <span class="material-symbols-outlined text-[16px] text-red-400">flare</span>
-        <span id="txtLight">Iluminación Carmesí</span>
+        <span id="txtLight" class="hidden md:inline">Luz</span>
+      </button>
+      <div class="h-4 w-px bg-white/10"></div>
+      <button id="btnGrid" class="flex items-center gap-2 px-4 py-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all font-label-caps text-xs tracking-wider" title="Mostrar u ocultar el piso y la rejilla" aria-label="Rejilla">
+        <span class="material-symbols-outlined text-[16px] text-red-400">grid_on</span>
+        <span id="txtGrid" class="hidden md:inline">Rejilla</span>
       </button>
     </nav>
   </div>
 
-  <script src="https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js"></script>
   <script>
   (function () {
-    /* ================= Refs ================= */
+    /* =========================================================
+       0. Referencias y estado
+       ========================================================= */
     const showcase = document.getElementById('showcase');
+    const carShowcase = document.getElementById('carShowcase');
+    const cssGrid = document.getElementById('cssGrid');
     const bg3d = document.getElementById('bg3d');
     const btnHolo = document.getElementById('btnHolo');
     const txtHolo = document.getElementById('txtHolo');
@@ -240,35 +279,54 @@
     const txtWire = document.getElementById('txtWire');
     const btnLight = document.getElementById('btnLight');
     const txtLight = document.getElementById('txtLight');
+    const btnGrid = document.getElementById('btnGrid');
+    const txtGrid = document.getElementById('txtGrid');
     const modeStatus = document.getElementById('modeStatus');
     const hintRotate = document.getElementById('hintRotate');
     const stream = document.getElementById('stream');
     const chatForm = document.getElementById('chatForm');
     const chatInput = document.getElementById('chatInput');
     const btnClear = document.getElementById('btnClear');
+    const btnMic = document.getElementById('btnMic');
+    const btnAttach = document.getElementById('btnAttach');
+    const btnHelp = document.getElementById('btnHelp');
+    const fileTelemetry = document.getElementById('fileTelemetry');
 
-    /* ================= View state ================= */
-    let holoOn = false;      // photo background vs 3D holographic background
-    let holoStyle = true;    // solid 3D render vs holographic wireframe render
-    let studioMode = false;  // crimson lighting vs studio lighting
+    /* Estado de visor (el chat NUNCA depende de esto) */
+    let holoOn = false;       // foto vs visor 3D
+    let holoStyle = true;     // wireframe holográfico vs modelo sólido
+    let studioMode = false;   // luz carmesí vs studio
+    let gridOn = true;        // piso + rejilla visibles
+    let holoLoading = false;  // cargando three.js
+    let modeSwitching = false;
 
-    /* ================= 3D state ================= */
+    let reduceMotion = false;
+    try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+
+    /* Estado 3D (se rellena al cargar three.js, nunca antes) */
     let ready = false;
-    let scene, camera, renderer, carGroup, cage, ring1, particles, underglow, grid, floorMesh;
-    let wheelMeshes = [];
-    let L = {};
+    let bound3d = false;
+    let threePromise = null;
+    let scene, camera, renderer, carGroup, cage, ring1, ring2, particles, underglow, grid, floorMesh, contact;
+    let HOLO_MAT = null;
+    const L = {};
+    const M = {};
+    const beams = [];
+    const wheelSpinners = [];
+    let pins3d = [];
+    let pinVec = null;
     let isDragging = false, prevX = 0, prevY = 0;
     let targetRotY = 0.65, targetRotX = 0.12, rotY = 0.65, rotX = 0.12;
+    let zoomScale = 1, narrowMode = false;
+    let camPos = { x: 3.8, y: 2.0, z: 5.2 };
+    let camTarget = { x: 1.05, y: 0.5, z: -0.77 };
 
-    const HOLO_MAT = new THREE.MeshBasicMaterial({
-      color: 0xff2b55, wireframe: true, transparent: true, opacity: 0.5,
-      blending: THREE.AdditiveBlending, depthWrite: false
-    });
-
-    /* ================= Chat helpers ================= */
+    /* =========================================================
+       1. Núcleo del chat (solo DOM: funciona sin Three.js ni red)
+       ========================================================= */
     function node(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
     function now() { return new Date().toLocaleTimeString('es-ES', { hour12: false }); }
-    function esc(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function scrollDown() { stream.scrollTop = stream.scrollHeight; }
 
     function addSystem(text) {
@@ -285,56 +343,441 @@
         '<span class="font-label-sm text-[9px] text-zinc-500 mr-1">' + now() + ' · PILOTO</span></div>'));
       scrollDown();
     }
-    function addAria(html) {
-      const lat = 9 + Math.floor(Math.random() * 18);
-      stream.appendChild(node(
+
+    /* Crea el "envoltorio" de una respuesta de ARIA; el bubble puede rellenarse en streaming */
+    function ariaShell() {
+      const root = node(
         '<div class="flex flex-col items-start gap-1.5">' +
         '<div class="flex items-center gap-1.5 ml-1">' +
         '<span class="material-symbols-outlined text-red-500 text-[13px]">bolt</span>' +
         '<span class="font-label-caps text-[10px] text-red-400 font-semibold tracking-wider">ARIA ASSISTANT</span></div>' +
-        '<div class="max-w-[95%] bg-[#12141c]/90 text-zinc-200 px-3.5 py-3 rounded-2xl rounded-tl-sm border border-red-500/25 shadow-lg space-y-1">' + html + '</div>' +
-        '<span class="font-label-sm text-[9px] text-zinc-500 ml-1">' + now() + ' · LATENCIA ' + lat + 'ms</span></div>'));
+        '<div class="max-w-[95%] bg-[#12141c]/90 text-zinc-200 px-3.5 py-3 rounded-2xl rounded-tl-sm border border-red-500/25 shadow-lg whitespace-pre-wrap" data-bubble></div>' +
+        '<span class="font-label-sm text-[9px] text-zinc-500 ml-1" data-meta></span></div>');
+      stream.appendChild(root);
       scrollDown();
+      return { root: root, bubble: root.querySelector('[data-bubble]'), meta: root.querySelector('[data-meta]') };
     }
 
-    /* ================= UI sync ================= */
+    function addAria(html) {
+      const lat = 9 + Math.floor(Math.random() * 18);
+      const m = ariaShell();
+      m.bubble.innerHTML = html;
+      m.meta.textContent = now() + ' · LATENCIA ' + lat + 'ms';
+      scrollDown();
+      return m;
+    }
+
+    let typingEl = null;
+    function showTyping() {
+      if (typingEl) return typingEl;
+      typingEl = node('<div class="typing"><i></i><i></i><i></i></div>');
+      stream.appendChild(typingEl);
+      scrollDown();
+      return typingEl;
+    }
+    function hideTyping(el) {
+      if (el !== undefined && typingEl !== el) return;
+      if (typingEl) { typingEl.remove(); typingEl = null; }
+    }
+
+    /* Chips de sistema sin spamear el stream */
+    const noticeAt = {};
+    function notice(type, text) {
+      const t = Date.now();
+      if (noticeAt[type] && t - noticeAt[type] < 20000) return;
+      noticeAt[type] = t;
+      addSystem(text);
+    }
+
+    /* =========================================================
+       2. Backend real (/api/chat) con respaldo simulado
+       ========================================================= */
+    const TOKEN_KEY = 'aria_access_token';
+
+    const GENERIC_FALLBACKS = [
+      '<p><strong class="text-white font-medium">Recibido.</strong> Procesando comando con <span class="text-red-400 font-mono">GPT-OSS 120B</span>. La telemetría del vehículo se mantiene estable.</p>',
+      '<p><strong class="text-white font-medium">Comando ejecutado.</strong> Todos los sistemas del V12 híbrido responden dentro de parámetros óptimos. ¿Deseas ver los datos en el visor 3D?</p>',
+      '<p><strong class="text-white font-medium">Analizando...</strong> Cruzando la petición con la telemetría en vivo: frenos, aero y tren motriz sin anomalías.</p>'
+    ];
+    let replyIdx = 0;
+
+    /* Historial que se le pasa al modelo real (arranca con la escena de ejemplo) */
+    let history = [
+      { role: 'user', content: 'ARIA, ajusta la configuración aerodinámica y verifica el estado de los frenos CCMR.' },
+      { role: 'assistant', content: 'Configuración Corsa activa. Alerón adaptativo calibrado a 420 kg de downforce y pastillas carbocerámicas en rango óptimo de temperatura (185°C).' }
+    ];
+
+    let pendingJob = null;
+
+    function getToken() {
+      try { return window.localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+    }
+
+    async function requestReply(text, onChunk) {
+      const token = getToken();
+      if (!token) return { err: 'demo' };
+
+      /* Solo puede haber una petición en vuelo: la anterior se aborta en silencio */
+      if (pendingJob) { pendingJob.silent = true; pendingJob.ctrl.abort(); }
+      const job = { ctrl: new AbortController(), silent: false, timedOut: false };
+      pendingJob = job;
+      const started = Date.now();
+      const timer = setTimeout(() => { job.timedOut = true; job.ctrl.abort(); }, 60000);
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ messages: history.slice(-16).concat([{ role: 'user', content: text }]) }),
+          signal: job.ctrl.signal
+        });
+        if (res.status === 401) return { err: 'unauthorized' };
+        if (!res.ok) {
+          const p = await res.json().catch(() => ({}));
+          return { err: typeof p.error === 'string' ? p.error : ('HTTP ' + res.status) };
+        }
+
+        let acc = '';
+        const parseLine = (line) => {
+          if (line.slice(0, 6) !== 'data: ') return;
+          const d = line.slice(6);
+          if (d === '[DONE]') return;
+          try {
+            const p = JSON.parse(d);
+            if (typeof p.content === 'string' && p.content) { acc += p.content; onChunk(acc); }
+          } catch (e) { /* chunk malformado: se ignora */ }
+        };
+
+        const reader = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null;
+        if (reader) {
+          const dec = new TextDecoder();
+          let buf = '';
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() || '';
+            for (let i = 0; i < lines.length; i++) parseLine(lines[i]);
+          }
+        } else {
+          const raw = await res.text();
+          raw.split('\n').forEach(parseLine);
+        }
+
+        if (!acc.trim()) return { err: 'respuesta vacía del servidor' };
+        return { ok: true, content: acc, ms: Math.max(1, Date.now() - started) };
+      } catch (e) {
+        if (job.silent) return { silent: true };
+        if (e && e.name === 'AbortError') return { err: job.timedOut ? 'tiempo de espera agotado' : 'cancelado' };
+        return { err: e && e.message ? e.message : 'sin conexión con /api/chat' };
+      } finally {
+        clearTimeout(timer);
+        if (pendingJob === job) pendingJob = null;
+      }
+    }
+
+    /**
+     * Flujo único de mensajes: escribe el usuario, intenta ARIA real y,
+     * si no hay sesión o falla la API, contesta con el respaldo simulado.
+     * El chat SIEMPRE responde.
+     */
+    async function sendText(text, fallbackHtml, historyText) {
+      if (!text) return;
+      addUser(text);
+
+      if (!getToken()) {
+        notice('demo', 'MODO DEMO · SIN SESIÓN ARIA · RESPUESTAS SIMULADAS');
+        addAria(fallbackHtml);
+        return;
+      }
+
+      const m = ariaShell();
+      m.meta.textContent = now() + ' · ARIA ESCRIBE…';
+      const typing = showTyping();
+
+      const res = await requestReply(text, (acc) => { hideTyping(typing); m.bubble.innerHTML = esc(acc); scrollDown(); });
+      hideTyping(typing);
+
+      if (res.silent) { m.root.remove(); return; }
+      if (res.ok) {
+        history.push({ role: 'user', content: historyText || text }, { role: 'assistant', content: res.content });
+        if (history.length > 40) history = history.slice(-40);
+        m.bubble.innerHTML = esc(res.content);
+        m.meta.textContent = now() + ' · ' + res.ms + 'ms';
+        scrollDown();
+        return;
+      }
+
+      m.root.remove();
+      if (res.err === 'demo') notice('demo', 'MODO DEMO · SIN SESIÓN ARIA · RESPUESTAS SIMULADAS');
+      else if (res.err === 'unauthorized') notice('unauthorized', 'SESIÓN NO VÁLIDA · INICIA SESIÓN EN LA APP ARIA · MODO DEMO');
+      else if (res.err !== 'cancelado') notice('error', 'ARIA NO RESPONDIÓ · ' + String(res.err).slice(0, 70) + ' · MODO DEMO');
+      else return;
+      addAria(fallbackHtml);
+    }
+
+    /* =========================================================
+       3. Controles del chat
+       ========================================================= */
+    chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = '';
+      sendText(text, GENERIC_FALLBACKS[replyIdx++ % GENERIC_FALLBACKS.length]);
+    });
+
+    const QUICK = {
+      launch: {
+        say: 'Calibra el Launch Control del Countach LPI 800-4 y explícame la configuración.',
+        html: '<p><strong class="text-white font-medium">Launch Control calibrado.</strong> RPM de arranque en <span class="text-red-400 font-mono">3.500</span>, control de tracción en modo Corsa y suspensión rebajada <span class="text-red-400 font-mono">22 mm</span>. Listo para lanzamiento.</p>'
+      },
+      holo: {
+        say: 'Activa el modo holográfico 3D del Countach y descríbeme qué se ve en el visor.',
+        html: '<p><strong class="text-white font-medium">Proyectando el Countach LPI 800-4</strong> en el visor holográfico 3D. Arrastra sobre el vehículo para rotarlo 360°, usa la rueda del ratón para zoom y la barra inferior para cambiar iluminación y rejilla.</p>'
+      },
+      diag: {
+        say: 'Haz un diagnóstico completo del V12 híbrido.',
+        html: '<p><strong class="text-white font-medium">Diagnóstico V12 completo.</strong> 12/12 cilindros en rango, presión de aceite <span class="text-red-400 font-mono">4.2 bar</span>, temperatura <span class="text-red-400 font-mono">92°C</span>. Sin fallas detectadas.</p>'
+      }
+    };
+
+    document.querySelectorAll('[data-q]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = QUICK[btn.dataset.q];
+        if (!item) return;
+        if (btn.dataset.q === 'holo' && !holoOn) setMode(true);
+        sendText(btn.textContent.trim(), item.html, item.say);
+      });
+    });
+
+    btnClear.addEventListener('click', () => {
+      if (pendingJob) { pendingJob.silent = true; pendingJob.ctrl.abort(); }
+      hideTyping();
+      history = [];
+      stream.innerHTML = '';
+      addSystem('SESIÓN REINICIADA · CONEXIÓN CAN-BUS ESTABLECIDA');
+    });
+
+    btnHelp.addEventListener('click', () => {
+      addSystem('COMANDOS: CALIBRAR LAUNCH CONTROL · DIAGNÓSTICO V12 · MODO HOLOGRAMA 3D · O ESCRIBE LIBREMENTE');
+    });
+
+    /* Adjuntar telemetría (demostración local) */
+    btnAttach.addEventListener('click', () => { if (fileTelemetry) fileTelemetry.click(); });
+    if (fileTelemetry) {
+      fileTelemetry.addEventListener('change', () => {
+        const f = fileTelemetry.files && fileTelemetry.files[0];
+        if (f) addSystem('TELEMETRÍA ADJUNTA · ' + f.name + ' · REGISTRADA EN SIMULACIÓN');
+        fileTelemetry.value = '';
+      });
+    }
+
+    /* Comando de voz (Web Speech API) */
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let rec = null, listening = false;
+    btnMic.addEventListener('click', () => {
+      if (!SR) { notice('voice', 'VOZ NO DISPONIBLE EN ESTE NAVEGADOR · USA CHROME O EDGE'); return; }
+      if (listening && rec) { try { rec.stop(); } catch (e) {} return; }
+      try {
+        rec = new SR();
+        rec.lang = 'es-ES';
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        rec.onstart = () => { listening = true; btnMic.classList.add('text-red-400'); addSystem('ESCUCHANDO…'); };
+        rec.onend = () => { listening = false; btnMic.classList.remove('text-red-400'); };
+        rec.onerror = () => { listening = false; btnMic.classList.remove('text-red-400'); };
+        rec.onresult = (ev) => {
+          const t = ev.results && ev.results[0] && ev.results[0][0] ? ev.results[0][0].transcript : '';
+          if (t) { chatInput.value = t; chatInput.focus(); }
+        };
+        rec.start();
+      } catch (e) { notice('voice', 'NO SE PUDO INICIAR EL MICRÓFONO'); }
+    });
+
+    /* =========================================================
+       4. UI sync
+       ========================================================= */
     function syncUI() {
-      txtHolo.textContent = holoOn ? 'Holográfico · ON' : 'Holográfico · OFF';
-      iconHolo.textContent = holoOn ? 'view_in_ar' : 'auto_awesome';
-      btnHolo.className = 'flex items-center gap-2 px-4 py-2 rounded-full border transition-all active:scale-95 ' +
+      /* Botón principal (top-right) */
+      btnHolo.disabled = holoLoading;
+      txtHolo.textContent = holoLoading ? 'Cargando visor…' : (holoOn ? 'Holográfico · ON' : 'Holográfico · OFF');
+      iconHolo.textContent = holoLoading ? 'autorenew' : (holoOn ? 'view_in_ar' : 'auto_awesome');
+      iconHolo.classList.toggle('animate-spin', holoLoading);
+      btnHolo.className = 'flex items-center gap-2 px-4 py-2 rounded-full border transition-all active:scale-95 shrink-0 disabled:opacity-60 disabled:cursor-wait ' +
         (holoOn
           ? 'bg-red-500/25 hover:bg-red-500/35 border-red-500/60 text-white shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_22px_rgba(239,68,68,0.35)]'
           : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/40 text-zinc-200 shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_18px_rgba(239,68,68,0.15)]');
+
+      /* Estado del visor */
       modeStatus.textContent = holoOn ? 'VISOR: HOLOGRÁFICO 3D' : 'VISOR: MODO REAL';
-      hintRotate.textContent = holoOn ? 'INTERACTIVO · ARRASTRA PARA ROTAR 360°' : 'INTERACTIVO · ROTAR 360°';
-      txtWire.textContent = holoStyle ? 'Holograma ON' : 'Modo Holograma';
+      hintRotate.textContent = holoOn ? 'ARRASTRA · ZOOM CON RUEDA' : 'TOCA EL AUTO · ABRIR VISOR 3D';
+
+      /* Barra inferior: etiquetas = estado real, atenuada si no hay visor 3D */
+      txtWire.textContent = holoOn ? (holoStyle ? 'Holograma: ON' : 'Holograma: OFF') : 'Holograma';
       btnWire.className = 'flex items-center gap-2 px-4 py-2 rounded-xl active:scale-95 transition-all font-label-caps text-xs tracking-wider ' +
-        (holoStyle && holoOn
+        (holoOn && holoStyle
           ? 'bg-red-500/15 text-red-200 border border-red-500/30'
           : 'text-zinc-300 hover:text-white hover:bg-white/10 border border-transparent');
-      txtLight.textContent = studioMode ? 'Iluminación Studio' : 'Iluminación Carmesí';
+      txtLight.textContent = holoOn ? (studioMode ? 'Luz: STUDIO' : 'Luz: CARMESÍ') : 'Luz';
+      txtGrid.textContent = holoOn ? (gridOn ? 'Rejilla: ON' : 'Rejilla: OFF') : 'Rejilla';
+
+      [btnCenter, btnWire, btnLight, btnGrid].forEach((b) => {
+        b.classList.toggle('opacity-40', !holoOn);
+        b.classList.toggle('cursor-not-allowed', !holoOn);
+      });
     }
 
-    function setMode(on) {
-      holoOn = on;
-      if (holoOn) {
-        showcase.style.display = 'none';
-        bg3d.style.display = 'block';
-        init3D();
-        applyStyle(true);
-        addSystem('MODO HOLOGRÁFICO ACTIVADO · COUNTACH LPI 800-4 EN VISTOR 3D');
-      } else {
-        bg3d.style.display = 'none';
-        showcase.style.display = '';
-        addSystem('VISOR EN MODO REAL · IMAGEN DEL VEHÍCULO');
-      }
-      syncUI();
+    function visorHint() {
+      addSystem('VISOR 3D APAGADO · TOCA EL AUTO O EL BOTÓN «HOLOGRÁFICO» PARA ABRIRLO');
     }
 
-    /* ================= 3D scene ================= */
+    /* =========================================================
+       5. Three.js bajo demanda (el chat no depende de él)
+       ========================================================= */
+    const THREE_SOURCES = [
+      'https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js',
+      'https://unpkg.com/three@0.125.0/build/three.min.js'
+    ];
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        let done = false;
+        const timer = setTimeout(() => {
+          if (done) return;
+          done = true;
+          try { s.remove(); } catch (e) {}
+          reject(new Error('timeout'));
+        }, 15000);
+        s.src = src;
+        s.async = true;
+        s.onload = () => { if (done) return; done = true; clearTimeout(timer); resolve(); };
+        s.onerror = () => { if (done) return; done = true; clearTimeout(timer); try { s.remove(); } catch (e) {} reject(new Error('red')); };
+        document.head.appendChild(s);
+      });
+    }
+
+    function ensureThree() {
+      if (window.THREE) return Promise.resolve();
+      if (threePromise) return threePromise;
+      threePromise = (async () => {
+        let lastErr = null;
+        for (let i = 0; i < THREE_SOURCES.length; i++) {
+          try {
+            await loadScript(THREE_SOURCES[i]);
+            if (window.THREE) return;
+            lastErr = new Error('three.js no expuesto');
+          } catch (e) { lastErr = e; }
+        }
+        threePromise = null;
+        throw lastErr || new Error('three.js no disponible');
+      })();
+      return threePromise;
+    }
+
+    function hasWebGL() {
+      try {
+        const c = document.createElement('canvas');
+        return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl')));
+      } catch (e) { return false; }
+    }
+
+    /* =========================================================
+       6. Escena 3D
+       ========================================================= */
+    function clampRotX(v) { return Math.max(-0.15, Math.min(0.55, v)); }
+    function clampZoom(v) { return Math.max(0.55, Math.min(1.6, v)); }
+
+    function computeView() {
+      narrowMode = window.innerWidth < 1024;
+      if (narrowMode) { camPos = { x: 3.4, y: 2.6, z: 7.6 }; camTarget = { x: 0, y: 0.1, z: 0 }; }
+      else { camPos = { x: 3.8, y: 2.0, z: 5.2 }; camTarget = { x: 1.05, y: 0.5, z: -0.77 }; }
+    }
+
+    function applyCam() {
+      if (!camera) return;
+      camera.position.set(
+        camTarget.x + (camPos.x - camTarget.x) * zoomScale,
+        camTarget.y + (camPos.y - camTarget.y) * zoomScale,
+        camTarget.z + (camPos.z - camTarget.z) * zoomScale
+      );
+      camera.lookAt(camTarget.x, camTarget.y, camTarget.z);
+      if (carGroup) carGroup.scale.setScalar(narrowMode ? 0.75 : 1);
+    }
+
+    function resize3D() {
+      if (!ready || !camera || !renderer) return;
+      computeView();
+      applyCam();
+      const w = bg3d.clientWidth || window.innerWidth;
+      const h = bg3d.clientHeight || window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function resetView() {
+      targetRotY = 0.65;
+      targetRotX = 0.12;
+      zoomScale = 1;
+      applyCam();
+    }
+
+    /* --- Texturas procedurales (usan THREE solo al ejecutarse dentro de init3D) --- */
+    function makeEnvTexture() {
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 256;
+      const g = c.getContext('2d');
+      const grd = g.createLinearGradient(0, 0, 0, 256);
+      grd.addColorStop(0.00, '#4a0d1a');
+      grd.addColorStop(0.38, '#14141c');
+      grd.addColorStop(0.52, '#1b1b24');
+      grd.addColorStop(1.00, '#000000');
+      g.fillStyle = grd; g.fillRect(0, 0, 512, 256);
+      g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(48, 34, 210, 20);
+      g.fillStyle = 'rgba(180,220,255,0.55)'; g.fillRect(300, 52, 130, 14);
+      g.fillStyle = 'rgba(255,70,100,0.85)'; g.fillRect(60, 96, 300, 12);
+      const t = new THREE.CanvasTexture(c);
+      t.mapping = THREE.EquirectangularReflectionMapping;
+      return t;
+    }
+
+    function makeShadowTexture() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const g = c.getContext('2d');
+      const grd = g.createRadialGradient(128, 128, 8, 128, 128, 128);
+      grd.addColorStop(0.00, 'rgba(0,0,0,0.9)');
+      grd.addColorStop(0.55, 'rgba(0,0,0,0.38)');
+      grd.addColorStop(1.00, 'rgba(0,0,0,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+      return new THREE.CanvasTexture(c);
+    }
+
+    function makeGlowTexture() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const g = c.getContext('2d');
+      const grd = g.createRadialGradient(64, 64, 2, 64, 64, 64);
+      grd.addColorStop(0.00, 'rgba(255,255,255,1)');
+      grd.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+      grd.addColorStop(1.00, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    }
+
     function init3D() {
       if (ready) { resize3D(); return; }
-      ready = true;
+
+      /* Limpia restos de un intento anterior fallido */
+      Array.prototype.slice.call(bg3d.querySelectorAll('canvas')).forEach((c) => c.remove());
+      const oldPins = document.getElementById('pinsHost');
+      if (oldPins) oldPins.remove();
+      wheelSpinners.length = 0;
+      beams.length = 0;
+      pins3d.length = 0;
 
       const width = bg3d.clientWidth || window.innerWidth;
       const height = bg3d.clientHeight || window.innerHeight;
@@ -342,139 +785,153 @@
       scene = new THREE.Scene();
       scene.fog = new THREE.FogExp2(0x0a0c10, 0.028);
 
-      // Camera shifted so the vehicle sits left of centre, clear of the chat panel
       camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
-      camera.position.set(3.8, 2.0, 5.2);
-      camera.lookAt(1.05, 0.5, -0.77);
+      computeView();
+      applyCam();
 
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
       renderer.setSize(width, height);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setClearColor(0x000000, 0);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.35;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMappingExposure = 1.2;
       bg3d.appendChild(renderer.domElement);
+      renderer.domElement.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        addSystem('CONTEXTO WEBGL PERDIDO · VOLVIENDO AL MODO FOTO');
+        setMode(false);
+      });
 
-      /* --- Automotive showroom lighting --- */
-      L.ambient = new THREE.AmbientLight(0x2a1520, 1.8); scene.add(L.ambient);
-      L.spot = new THREE.SpotLight(0xffffff, 4.5, 30, Math.PI / 4, 0.4, 1.5);
-      L.spot.position.set(5, 8, 6); L.spot.castShadow = true; scene.add(L.spot);
-      L.rim = new THREE.DirectionalLight(0xff2244, 3.2); L.rim.position.set(-6, 5, -5); scene.add(L.rim);
-      L.top = new THREE.DirectionalLight(0xddeeff, 2.0); L.top.position.set(0, 7, 0); scene.add(L.top);
-      L.key = new THREE.DirectionalLight(0xfff5ea, 2.5); L.key.position.set(0, 3, 7); scene.add(L.key);
+      /* Entorno procedural: reflejos reales en la chapa y el piso */
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envSrc = makeEnvTexture();
+      scene.environment = pmrem.fromEquirectangular(envSrc).texture;
+      envSrc.dispose();
+      pmrem.dispose();
+
+      HOLO_MAT = new THREE.MeshBasicMaterial({
+        color: 0xff2b55, wireframe: true, transparent: true, opacity: 0.5,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      });
+
+      /* --- Iluminación tipo showroom --- */
+      L.ambient = new THREE.AmbientLight(0x2a0d16, 1.0); scene.add(L.ambient);
+      L.hemi = new THREE.HemisphereLight(0x8ea8d8, 0x140306, 0.55); scene.add(L.hemi);
+      L.key = new THREE.DirectionalLight(0xfff5ea, 2.6); L.key.position.set(4.5, 6.5, 4); scene.add(L.key);
+      L.rim = new THREE.DirectionalLight(0xff2244, 4.2); L.rim.position.set(-5.5, 4, -4.5); scene.add(L.rim);
+      L.rim2 = new THREE.DirectionalLight(0x88bbff, 1.8); L.rim2.position.set(4, 3, -5); scene.add(L.rim2);
+      L.top = new THREE.PointLight(0xffeedd, 2.2, 16); L.top.position.set(0, 4.5, 0); scene.add(L.top);
+      L.spot = new THREE.SpotLight(0xffffff, 3.0, 30, Math.PI / 4, 0.4, 1.5); L.spot.position.set(5, 8, 6); scene.add(L.spot);
       underglow = new THREE.PointLight(0xff0033, 4.5, 5); underglow.position.set(0, 0.12, 0); scene.add(underglow);
 
-      /* --- Countach LPI 800-4 materials --- */
-      const pearlescentWhiteMat = new THREE.MeshPhongMaterial({ color: 0xf2f4f8, specular: 0xffffff, shininess: 95 });
-      const darkCarbonMat = new THREE.MeshPhongMaterial({ color: 0x111317, specular: 0x444850, shininess: 50 });
-      const glossBlackMat = new THREE.MeshPhongMaterial({ color: 0x08090b, specular: 0x8899aa, shininess: 100 });
-      const glassMat = new THREE.MeshPhongMaterial({ color: 0x0a1015, specular: 0xffffff, shininess: 120, transparent: true, opacity: 0.85 });
-      const headlightGlowMat = new THREE.MeshBasicMaterial({ color: 0xddf4ff });
-      const tailLightNeonMat = new THREE.MeshBasicMaterial({ color: 0xff0836 });
-      const badgeGoldMat = new THREE.MeshPhongMaterial({ color: 0xd4af37, specular: 0xffeebb, shininess: 80 });
-      const wheelTireMat = new THREE.MeshPhongMaterial({ color: 0x16181c, specular: 0x333333, shininess: 30 });
-      const rimAlloyMat = new THREE.MeshPhongMaterial({ color: 0x2b2e34, specular: 0xaaaaaa, shininess: 85 });
-      const brakeCaliperRed = new THREE.MeshPhongMaterial({ color: 0xdd0b2a, shininess: 70 });
-      const brakeRotorMat = new THREE.MeshPhongMaterial({ color: 0x555860, shininess: 40 });
+      /* --- Materiales PBR con mapa de entorno --- */
+      M.paint = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, metalness: 0.9, roughness: 0.26, envMapIntensity: 1.45 });
+      M.carbon = new THREE.MeshStandardMaterial({ color: 0x111317, metalness: 0.5, roughness: 0.45, envMapIntensity: 0.8 });
+      M.black = new THREE.MeshStandardMaterial({ color: 0x08090b, metalness: 0.75, roughness: 0.2, envMapIntensity: 1.2 });
+      M.glass = new THREE.MeshPhysicalMaterial({ color: 0x0a1015, metalness: 0.1, roughness: 0.06, transparent: true, opacity: 0.82, envMapIntensity: 2.2 });
+      M.head = new THREE.MeshBasicMaterial({ color: 0xddf4ff });
+      M.tail = new THREE.MeshStandardMaterial({ color: 0x2a0208, emissive: 0xff0836, emissiveIntensity: 1.6, roughness: 0.3, metalness: 0.2 });
+      M.gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 1.0, roughness: 0.24, envMapIntensity: 1.6 });
+      M.tire = new THREE.MeshStandardMaterial({ color: 0x16181c, metalness: 0.05, roughness: 0.92 });
+      M.rim = new THREE.MeshStandardMaterial({ color: 0x2b2e34, metalness: 0.9, roughness: 0.3, envMapIntensity: 1.3 });
+      M.caliper = new THREE.MeshStandardMaterial({ color: 0xdd0b2a, metalness: 0.4, roughness: 0.35 });
+      M.rotor = new THREE.MeshStandardMaterial({ color: 0x555860, metalness: 0.9, roughness: 0.4 });
 
       carGroup = new THREE.Group();
       scene.add(carGroup);
 
       function add(mesh, glow) {
-        mesh.castShadow = true;
         if (glow) mesh.userData.glow = true;
         carGroup.add(mesh);
         return mesh;
       }
 
       // 1. Lower main body
-      add(new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.28, 4.3), darkCarbonMat)).position.y = 0.32;
+      add(new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.28, 4.3), M.carbon)).position.y = 0.32;
 
       // 2. Front hood & wedge nose
-      const noseBase = add(new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.24, 1.4), pearlescentWhiteMat));
+      const noseBase = add(new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.24, 1.4), M.paint));
       noseBase.position.set(0, 0.38, 1.55);
 
       const beakGeo = new THREE.CylinderGeometry(0.72, 1.94, 0.9, 4);
       beakGeo.rotateY(Math.PI / 4);
-      const beak = add(new THREE.Mesh(beakGeo, pearlescentWhiteMat));
+      const beak = add(new THREE.Mesh(beakGeo, M.paint));
       beak.position.set(0, 0.34, 2.15);
       beak.scale.set(1.0, 0.28, 1.1);
 
-      const splitter = add(new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.05, 0.55), darkCarbonMat));
+      const splitter = add(new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.05, 0.55), M.carbon));
       splitter.position.set(0, 0.16, 2.3);
 
-      const frontSlit = add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.12), glossBlackMat));
+      const frontSlit = add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.12), M.black));
       frontSlit.position.set(0, 0.36, 2.5);
 
-      const badge = add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.04), badgeGoldMat));
+      const badge = add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.04), M.gold));
       badge.position.set(0, 0.44, 2.35);
 
       // 3. Quad-LED headlights
-      [-0.64, 0.64].forEach(x => {
-        const housing = add(new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.09, 0.22), glossBlackMat));
+      [-0.64, 0.64].forEach((x) => {
+        const housing = add(new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.09, 0.22), M.black));
         housing.position.set(x, 0.45, 2.22);
-        const led = add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.045, 0.06), headlightGlowMat), true);
+        const led = add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.045, 0.06), M.head), true);
         led.position.set(x, 0.45, 2.33);
       });
 
       // 4. Cockpit cabin
       const cabinGeo = new THREE.CylinderGeometry(1.22, 1.82, 0.64, 4);
       cabinGeo.rotateY(Math.PI / 4);
-      const cabin = add(new THREE.Mesh(cabinGeo, glassMat));
+      const cabin = add(new THREE.Mesh(cabinGeo, M.glass));
       cabin.position.set(0, 0.78, 0.02);
       cabin.scale.set(0.96, 1.0, 1.45);
 
-      const roof = add(new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.06, 1.35), pearlescentWhiteMat));
+      const roof = add(new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.06, 1.35), M.paint));
       roof.position.set(0, 1.1, 0.02);
 
-      const aPillars = add(new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.08, 0.1), pearlescentWhiteMat));
+      const aPillars = add(new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.08, 0.1), M.paint));
       aPillars.position.set(0, 0.88, 0.78);
 
       // 5. Flanks, NACA ducts, louvers, mirrors
-      [-0.98, 0.98].forEach(x => {
-        const flank = add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 1.8), pearlescentWhiteMat));
+      [-0.98, 0.98].forEach((x) => {
+        const flank = add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 1.8), M.paint));
         flank.position.set(x, 0.52, 0.05);
 
-        const naca = add(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.32, 0.75), darkCarbonMat));
+        const naca = add(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.32, 0.75), M.carbon));
         naca.position.set(x * 0.98, 0.54, -0.45);
 
-        const louver = add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.48), glossBlackMat));
+        const louver = add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.48), M.black));
         louver.position.set(x * 0.92, 0.78, -0.68);
 
-        const mirrorArm = add(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.06), darkCarbonMat));
+        const mirrorArm = add(new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.06), M.carbon));
         mirrorArm.position.set(x * 1.04, 0.82, 0.62);
-        const mirrorCap = add(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.1), glossBlackMat));
+        const mirrorCap = add(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.1), M.black));
         mirrorCap.position.set(x * 1.14, 0.84, 0.62);
       });
 
       // 6. Rear deck, engine cover, tail lights, diffuser, exhausts
-      const rearDeck = add(new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.26, 1.55), pearlescentWhiteMat));
+      const rearDeck = add(new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.26, 1.55), M.paint));
       rearDeck.position.set(0, 0.6, -1.35);
 
-      const engineCover = add(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.05, 1.15), glassMat));
+      const engineCover = add(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.05, 1.15), M.glass));
       engineCover.position.set(0, 0.72, -1.25);
 
-      const rearTailCluster = add(new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.1, 0.1), glossBlackMat));
+      const rearTailCluster = add(new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.1, 0.1), M.black));
       rearTailCluster.position.set(0, 0.62, -2.14);
 
-      [-0.62, 0.62].forEach(x => {
-        const tail = add(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.045, 0.04), tailLightNeonMat), true);
+      [-0.62, 0.62].forEach((x) => {
+        const tail = add(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.045, 0.04), M.tail), true);
         tail.position.set(x, 0.62, -2.19);
       });
 
-      const diffuser = add(new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.22, 0.42), darkCarbonMat));
+      const diffuser = add(new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.22, 0.42), M.carbon));
       diffuser.position.set(0, 0.25, -2.12);
 
-      [-0.32, -0.16, 0.16, 0.32].forEach(x => {
+      [-0.32, -0.16, 0.16, 0.32].forEach((x) => {
         const tipGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.18, 16);
         tipGeo.rotateX(Math.PI / 2);
-        const tip = add(new THREE.Mesh(tipGeo, rimAlloyMat));
+        const tip = add(new THREE.Mesh(tipGeo, M.rim));
         tip.position.set(x, 0.28, -2.25);
       });
 
-      // 7. Wheels (telephone-dial rims)
+      // 7. Wheels (telephone-dial rims) — rueda completa gira en un sub-grupo
       const wheelGeo = new THREE.CylinderGeometry(0.39, 0.39, 0.32, 28);
       wheelGeo.rotateZ(Math.PI / 2);
       const rotorGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.06, 24);
@@ -484,79 +941,136 @@
       rimDialGeo.rotateY(Math.PI / 2);
 
       const wheelPositions = [
-        [-1.02, 0.37, 1.45, 1],
-        [1.02, 0.37, 1.45, -1],
-        [-1.04, 0.39, -1.42, 1],
-        [1.04, 0.39, -1.42, -1]
+        [-0.96, 0.39, 1.45, 1],
+        [0.96, 0.39, 1.45, -1],
+        [-0.98, 0.39, -1.42, 1],
+        [0.98, 0.39, -1.42, -1]
       ];
 
       wheelPositions.forEach(([x, y, z, dir]) => {
         const wGroup = new THREE.Group();
+        const spinner = new THREE.Group();
 
-        const tire = new THREE.Mesh(wheelGeo, wheelTireMat);
-        tire.castShadow = true;
-        wGroup.add(tire);
+        const tire = new THREE.Mesh(wheelGeo, M.tire);
+        spinner.add(tire);
 
-        const rimOuter = new THREE.Mesh(rimDialGeo, rimAlloyMat);
+        const rimOuter = new THREE.Mesh(rimDialGeo, M.rim);
         rimOuter.position.x = dir * 0.14;
-        wGroup.add(rimOuter);
+        spinner.add(rimOuter);
 
         for (let i = 0; i < 5; i++) {
           const angle = (i * Math.PI * 2) / 5;
-          const dialHole = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.02, 8, 16), rimAlloyMat);
+          const dialHole = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.02, 8, 16), M.rim);
           dialHole.rotateY(Math.PI / 2);
           dialHole.position.set(dir * 0.14, Math.sin(angle) * 0.14, Math.cos(angle) * 0.14);
-          wGroup.add(dialHole);
+          spinner.add(dialHole);
         }
 
-        const centerLock = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.06, 12), badgeGoldMat);
+        const centerLock = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.06, 12), M.gold);
         centerLock.rotateZ(Math.PI / 2);
         centerLock.position.x = dir * 0.16;
-        wGroup.add(centerLock);
+        spinner.add(centerLock);
 
-        const rotor = new THREE.Mesh(rotorGeo, brakeRotorMat);
-        const caliper = new THREE.Mesh(caliperGeo, brakeCaliperRed);
+        const rotor = new THREE.Mesh(rotorGeo, M.rotor);
+        spinner.add(rotor);
+
+        const caliper = new THREE.Mesh(caliperGeo, M.caliper);
         caliper.position.set(dir * 0.02, 0.12, 0.04);
-        wGroup.add(rotor);
         wGroup.add(caliper);
 
+        wGroup.add(spinner);
         wGroup.position.set(x, y, z);
         carGroup.add(wGroup);
-        wheelMeshes.push(wGroup);
+        wheelSpinners.push(spinner);
       });
 
-      // Holographic wireframe cage (visible in hologram style)
-      const cageGeo = new THREE.WireframeGeometry(new THREE.BoxGeometry(2.14, 0.96, 4.68));
-      cage = new THREE.LineSegments(cageGeo, new THREE.LineBasicMaterial({
-        color: 0xff0044, transparent: true, opacity: 0.3
+      /* Jaula holográfica que sigue la silueta real del coche */
+      const cageShape = new THREE.Shape();
+      [[2.5, 0.15], [2.44, 0.4], [1.3, 0.5], [0.8, 0.62], [0.5, 0.95], [0.42, 1.11],
+       [-0.62, 1.13], [-1.1, 1.02], [-1.55, 0.77], [-2.1, 0.74], [-2.3, 0.62], [-2.3, 0.2]]
+        .forEach((p, i) => { if (i === 0) cageShape.moveTo(p[0], p[1]); else cageShape.lineTo(p[0], p[1]); });
+      cageShape.closePath();
+      const cageSrc = new THREE.ExtrudeGeometry(cageShape, { depth: 2.0, bevelEnabled: false });
+      cageSrc.translate(0, 0, -1.0);
+      cageSrc.rotateY(-Math.PI / 2);
+      cage = new THREE.LineSegments(new THREE.EdgesGeometry(cageSrc, 12), new THREE.LineBasicMaterial({
+        color: 0xff0044, transparent: true, opacity: 0.32
       }));
-      cage.position.y = 0.62;
       cage.visible = false;
       carGroup.add(cage);
+      cageSrc.dispose();
 
-      // Floor, grid and holo ring
+      /* Hazes de faros */
+      [-0.64, 0.64].forEach((x) => {
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.5, 3.2, 18, 1, true),
+          new THREE.MeshBasicMaterial({
+            color: 0xbfe0ff, transparent: true, opacity: 0.06,
+            blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+          })
+        );
+        cone.rotation.x = -Math.PI / 2;
+        cone.position.set(x, 0.42, 4.0);
+        /* Nunca se sustituye por HOLO_MAT: si lo hiciera, applyLighting
+           mutaría el material compartido del holograma entero */
+        cone.userData.glow = true;
+        carGroup.add(cone);
+        beams.push(cone);
+      });
+
+      /* Halo de luz sobre faros y pilotos */
+      const glowTex = makeGlowTexture();
+      function addGlow(x, y, z, sx, sy, color, opacity) {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glowTex, color: color, transparent: true, opacity: opacity,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+        s.position.set(x, y, z);
+        s.scale.set(sx, sy, 1);
+        carGroup.add(s);
+      }
+      addGlow(-0.64, 0.45, 2.38, 1.0, 0.5, 0xbfe4ff, 0.55);
+      addGlow(0.64, 0.45, 2.38, 1.0, 0.5, 0xbfe4ff, 0.55);
+      addGlow(0, 0.62, -2.24, 2.2, 0.6, 0xff2b55, 0.6);
+
+      /* Piso, rejilla, sombra de contacto y anillos */
       floorMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(35, 35),
-        new THREE.MeshStandardMaterial({ color: 0x08090d, roughness: 0.25, metalness: 0.8 })
+        new THREE.MeshStandardMaterial({ color: 0x08090d, metalness: 0.85, roughness: 0.22, envMapIntensity: 1.1 })
       );
       floorMesh.rotation.x = -Math.PI / 2;
-      floorMesh.receiveShadow = true;
       scene.add(floorMesh);
 
       grid = new THREE.GridHelper(30, 36, 0xff0044, 0x181a24);
       grid.position.y = 0.005;
       scene.add(grid);
 
-      const ringGeo = new THREE.RingGeometry(3.2, 3.24, 80);
-      ringGeo.rotateX(-Math.PI / 2);
-      ring1 = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+      contact = new THREE.Mesh(
+        new THREE.PlaneGeometry(5.8, 3.2),
+        new THREE.MeshBasicMaterial({ map: makeShadowTexture(), transparent: true, depthWrite: false, opacity: 0.9 })
+      );
+      contact.rotation.x = -Math.PI / 2;
+      contact.position.y = 0.012;
+      scene.add(contact);
+
+      const ringGeo1 = new THREE.RingGeometry(3.2, 3.24, 80);
+      ringGeo1.rotateX(-Math.PI / 2);
+      ring1 = new THREE.Mesh(ringGeo1, new THREE.MeshBasicMaterial({
         color: 0xff1545, side: THREE.DoubleSide, transparent: true, opacity: 0.3
       }));
       ring1.position.y = 0.03;
       scene.add(ring1);
 
-      // Crimson ambient particles
-      const particleCount = 140;
+      const ringGeo2 = new THREE.RingGeometry(4.0, 4.03, 80);
+      ringGeo2.rotateX(-Math.PI / 2);
+      ring2 = new THREE.Mesh(ringGeo2, new THREE.MeshBasicMaterial({
+        color: 0xff3366, side: THREE.DoubleSide, transparent: true, opacity: 0.2
+      }));
+      ring2.position.y = 0.03;
+      scene.add(ring2);
+
+      /* Partículas carmesí */
+      const particleCount = window.innerWidth < 1024 ? 80 : 140;
       const pGeo = new THREE.BufferGeometry();
       const pPos = new Float32Array(particleCount * 3);
       for (let i = 0; i < particleCount * 3; i += 3) {
@@ -572,166 +1086,259 @@
       particles.userData.count = particleCount;
       scene.add(particles);
 
-      /* --- Interaction (attached to the 3D layer so chat drags never rotate the car) --- */
-      const getX = e => (e.touches ? e.touches[0].clientX : e.clientX);
-      const getY = e => (e.touches ? e.touches[0].clientY : e.clientY);
-
-      bg3d.addEventListener('mousedown', e => { isDragging = true; prevX = getX(e); prevY = getY(e); });
-      bg3d.addEventListener('mousemove', e => {
-        const x = getX(e), y = getY(e);
-        if (!isDragging) {
-          const cx = (x / window.innerWidth) - 0.5;
-          const cy = (y / window.innerHeight) - 0.5;
-          targetRotY += cx * 0.004;
-          targetRotX = Math.max(-0.15, Math.min(0.55, 0.12 + cy * 0.2));
-          return;
-        }
-        targetRotY += (x - prevX) * 0.007;
-        targetRotX = Math.max(-0.15, Math.min(0.55, targetRotX + (y - prevY) * 0.005));
-        prevX = x; prevY = y;
+      /* Pins de telemetría ancladas al modelo (proyectadas cada frame) */
+      const pinsHost = node('<div id="pinsHost" class="pinshost"></div>');
+      bg3d.appendChild(pinsHost);
+      [
+        { label: 'FRENO CCMR · 185°C (ÓPTIMO)', p: [-0.9, 0.5, 1.45] },
+        { label: 'AERO ACTIVO · DOWNFORCE 420 KG', p: [0.55, 0.78, -1.85] },
+        { label: 'V12 HÍBRIDO · 800 CV', p: [0, 0.8, -1.2] }
+      ].forEach((d) => {
+        const el = document.createElement('div');
+        el.className = 'pin3d';
+        el.style.display = 'none';
+        el.innerHTML = '<span class="dot"></span><span class="lbl">' + esc(d.label) + '</span>';
+        pinsHost.appendChild(el);
+        pins3d.push({ el: el, p: new THREE.Vector3(d.p[0], d.p[1], d.p[2]) });
       });
-      window.addEventListener('mouseup', () => { isDragging = false; });
-      bg3d.addEventListener('touchstart', e => { isDragging = true; prevX = getX(e); prevY = getY(e); }, { passive: true });
-      bg3d.addEventListener('touchmove', e => {
-        const x = getX(e), y = getY(e);
-        if (!isDragging) return;
-        targetRotY += (x - prevX) * 0.007;
-        targetRotX = Math.max(-0.15, Math.min(0.55, targetRotX + (y - prevY) * 0.005));
-        prevX = x; prevY = y;
-      }, { passive: true });
-      window.addEventListener('touchend', () => { isDragging = false; });
+      pinVec = new THREE.Vector3();
 
-      window.addEventListener('resize', resize3D);
+      /* --- Interacción (una sola vez) --- */
+      const getX = (e) => (e.touches ? e.touches[0].clientX : e.clientX);
+      const getY = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
+      const touchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      let pinchDist = 0;
 
-      /* --- Animation loop --- */
+      function onKey(e) {
+        if (!holoOn) return;
+        const k = e.key;
+        if (k === 'ArrowLeft') targetRotY -= 0.12;
+        else if (k === 'ArrowRight') targetRotY += 0.12;
+        else if (k === 'ArrowUp') targetRotX = clampRotX(targetRotX - 0.06);
+        else if (k === 'ArrowDown') targetRotX = clampRotX(targetRotX + 0.06);
+        else if (k === '+' || k === '=') { zoomScale = clampZoom(zoomScale * 0.92); applyCam(); }
+        else if (k === '-' || k === '_') { zoomScale = clampZoom(zoomScale * 1.09); applyCam(); }
+        else return;
+        e.preventDefault();
+      }
+
+      if (!bound3d) {
+        bound3d = true;
+
+        bg3d.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          prevX = getX(e); prevY = getY(e);
+        });
+        /* El arrastre sigue funcionando aunque el puntero salga del canvas */
+        window.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+          const x = getX(e), y = getY(e);
+          targetRotY += (x - prevX) * 0.007;
+          targetRotX = clampRotX(targetRotX + (y - prevY) * 0.005);
+          prevX = x; prevY = y;
+        });
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        bg3d.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 2) {
+            pinchDist = touchDist(e.touches);
+            isDragging = false;
+            return;
+          }
+          isDragging = true;
+          prevX = getX(e); prevY = getY(e);
+        }, { passive: true });
+        bg3d.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 2) {
+            const d = touchDist(e.touches);
+            if (pinchDist > 0 && d > 0) { zoomScale = clampZoom(zoomScale * (pinchDist / d)); applyCam(); }
+            pinchDist = d;
+            return;
+          }
+          if (!isDragging) return;
+          const x = getX(e), y = getY(e);
+          targetRotY += (x - prevX) * 0.007;
+          targetRotX = clampRotX(targetRotX + (y - prevY) * 0.005);
+          prevX = x; prevY = y;
+        }, { passive: true });
+        window.addEventListener('touchend', () => { isDragging = false; pinchDist = 0; });
+
+        /* Zoom con la rueda */
+        bg3d.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          zoomScale = clampZoom(zoomScale * (e.deltaY > 0 ? 1.08 : 0.926));
+          applyCam();
+        }, { passive: false });
+
+        bg3d.addEventListener('contextmenu', (e) => e.preventDefault());
+        bg3d.addEventListener('keydown', onKey);
+        window.addEventListener('resize', resize3D);
+      }
+
+      function updatePins() {
+        for (let i = 0; i < pins3d.length; i++) {
+          const pin = pins3d[i];
+          pinVec.copy(pin.p);
+          carGroup.localToWorld(pinVec);
+          pinVec.project(camera);
+          if (pinVec.z > 1) { pin.el.style.display = 'none'; continue; }
+          pin.el.style.display = 'flex';
+          pin.el.style.left = ((pinVec.x * 0.5 + 0.5) * 100) + '%';
+          pin.el.style.top = ((-pinVec.y * 0.5 + 0.5) * 100) + '%';
+        }
+      }
+
+      /* --- Bucle de animación: solo renderiza con el visor activo --- */
       const clock = new THREE.Clock();
       (function animate() {
         requestAnimationFrame(animate);
+        if (!holoOn || !renderer) return;
         const elapsed = clock.getElapsedTime();
 
-        if (!isDragging) targetRotY += 0.0035;
+        if (!isDragging && !reduceMotion) targetRotY += 0.0035;
         rotY += (targetRotY - rotY) * 0.055;
         rotX += (targetRotX - rotX) * 0.055;
 
         carGroup.rotation.y = rotY;
         carGroup.rotation.x = rotX;
-        carGroup.position.y = Math.sin(elapsed * 1.6) * 0.025;
+        /* El holograma flota; el modelo sólido apoya en el suelo (sin clipar el piso) */
+        carGroup.position.y = holoStyle ? 0.07 + Math.sin(elapsed * 1.5) * 0.03 : 0;
 
-        wheelMeshes.forEach(w => { w.children[0].rotation.x += 0.015; });
+        for (let i = 0; i < wheelSpinners.length; i++) wheelSpinners[i].rotation.x += 0.016;
 
         ring1.rotation.z = elapsed * 0.18;
-        if (cage.visible) cage.material.opacity = 0.35 + Math.sin(elapsed * 2.8) * 0.18;
+        ring2.rotation.z = -elapsed * 0.14;
+        if (cage && cage.visible) cage.material.opacity = 0.32 + Math.sin(elapsed * 2.8) * 0.16;
         underglow.intensity = (studioMode ? 1.2 : 4.0) + Math.sin(elapsed * 3.5) * 1.5;
+        M.tail.emissiveIntensity = 1.3 + Math.sin(elapsed * 2.2) * 0.5;
 
-        const posArr = particles.geometry.attributes.position.array;
-        for (let i = 1; i < particles.userData.count * 3; i += 3) {
-          posArr[i] += 0.0035;
-          if (posArr[i] > 3.8) posArr[i] = 0;
+        if (!reduceMotion) {
+          const arr = particles.geometry.attributes.position.array;
+          for (let i = 1; i < particles.userData.count * 3; i += 3) {
+            arr[i] += 0.0035;
+            if (arr[i] > 3.8) arr[i] = 0;
+          }
+          particles.geometry.attributes.position.needsUpdate = true;
         }
-        particles.geometry.attributes.position.needsUpdate = true;
 
         renderer.render(scene, camera);
+        updatePins();
       })();
 
+      ready = true;
       applyLighting(studioMode);
     }
 
-    function resize3D() {
-      if (!ready) return;
-      const w = bg3d.clientWidth || window.innerWidth;
-      const h = bg3d.clientHeight || window.innerHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    }
-
-    /* --- Solid render vs holographic wireframe render --- */
+    /* --- Sólido vs holograma wireframe --- */
     function applyStyle(holo) {
       holoStyle = holo;
       if (!ready) { syncUI(); return; }
-      carGroup.traverse(o => {
+      carGroup.traverse((o) => {
         if (!o.isMesh || o.userData.glow) return;
         if (!o.userData.solid) o.userData.solid = o.material;
         o.material = holo ? HOLO_MAT : o.userData.solid;
       });
       cage.visible = holo;
       ring1.material.opacity = holo ? 0.6 : 0.3;
+      ring2.material.opacity = holo ? 0.4 : 0.2;
+      contact.material.opacity = holo ? 0.5 : 0.9;
       syncUI();
     }
 
-    /* --- Crimson vs studio lighting --- */
+    /* --- Carmesí vs studio --- */
     function applyLighting(studio) {
       studioMode = studio;
       if (!ready) { syncUI(); return; }
-      L.ambient.color.setHex(studio ? 0x3a3f4a : 0x2a1520);
-      L.ambient.intensity = studio ? 2.2 : 1.8;
+      L.ambient.color.setHex(studio ? 0x3a3f4a : 0x2a0d16);
+      L.ambient.intensity = studio ? 1.4 : 1.0;
+      L.hemi.intensity = studio ? 0.75 : 0.5;
+      L.key.intensity = studio ? 3.2 : 2.4;
       L.rim.color.setHex(studio ? 0x99bbff : 0xff2244);
-      L.rim.intensity = studio ? 2.0 : 3.2;
-      L.spot.intensity = studio ? 5.5 : 4.5;
-      L.key.intensity = studio ? 3.4 : 2.5;
+      L.rim.intensity = studio ? 2.2 : 4.2;
+      L.rim2.intensity = studio ? 2.4 : 1.4;
+      L.top.intensity = studio ? 2.8 : 1.8;
+      L.spot.intensity = studio ? 4.0 : 2.6;
+      beams.forEach((b) => { b.material.opacity = studio ? 0.03 : 0.07; });
       floorMesh.material.color.setHex(holoStyle && holoOn ? 0x06070b : 0x08090d);
       syncUI();
     }
 
-    function resetView() {
-      targetRotY = 0.65;
-      targetRotX = 0.12;
+    /* =========================================================
+       7. Modo foto ↔ visor 3D
+       ========================================================= */
+    async function setMode(on) {
+      if (modeSwitching) return;
+      if (on === holoOn) return;
+
+      if (!on) {
+        holoOn = false;
+        isDragging = false;
+        bg3d.style.display = 'none';
+        showcase.style.display = '';
+        cssGrid.style.display = '';
+        addSystem('VISOR EN MODO REAL · IMAGEN DEL VEHÍCULO');
+        syncUI();
+        return;
+      }
+
+      modeSwitching = true;
+      holoLoading = true;
+      syncUI();
+      addSystem('CARGANDO VISOR 3D…');
+      try {
+        if (!hasWebGL()) throw new Error('WebGL no disponible en este navegador');
+        await ensureThree();
+        bg3d.style.display = 'block';
+        init3D();                       /* si falla, la captura vuelve a la foto */
+        showcase.style.display = 'none';
+        cssGrid.style.display = 'none';
+        holoOn = true;
+        applyStyle(true);
+        addSystem('MODO HOLOGRÁFICO ACTIVADO · COUNTACH LPI 800-4 EN VISOR 3D');
+      } catch (err) {
+        console.error('[visor3d]', err);
+        holoOn = false;
+        isDragging = false;
+        bg3d.style.display = 'none';
+        showcase.style.display = '';
+        cssGrid.style.display = '';
+        const msg = err && err.message ? err.message : 'error desconocido';
+        addSystem('VISOR 3D NO DISPONIBLE · MODO FOTO (' + msg + ')');
+      } finally {
+        holoLoading = false;
+        modeSwitching = false;
+        syncUI();
+      }
     }
 
-    /* ================= Controls ================= */
-    btnHolo.addEventListener('click', () => setMode(!holoOn));
+    /* =========================================================
+       8. Controles
+       ========================================================= */
+    btnHolo.addEventListener('click', () => { setMode(!holoOn); });
 
-    btnCenter.addEventListener('click', () => { if (!holoOn) setMode(true); resetView(); });
+    /* Tocar la foto abre el visor 3D (la pista "rotar 360°" ahora es cierta) */
+    carShowcase.addEventListener('click', (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-pin]')) return;
+      setMode(true);
+    });
 
-    btnWire.addEventListener('click', () => {
-      if (!holoOn) { setMode(true); }       // entering 3D already uses the hologram style
-      else applyStyle(!holoStyle);
+    /* Controles de la barra inferior: solo en el visor; en modo foto avisan */
+    btnCenter.addEventListener('click', () => { if (!holoOn) { visorHint(); return; } resetView(); });
+    btnWire.addEventListener('click', () => { if (!holoOn) { visorHint(); return; } applyStyle(!holoStyle); });
+    btnLight.addEventListener('click', () => { if (!holoOn) { visorHint(); return; } applyLighting(!studioMode); });
+    btnGrid.addEventListener('click', () => {
+      if (!holoOn) { visorHint(); return; }
+      gridOn = !gridOn;
+      grid.visible = gridOn;
+      floorMesh.visible = gridOn;
+      contact.visible = gridOn;
       syncUI();
     });
 
-    btnLight.addEventListener('click', () => { if (!holoOn) setMode(true); applyLighting(!studioMode); syncUI(); });
-
-    window.addEventListener('reset-camera', () => { if (!holoOn) setMode(true); resetView(); });
-    window.addEventListener('toggle-wireframe', () => { if (!holoOn) setMode(true); else applyStyle(!holoStyle); syncUI(); });
-    window.addEventListener('toggle-lighting', () => { if (!holoOn) setMode(true); applyLighting(!studioMode); syncUI(); });
-
-    /* ================= Quick actions ================= */
-    const quickReplies = {
-      launch: '<p><strong class="text-white font-medium">Launch Control calibrado.</strong> RPM de arranque en <span class="text-red-400 font-mono">3.500</span>, control de tracción en modo Corsa y suspensión rebajada <span class="text-red-400 font-mono">22 mm</span>. Listo para lanzamiento.</p>',
-      holo: '<p><strong class="text-white font-medium">Proyectando el Countach LPI 800-4</strong> en el visor holográfico 3D. Arrastra sobre el vehículo para rotarlo 360° y usa la barra inferior para cambiar iluminación.</p>',
-      diag: '<p><strong class="text-white font-medium">Diagnóstico V12 completo.</strong> 12/12 cilindros en rango, presión de aceite <span class="text-red-400 font-mono">4.2 bar</span>, temperatura <span class="text-red-400 font-mono">92°C</span>. Sin fallas detectadas.</p>'
-    };
-
-    document.querySelectorAll('[data-q]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const q = btn.dataset.q;
-        addUser(btn.textContent.trim());
-        if (q === 'holo' && !holoOn) setMode(true);
-        setTimeout(() => addAria(quickReplies[q]), 450);
-      });
-    });
-
-    btnClear.addEventListener('click', () => {
-      stream.innerHTML = '';
-      addSystem('SESIÓN REINICIADA · CONEXIÓN CAN-BUS ESTABLECIDA');
-    });
-
-    /* ================= Chat input ================= */
-    const genericReplies = [
-      '<p><strong class="text-white font-medium">Recibido.</strong> Procesando comando con <span class="text-red-400 font-mono">GPT-OSS 120B</span>. La telemetría del vehículo se mantiene estable.</p>',
-      '<p><strong class="text-white font-medium">Comando ejecutado.</strong> Todos los sistemas del V12 híbrido responden dentro de parámetros óptimos. ¿Deseas ver los datos en el visor 3D?</p>',
-      '<p><strong class="text-white font-medium">Analizando...</strong> Cruzando la petición con la telemetría en vivo: frenos, aero y tren motriz sin anomalías.</p>'
-    ];
-    let replyIdx = 0;
-
-    chatForm.addEventListener('submit', e => {
-      e.preventDefault();
-      const text = chatInput.value.trim();
-      if (!text) return;
-      chatInput.value = '';
-      addUser(text);
-      setTimeout(() => addAria(genericReplies[replyIdx++ % genericReplies.length]), 500);
-    });
+    /* Puente para eventos externos (app host): abren el visor si hace falta */
+    window.addEventListener('reset-camera', () => { if (holoOn) resetView(); else setMode(true); });
+    window.addEventListener('toggle-wireframe', () => { if (holoOn) applyStyle(!holoStyle); else setMode(true); });
+    window.addEventListener('toggle-lighting', () => { if (holoOn) applyLighting(!studioMode); else setMode(true); });
 
     syncUI();
   })();
