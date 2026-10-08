@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { LEXICAL_SMOOTHING, lexicalSim, normalizeLexical, orFuse } from '@/app/lib/brain'
+import {
+  DEDUPE_JACCARD,
+  type BrainHit,
+  LEXICAL_SMOOTHING,
+  dedupeHits,
+  lexicalSim,
+  normalizeLexical,
+  orFuse,
+} from '@/app/lib/brain'
 
 /**
  * Helpers puros del cerebro: no tocan la BD, solo la matemática de fusión.
@@ -96,5 +104,72 @@ describe('normalizeLexical', () => {
 
   it('la constante por defecto es un suavizado positivo', () => {
     expect(LEXICAL_SMOOTHING).toBeGreaterThan(0)
+  })
+})
+
+function makeHit(id: string, content: string, score: number, kind: BrainHit['kind'] = 'memory'): BrainHit {
+  return {
+    kind,
+    id,
+    content,
+    snippet: content,
+    tags: [],
+    source: 'test',
+    createdAt: new Date(0).toISOString(),
+    score,
+  }
+}
+
+describe('dedupeHits', () => {
+  it('colapsa duplicados exactos y conserva el primero (mayor score)', () => {
+    const out = dedupeHits([
+      makeHit('a', 'Usa PostgreSQL 17 para el vault', 0.9),
+      makeHit('b', 'usa   postgresql 17 para el vault', 0.6),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].id).toBe('a')
+  })
+
+  it('colapsa casi-duplicados por Jaccard de tokens', () => {
+    const base = 'prefiere usar vscode y python para los proyectos'
+    const out = dedupeHits([makeHit('a', base, 0.8), makeHit('b', `${base} nuevos`, 0.5)])
+    expect(out).toHaveLength(1)
+    expect(out[0].id).toBe('a')
+  })
+
+  it('colapsa una nota con su espejo en memoria (mismo texto con prefijo)', () => {
+    const body = 'el cafe se toma sin azucar y el te con miel por la manana temprano'
+    const out = dedupeHits([
+      makeHit('m1', `Nota "Cafe": ${body}`, 0.7, 'memory'),
+      makeHit('n1', body, 0.6, 'note'),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].id).toBe('m1')
+  })
+
+  it('no colapsa contenidos que solo comparten tema', () => {
+    const out = dedupeHits([
+      makeHit('a', 'prefiere vscode para programar', 0.8),
+      makeHit('b', 'el deploy se hace los viernes con wrangler', 0.7),
+    ])
+    expect(out).toHaveLength(2)
+  })
+
+  it('preserva el orden de los no duplicados', () => {
+    const out = dedupeHits([
+      makeHit('a', 'uno dos tres cuatro', 0.9),
+      makeHit('b', 'uno dos tres cuatro', 0.8),
+      makeHit('c', 'contenido totalmente distinto aqui', 0.7),
+    ])
+    expect(out.map((h) => h.id)).toEqual(['a', 'c'])
+  })
+
+  it('tolera listas vacías y permite ajustar el umbral', () => {
+    expect(dedupeHits([])).toEqual([])
+    const base = 'prefiere usar vscode y python para los proyectos'
+    const near = [makeHit('a', base, 0.9), makeHit('b', `${base} nuevos`, 0.8)]
+    expect(dedupeHits(near)).toHaveLength(1) // Jaccard 7/8 ≈ 0.875
+    expect(dedupeHits(near, 0.95)).toHaveLength(2) // umbral más estricto
+    expect(DEDUPE_JACCARD).toBeGreaterThan(0)
   })
 })

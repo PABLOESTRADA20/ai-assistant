@@ -112,6 +112,66 @@ export function labelHit(hit: BrainHit): string {
 }
 
 /* ------------------------------------------------------------------ *
+ * Dedup por contenido (colapsa duplicados y casi-duplicados)          *
+ * ------------------------------------------------------------------ */
+
+/** Similitud de Jaccard a partir de la cual dos contenidos son el mismo dato. */
+export const DEDUPE_JACCARD = 0.85
+
+/** Tokens significativos (minúsculas, sin acentos, ≥3 letras) de un texto. */
+function contentTokens(content: string): Set<string> {
+  const tokens = content
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3)
+  return new Set(tokens)
+}
+
+/** Jaccard sobre conjuntos de tokens, en [0,1]. */
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a]
+  let inter = 0
+  for (const t of small) if (big.has(t)) inter++
+  const union = a.size + b.size - inter
+  return union > 0 ? inter / union : 0
+}
+
+/**
+ * Colapsa resultados con el MISMO dato y conserva el primero de cada grupo.
+ *
+ * El cerebro deduplica por `hit.id`, pero distintas fuentes describen el mismo
+ * dato: una nota de la carpeta de ARIA y su espejo en `Memory` (mismo texto con
+ * el prefijo `Nota "..."`), o dos memorias reformuladas. Como `searchBrain`
+ * ordena por score descendente ANTES de llamar acá, el primero aceptado de cada
+ * grupo es el mejor. Se colapsa por contenido normalizado y, si no, por Jaccard
+ * de tokens ≥ `threshold` (conservador: no funde textos que solo comparten tema).
+ */
+export function dedupeHits(hits: BrainHit[], threshold = DEDUPE_JACCARD): BrainHit[] {
+  const kept: BrainHit[] = []
+  const seenKeys = new Set<string>()
+  const tokenSets: Set<string>[] = []
+
+  for (const hit of hits) {
+    const key = hit.content.replace(/\s+/g, ' ').trim().toLowerCase()
+    if (key && seenKeys.has(key)) continue
+
+    const tokens = contentTokens(hit.content)
+    if (tokens.size > 0 && tokenSets.some((s) => jaccard(s, tokens) >= threshold)) {
+      continue
+    }
+
+    if (key) seenKeys.add(key)
+    tokenSets.push(tokens)
+    kept.push(hit)
+  }
+
+  return kept
+}
+
+/* ------------------------------------------------------------------ *
  * Resultado                                                            *
  * ------------------------------------------------------------------ */
 
@@ -399,7 +459,9 @@ export async function searchBrain(
   hits.sort(
     (a, b) => b.score - a.score || Date.parse(b.createdAt) - Date.parse(a.createdAt),
   )
-  return hits.slice(0, limit)
+  // Dedup por contenido ANTES de recortar: si no, dos recuerdos casi iguales
+  // (o una nota y su espejo en memoria) se comen dos cupos de `limit`.
+  return dedupeHits(hits).slice(0, limit)
 }
 
 /* ------------------------------------------------------------------ *
