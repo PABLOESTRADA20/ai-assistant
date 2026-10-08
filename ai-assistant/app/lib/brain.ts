@@ -251,18 +251,60 @@ interface Candidate {
   scores: number[]
 }
 
+/** Fila de la búsqueda vectorial/léxica de `Memory`. */
+type MemoryRow = {
+  id: string
+  type: string
+  category: string
+  content: string
+  importance: number
+  tags: unknown
+  source: string
+  createdAt: Date
+  sim: number
+}
+
+/** Fila de la búsqueda vectorial de `VaultNote`. */
+type VaultRow = {
+  path: string
+  name: string
+  title: string | null
+  content: string
+  updatedAt: Date
+  sim: number
+}
+
+/** Fila de la búsqueda léxica de `Note`. */
+type NoteRow = {
+  id: string
+  title: string
+  content: string
+  tags: unknown
+  source: string
+  createdAt: Date
+  updatedAt: Date
+  rank: number
+}
+
+/** Fila de la búsqueda léxica de `Message`. */
+type MsgRow = { id: string; role: string; content: string; createdAt: Date; rank: number }
+
+/**
+ * Ejecuta una consulta de una fuente del cerebro y, si falla, devuelve filas
+ * vacías (best-effort como la caché): una tabla caída no tumba el resto de la
+ * búsqueda ni el request que la llama.
+ */
+async function safeQuery<T>(label: string, run: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await run()
+  } catch (err) {
+    console.warn(`[brain] fuente ${label} no disponible:`, err)
+    return []
+  }
+}
+
 function memoryHit(
-  row: {
-    id: string
-    type: string
-    category: string
-    content: string
-    importance: number
-    tags: unknown
-    source: string
-    createdAt: Date | string
-    sim: number
-  },
+  row: MemoryRow,
   score: (sim: number) => number = clamp01,
 ): Candidate {
   return {
@@ -325,161 +367,127 @@ export async function searchBrain(
     else byKey.set(candidate.hit.id, candidate)
   }
 
-  // ---- 1) Memoria a largo plazo -------------------------------------------
-  if (vec) {
-    const rows = await prisma.$queryRaw<
-      {
-        id: string
-        type: string
-        category: string
-        content: string
-        importance: number
-        tags: unknown
-        source: string
-        createdAt: Date
-        sim: number
-      }[]
-    >`
-      SELECT "id", "type", "category", "content", "importance", "tags", "source", "createdAt",
-             1 - (embedding <=> ${vec}::vector) AS sim
-      FROM "Memory"
-      WHERE embedding IS NOT NULL
-        AND "isCompressed" = false
-        AND 1 - (embedding <=> ${vec}::vector) >= ${VECTOR_FLOOR}
-      ORDER BY (1 - (embedding <=> ${vec}::vector)) * (0.7 + 0.3 * "importance") DESC
-      LIMIT 20
-    `
-    for (const row of rows) push(memoryHit(row))
-  }
+  // ---- Fuentes (paralelas y best-effort) ----------------------------------
+  // Todas las consultas son independientes: se lanzan con Promise.all y la
+  // latencia es la de la más lenta, no la suma. Cada una viaja en `safeQuery`:
+  // si una tabla falla (caída, esquema, red) las demás igual responden.
+  const [memVectorial, memLexical, vaultRows, noteRows, msgRows] = await Promise.all([
+    vec
+      ? safeQuery('memoria vectorial', () =>
+          prisma.$queryRaw<MemoryRow[]>`
+            SELECT "id", "type", "category", "content", "importance", "tags", "source", "createdAt",
+                   1 - (embedding <=> ${vec}::vector) AS sim
+            FROM "Memory"
+            WHERE embedding IS NOT NULL
+              AND "isCompressed" = false
+              AND 1 - (embedding <=> ${vec}::vector) >= ${VECTOR_FLOOR}
+            ORDER BY (1 - (embedding <=> ${vec}::vector)) * (0.7 + 0.3 * "importance") DESC
+            LIMIT 20
+          `,
+        )
+      : Promise.resolve([] as MemoryRow[]),
+    safeQuery('memoria léxica', () =>
+      prisma.$queryRaw<MemoryRow[]>`
+        SELECT "id", "type", "category", "content", "importance", "tags", "source", "createdAt",
+               ts_rank_cd(to_tsvector('spanish', "content"), ${queryTs}) AS sim
+        FROM "Memory"
+        WHERE "isCompressed" = false
+          AND to_tsvector('spanish', "content") @@ ${queryTs}
+        LIMIT 15
+      `,
+    ),
+    vec
+      ? safeQuery('vault', () =>
+          prisma.$queryRaw<VaultRow[]>`
+            SELECT "path", "name", "title", "content", "updatedAt",
+                   1 - (embedding <=> ${vec}::vector) AS sim
+            FROM "VaultNote"
+            WHERE embedding IS NOT NULL
+              AND 1 - (embedding <=> ${vec}::vector) >= ${VECTOR_FLOOR}
+            ORDER BY embedding <=> ${vec}::vector
+            LIMIT 10
+          `,
+        )
+      : Promise.resolve([] as VaultRow[]),
+    safeQuery('notas', () =>
+      prisma.$queryRaw<NoteRow[]>`
+        SELECT "id", "title", "content", "tags", "source", "createdAt", "updatedAt",
+               ts_rank_cd(to_tsvector('spanish', concat_ws(' ', "title", "content")), ${queryTs}) AS rank
+        FROM "Note"
+        WHERE to_tsvector('spanish', concat_ws(' ', "title", "content")) @@ ${queryTs}
+        ORDER BY "updatedAt" DESC
+        LIMIT 15
+      `,
+    ),
+    conversationId
+      ? safeQuery('mensajes', () =>
+          prisma.$queryRaw<MsgRow[]>`
+            SELECT "id", "role", "content", "createdAt",
+                   ts_rank_cd(to_tsvector('spanish', "content"), ${queryTs}) AS rank
+            FROM "Message"
+            WHERE "conversationId" = ${conversationId}
+              AND to_tsvector('spanish', "content") @@ ${queryTs}
+            ORDER BY "createdAt" DESC
+            LIMIT 15
+          `,
+        )
+      : Promise.resolve([] as MsgRow[]),
+  ])
 
-  {
-    const rows = await prisma.$queryRaw<
-      {
-        id: string
-        type: string
-        category: string
-        content: string
-        importance: number
-        tags: unknown
-        source: string
-        createdAt: Date
-        sim: number
-      }[]
-    >`
-      SELECT "id", "type", "category", "content", "importance", "tags", "source", "createdAt",
-             ts_rank_cd(to_tsvector('spanish', "content"), ${queryTs}) AS sim
-      FROM "Memory"
-      WHERE "isCompressed" = false
-        AND to_tsvector('spanish', "content") @@ ${queryTs}
-      LIMIT 15
-    `
-    // Vía léxica: el ts_rank_cd crudo se normaliza a [0,1] antes de fundir.
-    for (const row of rows) push(memoryHit(row, normalizeLexical))
+  for (const row of memVectorial) push(memoryHit(row))
+  // Vía léxica: el ts_rank_cd crudo se normaliza a [0,1] antes de fundir.
+  for (const row of memLexical) push(memoryHit(row, normalizeLexical))
+  for (const row of vaultRows) {
+    push({
+      scores: [clamp01(row.sim)],
+      hit: {
+        kind: 'vault',
+        id: row.path,
+        title: row.title ?? row.name,
+        content: row.content,
+        snippet: preview(row.content),
+        tags: [],
+        source: 'vault',
+        createdAt: toIso(row.updatedAt),
+        score: 0,
+      },
+    })
   }
-
-  // ---- 2) Vault de Obsidian (vectorial) -----------------------------------
-  if (vec) {
-    const rows = await prisma.$queryRaw<
-      { path: string; name: string; title: string | null; content: string; updatedAt: Date; sim: number }[]
-    >`
-      SELECT "path", "name", "title", "content", "updatedAt",
-             1 - (embedding <=> ${vec}::vector) AS sim
-      FROM "VaultNote"
-      WHERE embedding IS NOT NULL
-        AND 1 - (embedding <=> ${vec}::vector) >= ${VECTOR_FLOOR}
-      ORDER BY embedding <=> ${vec}::vector
-      LIMIT 10
-    `
-    for (const row of rows) {
-      push({
-        scores: [clamp01(row.sim)],
-        hit: {
-          kind: 'vault',
-          id: row.path,
-          title: row.title ?? row.name,
-          content: row.content,
-          snippet: preview(row.content),
-          tags: [],
-          source: 'vault',
-          createdAt: toIso(row.updatedAt),
-          score: 0,
-        },
-      })
-    }
+  for (const row of noteRows) {
+    const lex = lexicalSim(row.title, row.content, q)
+    const rank = normalizeLexical(row.rank)
+    push({
+      scores: [Math.max(lex, rank)],
+      hit: {
+        kind: 'note',
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        snippet: `${row.title}: ${preview(row.content, 160)}`,
+        tags: Array.isArray(row.tags) ? row.tags.filter((t): t is string => typeof t === 'string') : [],
+        source: row.source,
+        createdAt: toIso(row.createdAt),
+        score: 0,
+      },
+    })
   }
-
-  // ---- 3) Notas de la carpeta de ARIA (léxica) ----------------------------
-  {
-    const rows = await prisma.$queryRaw<
-      {
-        id: string
-        title: string
-        content: string
-        tags: unknown
-        source: string
-        createdAt: Date
-        updatedAt: Date
-        rank: number
-      }[]
-    >`
-      SELECT "id", "title", "content", "tags", "source", "createdAt", "updatedAt",
-             ts_rank_cd(to_tsvector('spanish', concat_ws(' ', "title", "content")), ${queryTs}) AS rank
-      FROM "Note"
-      WHERE to_tsvector('spanish', concat_ws(' ', "title", "content")) @@ ${queryTs}
-      ORDER BY "updatedAt" DESC
-      LIMIT 15
-    `
-    for (const row of rows) {
-      const lex = lexicalSim(row.title, row.content, q)
-      const rank = normalizeLexical(row.rank)
-      push({
-        scores: [Math.max(lex, rank)],
-        hit: {
-          kind: 'note',
-          id: row.id,
-          title: row.title,
-          content: row.content,
-          snippet: `${row.title}: ${preview(row.content, 160)}`,
-          tags: Array.isArray(row.tags) ? row.tags.filter((t): t is string => typeof t === 'string') : [],
-          source: row.source,
-          createdAt: toIso(row.createdAt),
-          score: 0,
-        },
-      })
-    }
-  }
-
-  // ---- 4) Mensajes viejos de esta conversación (léxica) -------------------
-  if (conversationId) {
-    const rows = await prisma.$queryRaw<
-      { id: string; role: string; content: string; createdAt: Date; rank: number }[]
-    >`
-      SELECT "id", "role", "content", "createdAt",
-             ts_rank_cd(to_tsvector('spanish', "content"), ${queryTs}) AS rank
-      FROM "Message"
-      WHERE "conversationId" = ${conversationId}
-        AND to_tsvector('spanish', "content") @@ ${queryTs}
-      ORDER BY "createdAt" DESC
-      LIMIT 15
-    `
-    for (const row of rows) {
-      const lex = lexicalSim('', row.content, q)
-      const rank = normalizeLexical(row.rank)
-      push({
-        scores: [Math.max(lex, rank)],
-        hit: {
-          kind: 'message',
-          id: row.id,
-          content: row.content,
-          snippet: preview(row.content, 200),
-          tags: [],
-          source: 'conversation',
-          createdAt: toIso(row.createdAt),
-          conversationId,
-          score: 0,
-        },
-      })
-    }
+  for (const row of msgRows) {
+    const lex = lexicalSim('', row.content, q)
+    const rank = normalizeLexical(row.rank)
+    push({
+      scores: [Math.max(lex, rank)],
+      hit: {
+        kind: 'message',
+        id: row.id,
+        content: row.content,
+        snippet: preview(row.content, 200),
+        tags: [],
+        source: 'conversation',
+        createdAt: toIso(row.createdAt),
+        conversationId: conversationId ?? undefined,
+        score: 0,
+      },
+    })
   }
 
   // ---- Fusión, filtro y orden ----------------------------------------------
