@@ -9,6 +9,7 @@ import {
   wantsWebSearch,
   type ChatMessage,
 } from '@/app/lib/aria-core'
+import { estimateTokens } from '@/app/lib/tokens'
 
 const user = (content: string): ChatMessage => ({ role: 'user', content })
 
@@ -101,5 +102,12 @@ describe('configuración de modelos', () => {
   it('el system prompt describe a ARIA y sus herramientas', () => {
     expect(SYSTEM_PROMPT).toContain('ARIA')
     expect(SYSTEM_PROMPT).toContain('web_search')
+  })
+
+  it('el system prompt es compacto y no duplica los schemas', () => {
+    // Las herramientas ya se ofrecen vía selectTools + TOOL_DEFINITIONS;
+    // listarlas aquí era duplicación que se pagaba en cada turno.
+    expect(SYSTEM_PROMPT).not.toContain('## Tools Available')
+    expect(estimateTokens(SYSTEM_PROMPT)).toBeLessThanOrEqual(900)
   })
 })
