@@ -97,6 +97,8 @@ describe.skipIf(!RUN)('cerebro: búsqueda unificada (integración)', () => {
     const few = await searchBrain(marker, { limit: 2, minScore: 0 })
     expect(few.length).toBeLessThanOrEqual(2)
 
+    // El umbral mide relevancia pura; el empujón de importancia/recencia solo
+    // ordena lo que ya lo pasó, así que 0.99 sigue excluyendo todo.
     const none = await searchBrain(marker, { minScore: 0.99 })
     expect(none.length).toBe(0)
   })

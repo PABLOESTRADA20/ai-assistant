@@ -208,6 +208,40 @@ const MAX_LIMIT = 20
 const VECTOR_FLOOR = 0.1
 
 /* ------------------------------------------------------------------ *
+ * Empujón de ranking por importancia + recencia                        *
+ * ------------------------------------------------------------------ */
+
+/** Tope del empujón: 1.2. No alcanza a dar vuelta saltos de relevancia mayores. */
+export const RANK_BOOST_MAX = 0.2
+const IMPORTANCE_WEIGHT = 0.12
+const RECENCY_WEIGHT = 0.08
+/** Días para que el componente de recencia caiga a la mitad. */
+const RECENCY_HALF_LIFE_DAYS = 120
+
+/**
+ * Multiplicador acotado `[1, 1 + RANK_BOOST_MAX]` para el score fusionado.
+ *
+ * - `importance` (1–10, opcional) aporta hasta `IMPORTANCE_WEIGHT`;
+ * - la recencia (`createdAt`) decae con media vida de `RECENCY_HALF_LIFE_DAYS`
+ *   y aporta hasta `RECENCY_WEIGHT`.
+ *
+ * Es multiplicativo y con tope, así que ordena a igual relevancia (o cerca)
+ * pero NO puede adelantar a un resultado claramente más relevante. Se aplica
+ * sobre los que ya pasaron el umbral: no permite cruzar `minScore` por sí solo.
+ */
+export function rankBoost(hit: BrainHit, now: number = Date.now()): number {
+  const imp = hit.importance
+  const importance =
+    typeof imp === 'number' && Number.isFinite(imp) ? clamp01((imp - 1) / 9) : 0
+  const ts = Date.parse(hit.createdAt)
+  const recency = Number.isFinite(ts)
+    ? Math.pow(0.5, Math.max(0, now - ts) / 86_400_000 / RECENCY_HALF_LIFE_DAYS)
+    : 0
+  const boost = importance * IMPORTANCE_WEIGHT + recency * RECENCY_WEIGHT
+  return 1 + Math.min(RANK_BOOST_MAX, boost)
+}
+
+/* ------------------------------------------------------------------ *
  * Búsqueda unificada                                                  *
  * ------------------------------------------------------------------ */
 
@@ -449,10 +483,15 @@ export async function searchBrain(
   }
 
   // ---- Fusión, filtro y orden ----------------------------------------------
+  const now = Date.now()
   const hits: BrainHit[] = []
   for (const candidate of byKey.values()) {
-    const score = orFuse(candidate.scores)
-    if (score < minScore) continue
+    const base = orFuse(candidate.scores)
+    if (base < minScore) continue
+    // Importancia + recencia ponderan el puntaje devuelto y el ORDEN final
+    // (ver `rankBoost`), pero el umbral sigue midiendo relevancia pura: el
+    // empujón no mete al contexto un resultado sin suficiente relevancia.
+    const score = clamp01(base * rankBoost(candidate.hit, now))
     hits.push({ ...candidate.hit, score })
   }
 

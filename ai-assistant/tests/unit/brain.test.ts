@@ -3,10 +3,12 @@ import {
   DEDUPE_JACCARD,
   type BrainHit,
   LEXICAL_SMOOTHING,
+  RANK_BOOST_MAX,
   dedupeHits,
   lexicalSim,
   normalizeLexical,
   orFuse,
+  rankBoost,
 } from '@/app/lib/brain'
 
 /**
@@ -120,6 +122,10 @@ function makeHit(id: string, content: string, score: number, kind: BrainHit['kin
   }
 }
 
+function hitAt(id: string, createdAt: string, importance?: number): BrainHit {
+  return { ...makeHit(id, 'contenido de prueba', 0), createdAt, importance }
+}
+
 describe('dedupeHits', () => {
   it('colapsa duplicados exactos y conserva el primero (mayor score)', () => {
     const out = dedupeHits([
@@ -171,5 +177,42 @@ describe('dedupeHits', () => {
     expect(dedupeHits(near)).toHaveLength(1) // Jaccard 7/8 ≈ 0.875
     expect(dedupeHits(near, 0.95)).toHaveLength(2) // umbral más estricto
     expect(DEDUPE_JACCARD).toBeGreaterThan(0)
+  })
+})
+
+describe('rankBoost', () => {
+  const now = Date.parse('2026-10-08T00:00:00.000Z')
+  const fresh = new Date(now - 86_400_000).toISOString()
+  const old = new Date(now - 500 * 86_400_000).toISOString()
+
+  it('sin importancia y muy viejo casi no empuja', () => {
+    expect(rankBoost(hitAt('a', old), now)).toBeGreaterThanOrEqual(1)
+    expect(rankBoost(hitAt('a', old), now)).toBeLessThan(1.01)
+  })
+
+  it('fresco e importante se acerca al tope 1 + RANK_BOOST_MAX', () => {
+    expect(rankBoost(hitAt('a', fresh, 10), now)).toBeCloseTo(1 + RANK_BOOST_MAX, 2)
+  })
+
+  it('crece con la importancia', () => {
+    expect(rankBoost(hitAt('a', fresh, 9), now)).toBeGreaterThan(
+      rankBoost(hitAt('a', fresh, 2), now),
+    )
+  })
+
+  it('decrece con la antigüedad', () => {
+    expect(rankBoost(hitAt('a', old, 8), now)).toBeLessThan(
+      rankBoost(hitAt('a', fresh, 8), now),
+    )
+  })
+
+  it('nunca supera 1 + RANK_BOOST_MAX ni baja de 1', () => {
+    expect(rankBoost(hitAt('a', fresh, 9999), now)).toBeLessThanOrEqual(1 + RANK_BOOST_MAX)
+    expect(rankBoost(hitAt('a', 'no-valida'), now)).toBe(1)
+  })
+
+  it('no da vuelta una diferencia de relevancia grande', () => {
+    // El boost máximo (1.2) no alcanza a un 0.7: 0.5 * 1.2 = 0.6 < 0.7.
+    expect(0.7).toBeGreaterThan(0.5 * (1 + RANK_BOOST_MAX))
   })
 })
