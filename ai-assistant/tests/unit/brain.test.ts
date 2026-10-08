@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lexicalSim, orFuse } from '@/app/lib/brain'
+import { LEXICAL_SMOOTHING, lexicalSim, normalizeLexical, orFuse } from '@/app/lib/brain'
 
 /**
  * Helpers puros del cerebro: no tocan la BD, solo la matemática de fusión.
@@ -64,5 +64,37 @@ describe('lexicalSim', () => {
 
   it('tolera contenido indefinido', () => {
     expect(lexicalSim(title, undefined as unknown as string, 'migración')).toBe(0.95)
+  })
+})
+
+describe('normalizeLexical', () => {
+  it('rank 0 o inválido devuelve 0', () => {
+    expect(normalizeLexical(0)).toBe(0)
+    expect(normalizeLexical(-3)).toBe(0)
+    expect(normalizeLexical(NaN)).toBe(0)
+    expect(normalizeLexical(Infinity)).toBe(0)
+  })
+
+  it('es monótono y acotado a [0,1)', () => {
+    const values = [0.01, 0.05, 0.1, 0.2, 0.5, 1, 5].map((r) => normalizeLexical(r))
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThanOrEqual(values[i - 1])
+    }
+    expect(values[0]).toBeGreaterThan(0)
+    expect(normalizeLexical(1e9)).toBeLessThan(1)
+    expect(normalizeLexical(1e9)).toBeGreaterThan(0.99)
+  })
+
+  it('un match típico (ts_rank_cd ≈ 0.05–0.1) supera el umbral de contexto 0.4', () => {
+    expect(normalizeLexical(0.05)).toBeGreaterThan(0.4)
+    expect(normalizeLexical(0.1)).toBeGreaterThan(0.4)
+  })
+
+  it('el acuerdo vectorial+léxico pesa más que solo vectorial (arregla la fusión)', () => {
+    expect(orFuse([0.5, normalizeLexical(0.1)])).toBeGreaterThan(orFuse([0.5]))
+  })
+
+  it('la constante por defecto es un suavizado positivo', () => {
+    expect(LEXICAL_SMOOTHING).toBeGreaterThan(0)
   })
 })

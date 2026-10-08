@@ -11,6 +11,10 @@
  * que coincide en lo vectorial Y en lo léxico puntúa más alto que uno que
  * coincide en una sola vía.
  *
+ * Los rangos léxicos de Postgres (`ts_rank_cd`) se normalizan a [0,1] con
+ * `normalizeLexical` ANTES de fundir: crudos son ~0.01–0.1, así que `clamp01`
+ * los dejaba inertes y los aciertos solo-léxicos caían por debajo del umbral.
+ *
  * Las piezas puras (`orFuse`, `lexicalSim`) están separadas de la base para
  * poder unit-testearlas sin tocar Postgres (tests/unit/brain.test.ts).
  *
@@ -53,6 +57,30 @@ export function lexicalSim(title: string, content: string, query: string): numbe
   if (words.length > 0 && words.every((w) => hay.includes(w))) return 0.85
   if (words.some((w) => hay.includes(w))) return 0.6
   return 0
+}
+
+/** Suavizado de `normalizeLexical`: menor = más agresivo. */
+export const LEXICAL_SMOOTHING = 0.05
+
+/**
+ * Lleva un `ts_rank_cd` crudo (≈0.01–0.1 en documentos cortos; puede pasar de
+ * 1 con muchas coincidencias) a [0,1) de forma monótona: `rank / (rank + k)`.
+ *
+ * - rank 0 o no finito → 0
+ * - crece siempre y se satura cerca de 1 (nunca llega: tope 0.999)
+ * - un match típico (~0.1) ronda 0.67, así sobrevive a `minScore: 0.4`
+ *
+ * Reemplaza a `clamp01` en las vías léxicas: recortar sin reescalar dejaba la
+ * señal léxica casi nula dentro de `orFuse`.
+ */
+export function normalizeLexical(
+  rank: number,
+  smoothing: number = LEXICAL_SMOOTHING,
+): number {
+  const r = Number.isFinite(rank) && rank > 0 ? rank : 0
+  if (r === 0) return 0
+  const k = Number.isFinite(smoothing) && smoothing > 0 ? smoothing : LEXICAL_SMOOTHING
+  return Math.min(0.999, Math.round((r / (r + k)) * 1000) / 1000)
 }
 
 function clamp01(value: number): number {
@@ -129,19 +157,22 @@ interface Candidate {
   scores: number[]
 }
 
-function memoryHit(row: {
-  id: string
-  type: string
-  category: string
-  content: string
-  importance: number
-  tags: unknown
-  source: string
-  createdAt: Date | string
-  sim: number
-}): Candidate {
+function memoryHit(
+  row: {
+    id: string
+    type: string
+    category: string
+    content: string
+    importance: number
+    tags: unknown
+    source: string
+    createdAt: Date | string
+    sim: number
+  },
+  score: (sim: number) => number = clamp01,
+): Candidate {
   return {
-    scores: [clamp01(row.sim)],
+    scores: [score(row.sim)],
     hit: {
       kind: 'memory',
       id: row.id,
@@ -248,7 +279,8 @@ export async function searchBrain(
         AND to_tsvector('spanish', "content") @@ ${queryTs}
       LIMIT 15
     `
-    for (const row of rows) push(memoryHit(row))
+    // Vía léxica: el ts_rank_cd crudo se normaliza a [0,1] antes de fundir.
+    for (const row of rows) push(memoryHit(row, normalizeLexical))
   }
 
   // ---- 2) Vault de Obsidian (vectorial) -----------------------------------
@@ -293,9 +325,11 @@ export async function searchBrain(
         source: string
         createdAt: Date
         updatedAt: Date
+        rank: number
       }[]
     >`
-      SELECT "id", "title", "content", "tags", "source", "createdAt", "updatedAt"
+      SELECT "id", "title", "content", "tags", "source", "createdAt", "updatedAt",
+             ts_rank_cd(to_tsvector('spanish', concat_ws(' ', "title", "content")), ${queryTs}) AS rank
       FROM "Note"
       WHERE to_tsvector('spanish', concat_ws(' ', "title", "content")) @@ ${queryTs}
       ORDER BY "updatedAt" DESC
@@ -303,9 +337,9 @@ export async function searchBrain(
     `
     for (const row of rows) {
       const lex = lexicalSim(row.title, row.content, q)
-      const ts = clamp01(row.content.includes(q) ? 0.9 : 0.6)
+      const rank = normalizeLexical(row.rank)
       push({
-        scores: [Math.max(lex, ts)],
+        scores: [Math.max(lex, rank)],
         hit: {
           kind: 'note',
           id: row.id,
@@ -324,9 +358,10 @@ export async function searchBrain(
   // ---- 4) Mensajes viejos de esta conversación (léxica) -------------------
   if (conversationId) {
     const rows = await prisma.$queryRaw<
-      { id: string; role: string; content: string; createdAt: Date }[]
+      { id: string; role: string; content: string; createdAt: Date; rank: number }[]
     >`
-      SELECT "id", "role", "content", "createdAt"
+      SELECT "id", "role", "content", "createdAt",
+             ts_rank_cd(to_tsvector('spanish', "content"), ${queryTs}) AS rank
       FROM "Message"
       WHERE "conversationId" = ${conversationId}
         AND to_tsvector('spanish', "content") @@ ${queryTs}
@@ -335,9 +370,9 @@ export async function searchBrain(
     `
     for (const row of rows) {
       const lex = lexicalSim('', row.content, q)
-      const ts = clamp01(row.content.includes(q) ? 0.9 : 0.6)
+      const rank = normalizeLexical(row.rank)
       push({
-        scores: [Math.max(lex, ts)],
+        scores: [Math.max(lex, rank)],
         hit: {
           kind: 'message',
           id: row.id,
