@@ -70,6 +70,15 @@ model SessionContext {
   updatedAt DateTime @updatedAt
 }
 
+model EmbeddingCache {
+  hash      String                                @id
+  embedding Unsupported("vector(1024)")
+  createdAt DateTime                              @default(now())
+  usedAt    DateTime                              @default(now())
+
+  @@index([usedAt])
+}
+
 model SystemPrompt {
   id        String   @id @default(uuid())
   role      String

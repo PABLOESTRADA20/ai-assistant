@@ -264,3 +264,27 @@ export async function chargeFallback(charsIn: number, charsOut: number): Promise
     console.warn('[quota] no se pudo cargar la reserva:', err)
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Embeddings: mismo presupuesto, solo entrada                         *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Neuronas estimadas de un embedding: se cobra solo la entrada (los vectores
+ * no generan tokens de salida). Estimación al alza como en `estimateNeurons`.
+ */
+export function estimateEmbeddingNeurons(text: string): number {
+  return estimateNeurons(text.length, 0)
+}
+
+/**
+ * Carga a la reserva compartida el costo de un embedding.
+ *
+ * El presupuesto es UNO solo (no se separa chat de embeddings) porque Workers
+ * AI regala 10.000 neuronas/día por cuenta: respuestas y vectores compiten por
+ * el MISMO tope real, así que compartir el contador es lo que garantiza $0.
+ * Best-effort como el resto del módulo.
+ */
+export async function chargeEmbedding(text: string): Promise<void> {
+  await chargeFallback(text.length, 0)
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  estimateEmbeddingNeurons,
   estimateNeurons,
   FALLBACK_NEURON_BUDGET,
   nextMidnightUtc,
@@ -105,5 +106,15 @@ describe('presupuesto de la reserva', () => {
     expect(utcDayKey(now)).toBe('2026-10-07')
     const late = new Date('2026-10-08T00:30:00.000Z')
     expect(utcDayKey(late)).toBe('2026-10-08')
+  })
+})
+
+describe('estimateEmbeddingNeurons', () => {
+  it('cobra solo la entrada (los vectores no generan salida)', () => {
+    expect(estimateEmbeddingNeurons('')).toBe(0)
+    expect(estimateEmbeddingNeurons('hola')).toBe(1) // 4 chars -> 1 token
+    expect(estimateEmbeddingNeurons('x'.repeat(4000))).toBeGreaterThan(
+      estimateEmbeddingNeurons('x'.repeat(40)),
+    )
   })
 })
