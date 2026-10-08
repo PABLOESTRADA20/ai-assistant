@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildContextMessages,
+  composeMemoryBlock,
   DEFAULT_MODEL,
   CHEAP_MODEL,
   MAX_VISIBLE_MESSAGES,
+  MEMORY_BLOCK_MAX_CHARS,
+  MEMORY_LINE_MAX_CHARS,
+  MEMORY_MAX_LINES,
   MODEL_CONFIG,
   SYSTEM_PROMPT,
+  trimMemoryLine,
   wantsWebSearch,
   type ChatMessage,
+  type MemoryLine,
 } from '@/app/lib/aria-core'
 import { estimateTokens } from '@/app/lib/tokens'
 
@@ -109,5 +115,68 @@ describe('configuración de modelos', () => {
     // listarlas aquí era duplicación que se pagaba en cada turno.
     expect(SYSTEM_PROMPT).not.toContain('## Tools Available')
     expect(estimateTokens(SYSTEM_PROMPT)).toBeLessThanOrEqual(900)
+  })
+})
+
+describe('trimMemoryLine', () => {
+  it('aplana espacios y saltos de línea', () => {
+    expect(trimMemoryLine('  hola \n  mundo  ')).toBe('hola mundo')
+  })
+
+  it('recorta al tope por línea con puntos suspensivos', () => {
+    const out = trimMemoryLine(`- ${'x'.repeat(500)}`)
+    expect(out.length).toBe(MEMORY_LINE_MAX_CHARS)
+    expect(out.endsWith('…')).toBe(true)
+  })
+
+  it('no toca las líneas que caben', () => {
+    expect(trimMemoryLine('- corta')).toBe('- corta')
+  })
+})
+
+describe('composeMemoryBlock', () => {
+  const candidate = (
+    key: string,
+    memoryId?: string,
+    relevant = false,
+  ): MemoryLine => ({ key, line: `- ${key}`, memoryId, relevant })
+
+  it('deduplica por clave conservando el primero', () => {
+    const out = composeMemoryBlock([
+      candidate('a', 'm1', true),
+      candidate('a', 'm2', true),
+      candidate('b'),
+    ])
+    expect(out.lines).toEqual(['- a', '- b'])
+    expect(out.injectedMemoryIds).toEqual(['m1'])
+  })
+
+  it('solo refuerza lo relevante (el relleno no realimenta el ruido)', () => {
+    const out = composeMemoryBlock([
+      candidate('brain', 'mem-1', true),
+      candidate('pref', 'mem-2', false),
+    ])
+    expect(out.injectedMemoryIds).toEqual(['mem-1'])
+  })
+
+  it('respeta el tope de líneas', () => {
+    const many = Array.from({ length: 10 }, (_, i) => candidate(`l${i}`, `m${i}`, true))
+    const out = composeMemoryBlock(many)
+    expect(out.lines).toHaveLength(MEMORY_MAX_LINES)
+    expect(out.injectedMemoryIds).toHaveLength(MEMORY_MAX_LINES)
+  })
+
+  it('respeta el presupuesto de caracteres', () => {
+    const long = (key: string): MemoryLine => ({ key, line: `- ${'x'.repeat(400)}` })
+    const out = composeMemoryBlock(Array.from({ length: 10 }, (_, i) => long(`l${i}`)))
+    // Cada línea se recorta a 240; 4 líneas = 240 + 3*(240+1) = 963; la 5.ª
+    // (1204) ya no cabe en 1200.
+    expect(out.lines).toHaveLength(4)
+    expect(out.lines.join('\n').length).toBeLessThanOrEqual(MEMORY_BLOCK_MAX_CHARS)
+  })
+
+  it('nunca deja el bloque vacío si hay algo que inyectar', () => {
+    const out = composeMemoryBlock([{ key: 'x', line: `- ${'x'.repeat(5000)}` }])
+    expect(out.lines).toHaveLength(1)
   })
 })

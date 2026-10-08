@@ -256,6 +256,84 @@ export function buildContextMessages(
   ]
 }
 
+/* ------------------------------------------------------------------ *
+ * Ruido de memoria: topes y composición del bloque inyectado          *
+ * ------------------------------------------------------------------ */
+
+/** Máximo de líneas de memoria inyectadas por turno. */
+export const MEMORY_MAX_LINES = 6
+/** Presupuesto total (caracteres) del bloque de memoria. */
+export const MEMORY_BLOCK_MAX_CHARS = 1200
+/** Tope por línea; los recuerdos largos se recortan con puntos suspensivos. */
+export const MEMORY_LINE_MAX_CHARS = 240
+
+/** Clave de deduplicación: contenido sin espacios redundantes ni mayúsculas. */
+function memoryKey(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/** Candidato a inyectar en el bloque de memoria. */
+export interface MemoryLine {
+  /** Clave de deduplicación (contenido normalizado). */
+  key: string
+  /** Texto final de la línea. */
+  line: string
+  /** Id de la memoria, para reforzarla si se inyecta. */
+  memoryId?: string
+  /**
+   * true si viene de la recuperación relevante (`searchBrain`). Solo estas se
+   * refuerzan: las de relleno (preferencias/episódicas top por importancia) no
+   * deben realimentar el ruido turno tras turno.
+   */
+  relevant?: boolean
+}
+
+export interface MemoryBlock {
+  lines: string[]
+  injectedMemoryIds: string[]
+}
+
+/** Aplana y recorta una línea de memoria al tope por línea. */
+export function trimMemoryLine(line: string, max = MEMORY_LINE_MAX_CHARS): string {
+  const flat = line.replace(/\s+/g, ' ').trim()
+  if (flat.length <= max) return flat
+  return `${flat.slice(0, Math.max(0, max - 1)).trimEnd()}…`
+}
+
+/**
+ * Compone el bloque de memoria: deduplica, recorta líneas y respeta el
+ * presupuesto de líneas y caracteres. El orden de entrada manda (lo relevante
+ * primero); solo los candidatos `relevant` aportan ids a reforzar.
+ */
+export function composeMemoryBlock(
+  candidates: MemoryLine[],
+  options: { maxLines?: number; maxChars?: number } = {},
+): MemoryBlock {
+  const maxLines = options.maxLines ?? MEMORY_MAX_LINES
+  const maxChars = options.maxChars ?? MEMORY_BLOCK_MAX_CHARS
+  const seen = new Set<string>()
+  const lines: string[] = []
+  const injectedMemoryIds: string[] = []
+  let used = 0
+
+  for (const candidate of candidates) {
+    if (lines.length >= maxLines) break
+    if (seen.has(candidate.key)) continue
+    seen.add(candidate.key)
+
+    const line = trimMemoryLine(candidate.line)
+    const cost = line.length + (lines.length > 0 ? 1 : 0)
+    // La primera línea entra siempre; el resto solo si cabe en el presupuesto.
+    if (lines.length > 0 && used + cost > maxChars) break
+
+    lines.push(line)
+    used += cost
+    if (candidate.relevant && candidate.memoryId) injectedMemoryIds.push(candidate.memoryId)
+  }
+
+  return { lines, injectedMemoryIds: [...new Set(injectedMemoryIds)] }
+}
+
 export async function rememberTurn(
   apiKey: string,
   userContent: string,
@@ -351,28 +429,30 @@ export async function buildAriaContext(
         searchMemories({ category: 'preference', minImportance: 0.7, limit: 3 }).catch(() => []),
         searchMemories({ type: 'episodic', limit: 2 }).catch(() => []),
       ])
-      const seen = new Set<string>()
-      const lines: { line: string; memoryId?: string }[] = []
+      const candidates: MemoryLine[] = []
       for (const hit of brain) {
-        if (seen.has(hit.content)) continue
-        seen.add(hit.content)
-        lines.push({
+        candidates.push({
+          key: memoryKey(hit.content),
           line: `- ${labelHit(hit)} ${hit.snippet}`,
+          // Solo la memoria a largo plazo se refuerza; notas/vault/mensajes no.
           memoryId: hit.kind === 'memory' ? hit.id : undefined,
+          relevant: true,
         })
       }
       for (const m of [...prefs, ...episodic]) {
-        if (seen.has(m.content)) continue
-        seen.add(m.content)
-        lines.push({
+        candidates.push({
+          key: memoryKey(m.content),
           line: `- [${m.type}/${m.category} · importancia ${m.importance}] ${m.content}`,
           memoryId: m.id,
+          // Relleno: se inyecta si sobra sitio, pero NO se refuerza (rompería
+          // el bucle de ruido: lo irrelevante subiría de importancia cada turno).
+          relevant: false,
         })
       }
-      const picked = lines.slice(0, 6)
-      if (picked.length > 0) {
-        memoryBlock = picked.map((p) => p.line)
-        injectedMemoryIds = picked.flatMap((p) => (p.memoryId ? [p.memoryId] : []))
+      const block = composeMemoryBlock(candidates)
+      if (block.lines.length > 0) {
+        memoryBlock = block.lines
+        injectedMemoryIds = block.injectedMemoryIds
       }
     } catch {
       /* memoria no disponible: seguir sin ella */
