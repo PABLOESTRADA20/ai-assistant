@@ -27,6 +27,8 @@ import LoginScreen from './components/LoginScreen'
 import CountachViewer from './components/scene/CountachViewer'
 import AriaMark from './components/AriaMark'
 import InstallButton from './components/InstallButton'
+import QuotaBadge from './components/QuotaBadge'
+import { useQuota } from './hooks/useQuota'
 import {
   apiFetch,
   fetchAuthRequired,
@@ -74,6 +76,8 @@ export default function Home() {
   const [rescueVisible, setRescueVisible] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
+  // Saldo de cuota del día (FASE 3.3): neuronas Workers AI + estado Groq.
+  const { quota, refresh: refreshQuota } = useQuota()
   // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
   const { speak, stop: stopSpeech, prime } = useTTS()
 
@@ -374,6 +378,8 @@ export default function Home() {
       })
 
       if (result.switchedFrom) setModel(result.model)
+      // La cuota del día bajó: refrescar el badge del header.
+      void refreshQuota()
 
       const assistantMessage: Message = {
         id: uuidv4(),
@@ -466,7 +472,7 @@ export default function Home() {
       setStreamContext(null)
       abortRef.current = null
     }
-  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, streamingSources, streamContext, runLocalTool, autoSpeak, prime, speak])
+  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, streamingSources, streamContext, runLocalTool, autoSpeak, prime, speak, refreshQuota])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -526,6 +532,8 @@ export default function Home() {
       })
 
       if (result.switchedFrom) setModel(result.model)
+      // La cuota del día bajó: refrescar el badge del header.
+      void refreshQuota()
 
       const assistantMessage: Message = {
         id: uuidv4(), role: 'assistant', content: result.content, createdAt: new Date(), model: result.model,
@@ -584,7 +592,7 @@ export default function Home() {
       setStreamingSources([])
       setStreamContext(null)
     }
-  }, [activeConversation, isLoading, runLocalTool, autoSpeak, prime, speak])
+  }, [activeConversation, isLoading, runLocalTool, autoSpeak, prime, speak, refreshQuota])
 
   const handleSuggestion = (text: string) => {
     setInput(text)
@@ -873,6 +881,7 @@ export default function Home() {
               ))}
             </div>
 
+            <QuotaBadge quota={quota} />
             <ModelSelector value={model} onChange={setModel} />
             <InstallButton />
 

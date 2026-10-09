@@ -22,6 +22,25 @@ export interface ContextInfo {
   hasSummary: boolean
 }
 
+/** Saldo de cuota del día que expone `/api/quota` (solo lecturas de SessionContext). */
+export interface QuotaInfo {
+  /** Reserva de Workers AI: neuronas gastadas hoy, tope y lo que queda. */
+  neurons: {
+    used: number
+    budget: number
+    remaining: number
+  }
+  /** Estado global de los modelos Groq (agotados por cuota diaria). */
+  groq: {
+    total: number
+    available: number
+    /** Ids de los modelos Groq sin cuota hoy. */
+    exhausted: string[]
+    /** ISO de la recuperación más lejana, cuando hay agotados. */
+    until: string | null
+  }
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
