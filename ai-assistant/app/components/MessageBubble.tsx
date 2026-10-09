@@ -10,6 +10,7 @@ import { Copy, Check, User, Sparkles, Volume2, VolumeX } from 'lucide-react'
 import { Message } from '@/app/types'
 import { useTTS } from '@/app/hooks/useTTS'
 import ToolCard from './ToolCard'
+import SourceChips from './SourceChips'
 import clsx from 'clsx'
 
 interface Props {
@@ -153,6 +154,15 @@ export default function MessageBubble({ message, isStreaming }: Props) {
             {message.tools.map((tool, i) => (
               <ToolCard key={`${tool.name}-${i}`} tool={tool} />
             ))}
+          </div>
+        )}
+
+        {!isUser && message.sources && message.sources.length > 0 && (
+          <div className="flex flex-col gap-0.5 w-full">
+            <span className="text-[10px] uppercase tracking-[0.12em] px-1" style={{ color: 'var(--text-muted)' }}>
+              🧠 Fuentes del cerebro
+            </span>
+            <SourceChips sources={message.sources} />
           </div>
         )}
 

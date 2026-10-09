@@ -12,7 +12,7 @@
  * soporta herramientas.
  */
 import { apiFetch } from '@/app/lib/auth-client'
-import type { ToolInvocation } from '@/app/types'
+import type { SourceRef, ToolInvocation } from '@/app/types'
 
 export const MODEL_FALLBACK_ORDER = [
   'openai/gpt-oss-120b',
@@ -36,6 +36,8 @@ export interface StreamChatOptions {
   signal: AbortSignal
   onContent: (accumulated: string) => void
   onTool: (tool: ToolInvocation, all: ToolInvocation[]) => void
+  /** Se llama cuando llegan las fuentes del cerebro usadas en este turno. */
+  onSources?: (sources: SourceRef[]) => void
   /** Se llama justo antes de reintentar con otro modelo. */
   onFallback?: (from: string, to: string, reason: string) => void
   /**
@@ -48,6 +50,8 @@ export interface StreamChatOptions {
 export interface StreamChatResult {
   content: string
   tools: ToolInvocation[]
+  /** Fuentes del cerebro (memoria/nota/vault/mensaje) usadas en la respuesta. */
+  sources: SourceRef[]
   /** Modelo que finalmente respondió (puede diferir del solicitado). */
   model: string
   /** Modelo original, si hubo auto-cambio. */
@@ -118,6 +122,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
     // Puede cambiar si el servidor avisa que cambió de modelo para usar tools.
     let servedModel = candidate
     const toolEvents: ToolInvocation[] = []
+    const sourceEvents: SourceRef[] = []
 
     if (reader) {
       let buffer = ''
@@ -156,6 +161,27 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
               opts.onTool(tool, toolEvents)
               continue
             }
+            if (parsed.type === 'sources') {
+              const list = parsed.sources
+              if (Array.isArray(list)) {
+                sourceEvents.length = 0
+                for (const s of list) {
+                  if (!s || typeof s.kind !== 'string' || typeof s.id !== 'string') continue
+                  sourceEvents.push({
+                    kind: ['memory', 'note', 'vault', 'message'].includes(s.kind)
+                      ? s.kind
+                      : 'message',
+                    id: s.id,
+                    title: typeof s.title === 'string' ? s.title : undefined,
+                    snippet: typeof s.snippet === 'string' ? s.snippet : undefined,
+                    score: typeof s.score === 'number' ? s.score : 0,
+                    source: typeof s.source === 'string' ? s.source : undefined,
+                  })
+                }
+                opts.onSources?.(sourceEvents)
+              }
+              continue
+            }
             if (parsed.content) {
               accumulated += parsed.content
               opts.onContent(accumulated)
@@ -170,6 +196,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
     return {
       content: accumulated,
       tools: toolEvents,
+      sources: sourceEvents,
       model: servedModel,
       switchedFrom: servedModel !== opts.model ? opts.model : undefined,
     }

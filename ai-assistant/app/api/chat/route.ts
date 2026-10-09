@@ -23,6 +23,7 @@ import { requireAuth } from '@/app/lib/auth'
 import { getRepos } from '@/app/lib/github'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
+import { toSourceRefs } from '@/app/lib/sources'
 import {
   MODEL_CONFIG,
   CHEAP_MODEL,
@@ -245,7 +246,7 @@ export async function POST(req: NextRequest) {
 
     // Contexto compartido (resumen + memoria del usuario + memoria de trabajo).
     // Es el mismo cerebro que usan WhatsApp y el correo.
-    const { allMessages, contextMessages, injectedMemoryIds, summary, summarizedCount, lastUserMsg } =
+    const { allMessages, contextMessages, injectedMemoryIds, brainHits, summary, summarizedCount, lastUserMsg } =
       await buildAriaContext(messages, conversationId)
 
     const config = MODEL_CONFIG[model] || { max_tokens: 8192, temperature: 0.6 }
@@ -344,6 +345,17 @@ export async function POST(req: NextRequest) {
                     reason: switchedForQuota ? 'quota' : 'no_tools',
                     ...(quotaUntil ? { until: quotaUntil } : {}),
                   })}\n\n`,
+                ),
+              )
+            }
+
+            // Chips de fuentes: qué recuerdos/notas del cerebro entraron al
+            // contexto de esta respuesta. Fuera de `emit` para no sumar al
+            // contador de contenido (mismo camino que los eventos tool_call).
+            if (brainHits.length > 0) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: 'sources', sources: toSourceRefs(brainHits) })}\n\n`,
                 ),
               )
             }
@@ -596,6 +608,15 @@ export async function POST(req: NextRequest) {
                 reason: switchedForQuota ? 'quota' : 'no_tools',
                 ...(quotaUntil ? { until: quotaUntil } : {}),
               })}\n\n`,
+            ),
+          )
+        }
+
+        // Chips de fuentes (simple mode): mismas fuentes, mismo formato SSE.
+        if (brainHits.length > 0) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: 'sources', sources: toSourceRefs(brainHits) })}\n\n`,
             ),
           )
         }

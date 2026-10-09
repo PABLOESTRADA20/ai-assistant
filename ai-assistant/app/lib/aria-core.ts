@@ -11,6 +11,7 @@
  * emitir el stream SSE y traducir errores.
  */
 import { prisma } from '@/app/lib/prisma'
+import type { BrainHit } from '@/app/lib/brain'
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -433,6 +434,12 @@ export interface AriaContext {
   contextMessages: ChatMessage[]
   /** Ids de las memorias inyectadas, para reforzarlas después. */
   injectedMemoryIds: string[]
+  /**
+   * Hits del cerebro que entraron al bloque de memoria de este turno, para
+   * mostrarlos como chips de fuentes en la UI. Sin contenido completo: cada
+   * uno se acota con `toSourceRefs` antes de salir por el SSE.
+   */
+  brainHits: BrainHit[]
   /** Resumen persistido que existía antes de este turno. */
   summary: string | null
   /** Nº de mensajes ya plegados en ese resumen (compactación incremental). */
@@ -485,6 +492,7 @@ export async function buildAriaContext(
   // (app/lib/brain.ts); las preferencias y episodios vuelven igual que antes.
   let memoryBlock: string[] | null = null
   let injectedMemoryIds: string[] = []
+  let brainHits: BrainHit[] = []
   if (lastUserMsg?.content) {
     try {
       const { searchBrain, labelHit } = await import('@/app/lib/brain')
@@ -498,6 +506,7 @@ export async function buildAriaContext(
         searchMemories({ category: 'preference', minImportance: 0.7, limit: 3 }).catch(() => []),
         searchMemories({ type: 'episodic', limit: 2 }).catch(() => []),
       ])
+      brainHits = brain
       const candidates: MemoryLine[] = []
       for (const hit of brain) {
         candidates.push({
@@ -569,5 +578,5 @@ export async function buildAriaContext(
     /* GitHub no disponible: seguir sin la lista */
   }
 
-  return { allMessages, contextMessages, injectedMemoryIds, summary, summarizedCount, lastUserMsg }
+  return { allMessages, contextMessages, injectedMemoryIds, brainHits, summary, summarizedCount, lastUserMsg }
 }

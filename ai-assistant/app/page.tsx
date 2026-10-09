@@ -13,7 +13,7 @@ import GithubRepos from './components/GithubRepos'
 import NotesPanel from './components/NotesPanel'
 import { useTTS } from './hooks/useTTS'
 
-import { Message, Conversation, ToolInvocation, AVAILABLE_MODELS } from './types'
+import { Message, Conversation, ToolInvocation, SourceRef, AVAILABLE_MODELS } from './types'
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
 import { streamChat, UnauthorizedError } from './lib/chat-client'
 import {
@@ -55,6 +55,7 @@ export default function Home() {
   const [authState, setAuthState] = useState<'checking' | 'needed' | 'ready'>('checking')
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingTools, setStreamingTools] = useState<ToolInvocation[]>([])
+  const [streamingSources, setStreamingSources] = useState<SourceRef[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id)
@@ -339,6 +340,7 @@ export default function Home() {
     setIsLoading(true)
     setStreamingContent('')
     setStreamingTools([])
+    setStreamingSources([])
 
     const apiMessages = updatedMessages.map((m) => ({ role: m.role, content: m.content }))
 
@@ -355,6 +357,7 @@ export default function Home() {
           setStreamingTools([...all])
           void runLocalTool(tool, all)
         },
+        onSources: (sources) => setStreamingSources(sources),
         onFallback: (from, to, reason) => {
           const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
           const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
@@ -376,6 +379,7 @@ export default function Home() {
         createdAt: new Date(),
         model: result.model,
         tools: result.tools.length > 0 ? result.tools : undefined,
+        sources: result.sources.length > 0 ? result.sources : undefined,
       }
 
       const finalMessages = [...updatedMessages, assistantMessage]
@@ -402,7 +406,7 @@ export default function Home() {
       // 401: apiFetch ya limpió el token y la app volvió al login.
       if (err instanceof UnauthorizedError) return
       if (err instanceof Error && err.name === 'AbortError') {
-        if (streamingContent || streamingTools.length > 0) {
+        if (streamingContent || streamingTools.length > 0 || streamingSources.length > 0) {
           const partialMessage: Message = {
             id: uuidv4(),
             role: 'assistant',
@@ -410,6 +414,7 @@ export default function Home() {
             createdAt: new Date(),
             model,
             tools: streamingTools.length > 0 ? streamingTools : undefined,
+            sources: streamingSources.length > 0 ? streamingSources : undefined,
           }
           setConversations((prev) =>
             prev.map((c) => {
@@ -452,9 +457,10 @@ export default function Home() {
       setIsLoading(false)
       setStreamingContent('')
       setStreamingTools([])
+      setStreamingSources([])
       abortRef.current = null
     }
-  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, runLocalTool, autoSpeak, prime, speak])
+  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, streamingSources, runLocalTool, autoSpeak, prime, speak])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -482,6 +488,7 @@ export default function Home() {
     setIsLoading(true)
     setStreamingContent('')
     setStreamingTools([])
+    setStreamingSources([])
 
     const apiMessages = trimmed.map((m) => ({ role: m.role, content: m.content }))
 
@@ -497,6 +504,7 @@ export default function Home() {
           setStreamingTools([...all])
           void runLocalTool(tool, all)
         },
+        onSources: (sources) => setStreamingSources(sources),
         onFallback: (from, to, reason) => {
           const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
           const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
@@ -514,6 +522,7 @@ export default function Home() {
       const assistantMessage: Message = {
         id: uuidv4(), role: 'assistant', content: result.content, createdAt: new Date(), model: result.model,
         tools: result.tools.length > 0 ? result.tools : undefined,
+        sources: result.sources.length > 0 ? result.sources : undefined,
       }
 
       const finalMessages = [...trimmed, assistantMessage]
@@ -563,6 +572,7 @@ export default function Home() {
       setIsLoading(false)
       setStreamingContent('')
       setStreamingTools([])
+      setStreamingSources([])
     }
   }, [activeConversation, isLoading, runLocalTool, autoSpeak, prime, speak])
 
@@ -625,6 +635,16 @@ export default function Home() {
           if (tool.result) {
             lines.push(`  - Resultado: \`${tool.result.slice(0, 300)}${tool.result.length > 300 ? '…' : ''}\``)
           }
+        }
+        lines.push('')
+      }
+      if (msg.sources && msg.sources.length > 0) {
+        lines.push('### Fuentes del cerebro usadas')
+        lines.push('')
+        for (const src of msg.sources) {
+          const pct = Math.round(Math.min(1, Math.max(0, src.score)) * 100)
+          lines.push(`- **${src.title ?? src.kind}** (${pct}%)`)
+          if (src.snippet) lines.push(`  - ${src.snippet.slice(0, 300)}`)
         }
         lines.push('')
       }
@@ -948,6 +968,7 @@ export default function Home() {
           isLoading={isLoading}
           streamingContent={streamingContent}
           streamingTools={streamingTools}
+          streamingSources={streamingSources}
           currentModel={model}
           onSuggestion={handleSuggestion}
         />

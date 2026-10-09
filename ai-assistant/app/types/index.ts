@@ -1,4 +1,15 @@
 // app/types/index.ts
+/** Una fuente del cerebro que ARIA usó para armar la respuesta (memoria/nota/vault/mensaje). */
+export interface SourceRef {
+  kind: 'memory' | 'note' | 'vault' | 'message'
+  id: string
+  title?: string
+  snippet?: string
+  /** Puntaje fusionado [0,1] con el que entró al contexto. */
+  score: number
+  source?: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -6,6 +17,8 @@ export interface Message {
   createdAt: Date
   model?: string
   tools?: ToolInvocation[]
+  /** Recuerdos/notas del cerebro que ARIA inyectó en el contexto de la respuesta. */
+  sources?: SourceRef[]
 }
 
 export interface ToolInvocation {
