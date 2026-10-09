@@ -20,7 +20,12 @@ const marker = `vitestwm${Date.now().toString(36)}${Math.random().toString(36).s
 describe.skipIf(!RUN)('memoria de trabajo y contextos (integración)', () => {
   afterAll(async () => {
     await prisma.sessionContext.deleteMany({ where: { key: { startsWith: 'session:vitest' } } })
-    await prisma.sessionContext.deleteMany({ where: { key: 'maintenance:consolidate' } })
+    // NOTA: `maintenance:consolidate` NO se borra aquí. Es la key de control de
+    // maybeConsolidate, que solo pertenece a tests/integration/memory.test.ts
+    // (la limpia en su propio afterAll). Los archivos corren en workers
+    // paralelos sobre la misma BD: borrarla desde aquí reintroducía una carrera
+    // donde el test "maybeConsolidate no repite trabajo" podía no ver la fila
+    // recién escrita y repetir la consolidación (CI intermitente).
     await prisma.memory.deleteMany({ where: { content: { contains: marker } } })
   })
 
