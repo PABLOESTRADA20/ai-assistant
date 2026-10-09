@@ -5,7 +5,7 @@ Asistente de IA conversacional con Next.js 15, React, TypeScript, Tailwind CSS, 
 ## Stack
 
 - **Frontend**: Next.js 15, React 18, Tailwind CSS 3, TypeScript
-- **Backend**: Next.js API Routes, Prisma 7 ORM
+- **Backend**: Next.js API Routes, Prisma 6.19 ORM
 - **Base de datos**: Neon (PostgreSQL serverless) + pgvector (búsqueda semántica por embeddings)
 - **IA**: Groq (`gpt-oss-120b`, `qwen3.8-27b`, `gpt-oss-20b`) + **DeepSeek R1 32B gratis** vía Cloudflare Workers AI
 - **Embeddings**: Cloudflare Workers AI `@cf/baai/bge-m3` (1024 dims), mismo modelo en local y en producción
@@ -38,8 +38,9 @@ GROQ_API_KEY=gsk_tu-api-key-aqui
 DATABASE_URL=postgres://usuario:pass@host-pooler.neon.tech/aria
 CLOUDFLARE_API_TOKEN=tu_token_workers_ai
 CLOUDFLARE_ACCOUNT_ID=tu_account_id
-VAULT_PATH=C:\Users\pablo\OneDrive\Documentos\Cerebro tt
-# Opcional pero recomendado: protege la URL publica con una clave de acceso
+VAULT_PATH=C:\ruta\a\tu\vault-de-obsidian
+# Obligatoria en produccion: protege la URL publica con una clave de acceso.
+# Sin ella, en produccion la app falla cerrada.
 ARIA_ACCESS_TOKEN=una-clave-larga-y-secreta
 ```
 

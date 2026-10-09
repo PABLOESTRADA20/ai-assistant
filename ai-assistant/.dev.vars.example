@@ -3,4 +3,7 @@ DATABASE_URL_UNPOOLED=
 GROQ_API_KEY=
 CLOUDFLARE_API_TOKEN=
 CLOUDFLARE_ACCOUNT_ID=
-VAULT_PATH=C:\Users\pablo\OneDrive\Documentos\Cerebro tt
+VAULT_PATH=C:\ruta\a\tu\vault-de-obsidian
+# Obligatoria en produccion (el preview de OpenNext es un build de produccion:
+# sin esta clave la app falla cerrada).
+ARIA_ACCESS_TOKEN=
