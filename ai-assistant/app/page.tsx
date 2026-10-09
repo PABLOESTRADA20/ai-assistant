@@ -24,7 +24,7 @@ import {
   generateTitle,
 } from './lib/store'
 import LoginScreen from './components/LoginScreen'
-import CountachViewer from './components/scene/CountachViewer'
+import CountachViewer, { type SceneStatus } from './components/scene/CountachViewer'
 import AriaMark from './components/AriaMark'
 import InstallButton from './components/InstallButton'
 import QuotaBadge from './components/QuotaBadge'
@@ -67,6 +67,8 @@ export default function Home() {
   const [autoSpeak, setAutoSpeak] = useState(false)
   // Escena 3D del Countach: flag OFF por defecto (localStorage `aria_3d_enabled`).
   const [threeDEnabled, setThreeDEnabled] = useState(false)
+  // Por qué la escena está o no visible (para el tooltip del toggle 3D).
+  const [threeDStatus, setThreeDStatus] = useState<SceneStatus>('off')
   const [modelNotice, setModelNotice] = useState<string | null>(null)
   const [quotaUntil, setQuotaUntil] = useState<string | null>(null)
   const [quotaTick, setQuotaTick] = useState(0)
@@ -702,7 +704,7 @@ export default function Home() {
   if (authState === 'checking' || (authState === 'ready' && initialLoading)) {
     return (
       <div className="relative flex h-dvh items-center justify-center" style={{ background: 'var(--app-bg)' }}>
-        <CountachViewer neuralOpacity={0.35} enabled={threeDEnabled} />
+        <CountachViewer neuralOpacity={0.35} enabled={threeDEnabled} onStatusChange={setThreeDStatus} />
         <div className="relative z-10 flex flex-col items-center gap-3">
           <div
             className="flex items-center justify-center rounded-2xl"
@@ -791,9 +793,16 @@ export default function Home() {
     {
       key: 'scene3d',
       label: '3D',
-      title: threeDEnabled
-        ? 'Escena 3D del Countach activada: clic para volver al fondo de red neuronal'
-        : 'Escena 3D del Countach desactivada por defecto: clic para activarla',
+      title:
+        threeDStatus === 'webgl'
+          ? '3D no disponible: este navegador no soporta WebGL'
+          : threeDStatus === 'init-failed'
+            ? '3D no disponible: la escena no pudo iniciar'
+            : threeDStatus === 'static'
+              ? 'Escena 3D sin animación: tu sistema tiene "reducir movimiento" activado (clic para volver al fondo)'
+              : threeDEnabled
+                ? 'Escena 3D del Countach activada: clic para volver al fondo de red neuronal'
+                : 'Escena 3D del Countach desactivada por defecto: clic para activarla',
       icon: <Box size={14} />,
       onClick: toggleThreeDEnabled,
       active: threeDEnabled,
@@ -821,7 +830,7 @@ export default function Home() {
 
   return (
     <div className="relative flex h-dvh overflow-hidden" style={{ background: 'var(--app-bg)' }}>
-      <CountachViewer neuralOpacity={0.4} enabled={threeDEnabled} />
+      <CountachViewer neuralOpacity={0.4} enabled={threeDEnabled} onStatusChange={setThreeDStatus} />
       <Sidebar
         conversations={conversations}
         activeId={activeId}

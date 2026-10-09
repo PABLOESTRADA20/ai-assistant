@@ -13,6 +13,8 @@ interface AriaSceneProps {
   autoSpin?: boolean
   reduceMotion?: boolean
   onReadyChange?: (ready: boolean) => void
+  /** Se invoca si la escena no puede iniciar (WebGL roto, shader, etc.). */
+  onError?: (err: unknown) => void
 }
 
 type MaterialMap = {
@@ -47,6 +49,7 @@ export default function AriaScene({
   autoSpin = true,
   reduceMotion = false,
   onReadyChange,
+  onError,
 }: AriaSceneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -398,8 +401,9 @@ export default function AriaScene({
     } catch (e) {
       console.warn('[AriaScene] init failed', e)
       setReadyFlag(false)
+      onError?.(e)
     }
-  }, [enabled, width, height, autoSpin, reduceMotion, buildCar, computeView, applyCam, makeEnvTexture, makeShadowTexture, setReadyFlag, loop])
+  }, [enabled, width, height, autoSpin, reduceMotion, buildCar, computeView, applyCam, makeEnvTexture, makeShadowTexture, setReadyFlag, loop, onError])
 
   const resize = useCallback(() => {
     if (!readyRef.current) return
