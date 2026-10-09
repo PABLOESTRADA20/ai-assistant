@@ -16,6 +16,7 @@ import { useTTS } from './hooks/useTTS'
 import { Message, Conversation, ToolInvocation, SourceRef, ContextInfo, AVAILABLE_MODELS } from './types'
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
 import { streamChat, UnauthorizedError } from './lib/chat-client'
+import { loadDraft, saveDraft } from './lib/chat-draft'
 import {
   getConversations,
   createConversation,
@@ -51,7 +52,13 @@ function formatRemaining(ms: number): string {
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState<string>(() => loadDraft(activeId))
+  // Ref espejo de activeId para leer el valor actual dentro de callbacks/efectos
+  // sin re-ejecutar sus dependencias (mantiene a raya a exhaustive-deps).
+  const activeIdRef = useRef(activeId)
+  useEffect(() => {
+    activeIdRef.current = activeId
+  }, [activeId])
   const [isLoading, setIsLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [authState, setAuthState] = useState<'checking' | 'needed' | 'ready'>('checking')
@@ -129,6 +136,8 @@ export default function Home() {
         setConversations(stored)
         if (stored.length > 0) {
           setActiveId((prev) => prev ?? stored[0].id)
+          // Recién arrancado, sin conversación activa todavía: restaurar su borrador.
+          if (!activeIdRef.current) setInput(loadDraft(stored[0].id))
         }
       })
       .catch(() => {
@@ -269,23 +278,30 @@ export default function Home() {
 
   const handleSelect = useCallback((id: string) => {
     setActiveId(id)
-    setInput('')
+    setInput(loadDraft(id))
     setSidebarOpen(false)
   }, [])
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!window.confirm('¿Eliminar esta conversación?')) return
-    try {
-      await deleteConversation(id)
-      setConversations((prev) => {
-        const updated = prev.filter((c) => c.id !== id)
-        return updated
-      })
-      setActiveId((prev) => (prev === id ? null : prev))
-    } catch (err) {
-      console.error('Error deleting conversation:', err)
-    }
-  }, [])
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!window.confirm('¿Eliminar esta conversación?')) return
+      try {
+        await deleteConversation(id)
+        const wasActive = activeId === id
+        saveDraft(id, '')
+        setConversations((prev) => {
+          const updated = prev.filter((c) => c.id !== id)
+          return updated
+        })
+        setActiveId((prev) => (prev === id ? null : prev))
+        // Si se borraba la conversación activa, volvemos al inicio con su borrador.
+        if (wasActive) setInput(loadDraft(null))
+      } catch (err) {
+        console.error('Error deleting conversation:', err)
+      }
+    },
+    [activeId],
+  )
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -344,6 +360,8 @@ export default function Home() {
       })
     )
     setInput('')
+    // El texto ya pasó a la conversación: el borrador del input se agota.
+    saveDraft(activeId, '')
     setIsLoading(true)
     setStreamingContent('')
     setStreamingTools([])
@@ -598,7 +616,16 @@ export default function Home() {
 
   const handleSuggestion = (text: string) => {
     setInput(text)
+    saveDraft(activeId, text)
   }
+
+  const handleInputChange = useCallback(
+    (value: string) => {
+      setInput(value)
+      saveDraft(activeId, value)
+    },
+    [activeId],
+  )
 
   const toggleAutoSpeak = useCallback(() => {
     const next = !autoSpeak
@@ -1009,7 +1036,7 @@ export default function Home() {
           <div className="max-w-3xl mx-auto">
             <ChatInput
               value={input}
-              onChange={setInput}
+              onChange={handleInputChange}
               onSubmit={handleSubmit}
               onStop={handleStop}
               isLoading={isLoading}
