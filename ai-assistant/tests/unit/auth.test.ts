@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getAccessToken, isAuthRequired, isAuthorized, requireAuth } from '@/app/lib/auth'
 
 const saved = process.env.ARIA_ACCESS_TOKEN
@@ -6,6 +6,7 @@ const saved = process.env.ARIA_ACCESS_TOKEN
 afterEach(() => {
   if (saved === undefined) delete process.env.ARIA_ACCESS_TOKEN
   else process.env.ARIA_ACCESS_TOKEN = saved
+  vi.unstubAllEnvs()
 })
 
 function req(headers: Record<string, string> = {}): Request {
@@ -66,5 +67,27 @@ describe('requireAuth', () => {
     expect(denied!.headers.get('WWW-Authenticate')).toBe('Bearer')
     const body = (await denied!.json()) as { code: string }
     expect(body.code).toBe('unauthorized')
+  })
+})
+
+// La app debe fallar CERRADA en producción si falta el secret: un deploy sin
+// ARIA_ACCESS_TOKEN no puede quedar abierto. En dev/tests sigue abierta.
+describe('fail-closed en producción', () => {
+  it('sin secret: exige autenticación y deniega todo', () => {
+    delete process.env.ARIA_ACCESS_TOKEN
+    vi.stubEnv('NODE_ENV', 'production')
+    expect(isAuthRequired()).toBe(true)
+    expect(isAuthorized(req())).toBe(false)
+    const denied = requireAuth(req())
+    expect(denied).not.toBeNull()
+    expect(denied!.status).toBe(401)
+  })
+
+  it('con secret: sigue exigiendo el Bearer correcto', () => {
+    process.env.ARIA_ACCESS_TOKEN = 'super-secreta'
+    vi.stubEnv('NODE_ENV', 'production')
+    expect(isAuthRequired()).toBe(true)
+    expect(isAuthorized(req({ authorization: 'Bearer super-secreta' }))).toBe(true)
+    expect(isAuthorized(req())).toBe(false)
   })
 })

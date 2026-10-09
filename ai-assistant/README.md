@@ -162,7 +162,7 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `CLOUDFLARE_API_TOKEN` | Token con permiso Workers AI (embeddings) | ✅ |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
-| `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. Sin ella, la URL es pública | recomendada |
+| `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. **En producción es obligatoria**: sin ella la app falla cerrada (deniega todo) y el deploy aborta | ✅ en producción |
 | `NEXT_PUBLIC_ARIA_LOCAL_AGENT` | URL del agente local que abre apps (por defecto `http://127.0.0.1:8787`). No es un secreto: puede ir en el bundle | no |
 | `ARIA_LOCAL_TOKEN` | Token del **agente local** (no de la web). Si no se define, el agente lo genera y lo imprime. El navegador lo pide una vez y lo guarda en `localStorage`; nunca va en el bundle | agente |
 | `WHATSAPP_TOKEN` | Token permanente de la app de Meta (WhatsApp Cloud API) | para WhatsApp |
@@ -181,11 +181,13 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 > `FIRECRAWL_API_KEY` (tier gratis de 1.000 créditos/mes) para subir el límite
 > keyless por IP. El detalle de fuentes está en `app/lib/web-search.ts`.
 
-> **Control de acceso**: sin `ARIA_ACCESS_TOKEN` cualquiera con la URL puede
-> gastar la cuota de Groq y leer/escribir conversaciones y memorias. Para
-> activarlo, define el secret del Worker (`wrangler secret put ARIA_ACCESS_TOKEN`
-> o el secret homónimo de GitHub) y la app pedirá la clave en el navegador (se
-> guarda en `localStorage`, se envía en cada petición).
+> **Control de acceso (obligatorio en producción)**: define el secret
+> `ARIA_ACCESS_TOKEN` (secret de GitHub para el pipeline, o
+> `wrangler secret put ARIA_ACCESS_TOKEN`). La app pedirá la clave en el
+> navegador (se guarda en `localStorage` y se envía en cada petición). Sin el
+> secret, **en producción la app falla cerrada** (deniega todas las rutas
+> `/api/*`) y el workflow de deploy aborta; solo queda abierta en desarrollo y
+> en los tests, para poder trabajar sin configurar nada.
 
 > **Dictado por voz**: el audio se graba en el navegador y se manda a
 > `/api/transcribe`, que lo pasa a **Groq Whisper** (usa la misma `GROQ_API_KEY`;
@@ -325,8 +327,8 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 
 1. **Neon**: crea el proyecto, copia las dos conexiones (pooled `DATABASE_URL` + directa `DATABASE_URL_UNPOOLED`).
 2. **Cloudflare**: el Worker se llama `ai-assistant`; expone el binding `AI` (Workers AI) para los embeddings.
-3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY`. Opcional: `FIRECRAWL_API_KEY` y `ARIA_ACCESS_TOKEN`.
-4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Opcionales: `FIRECRAWL_API_KEY`, `ARIA_ACCESS_TOKEN`.
+3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY` y `ARIA_ACCESS_TOKEN` (obligatorio). Opcional: `FIRECRAWL_API_KEY`.
+4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `ARIA_ACCESS_TOKEN` (**obligatorio**: sin él el deploy aborta). Opcionales: `FIRECRAWL_API_KEY`.
 
 El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
 

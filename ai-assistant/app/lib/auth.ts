@@ -10,21 +10,27 @@
  * `/api/auth`) exigen `Authorization: Bearer <token>`. El cliente lo guarda en
  * `localStorage` y lo envia en cada peticion.
  *
- * Si el secret NO esta definido, la app sigue abierta. Es a proposito:
- *  - permite `next dev` y los scripts locales sin configurar nada;
- *  - evita romper un despliegue existente al actualizar el codigo.
+ * Sin secret configurado:
+ *  - en PRODUCCION la app falla cerrada (deniega todo), para que un descuido de
+ *    configuracion del deploy no deje la URL publica;
+ *  - en desarrollo y tests sigue abierta, para trabajar sin configurar nada.
  * La proteccion se activa en cuanto se define el secret.
  */
 
-/** Token configurado, o null si la app esta abierta. */
+/** Token configurado, o null si no hay ninguno. */
 export function getAccessToken(): string | null {
   const token = process.env.ARIA_ACCESS_TOKEN?.trim()
   return token ? token : null
 }
 
-/** True si hay un token configurado (y por tanto hay que autenticarse). */
+/** True en un build de produccion (Worker desplegado o preview de OpenNext). */
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production'
+}
+
+/** True si hay que autenticarse: con token configurado, o en produccion. */
 export function isAuthRequired(): boolean {
-  return getAccessToken() !== null
+  return getAccessToken() !== null || isProduction()
 }
 
 /**
@@ -53,10 +59,13 @@ function extractToken(req: Request): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-/** True si la peticion puede pasar. Sin token configurado, siempre. */
+/** True si la peticion puede pasar. Sin token configurado, solo en dev/tests. */
 export function isAuthorized(req: Request): boolean {
   const token = getAccessToken()
-  if (!token) return true
+  if (!token) {
+    // Fail-closed en produccion: sin secret, se deniega todo.
+    return !isProduction()
+  }
   const provided = extractToken(req)
   return provided !== null && safeEqual(provided, token)
 }

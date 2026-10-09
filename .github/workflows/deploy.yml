@@ -20,6 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: ARIA_ACCESS_TOKEN es obligatorio (fail-closed)
+        env:
+          ARIA_ACCESS_TOKEN: ${{ secrets.ARIA_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$ARIA_ACCESS_TOKEN" ]; then
+            echo "::error::Falta el secret ARIA_ACCESS_TOKEN. En produccion la app debe estar cerrada, asi que el deploy aborta. Agregalo en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -98,13 +107,10 @@ jobs:
           if [ -n "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
             echo "${{ secrets.FIRECRAWL_API_KEY }}" | npx wrangler secret put FIRECRAWL_API_KEY
           fi
-          # Control de acceso. Si ARIA_ACCESS_TOKEN esta definido (aqui o con
-          # `wrangler secret put`), toda la API exige `Authorization: Bearer`.
-          # Sin el, la app queda abierta: la URL es publica y cualquiera podria
-          # gastar la cuota de Groq y leer/escribir conversaciones.
-          if [ -n "${{ secrets.ARIA_ACCESS_TOKEN }}" ]; then
-            echo "${{ secrets.ARIA_ACCESS_TOKEN }}" | npx wrangler secret put ARIA_ACCESS_TOKEN
-          fi
+          # Control de acceso. En produccion es obligatorio: el paso de
+          # validacion del inicio aborta el deploy si falta, asi que aqui
+          # siempre viene definido. Toda la API exige `Authorization: Bearer`.
+          echo "${{ secrets.ARIA_ACCESS_TOKEN }}" | npx wrangler secret put ARIA_ACCESS_TOKEN
           # WhatsApp Cloud API (Meta). Sin estos secrets el webhook responde 200
           # sin hacer nada, y ARIA no lee ni responde mensajes de WhatsApp.
           if [ -n "${{ secrets.WHATSAPP_TOKEN }}" ]; then
