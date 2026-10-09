@@ -44,3 +44,6 @@ next-env.d.ts
 /app/generated/prisma/*.node
 /app/generated/prisma/libquery_engine-*.so.node
 /app/generated/prisma/query_engine-windows.dll.node
+
+# APKs: se publican en GitHub Releases (versiones generadas por el CI)
+/public/apk/*.apk
