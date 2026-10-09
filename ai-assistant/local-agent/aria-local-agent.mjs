@@ -19,22 +19,25 @@
  *
  * Variables de entorno (o un archivo `.env` junto a este script):
  *   ARIA_AGENT_PORT=8787              puerto local (por defecto 8787)
- *   ARIA_LOCAL_TOKEN=...              token que debe enviar el navegador en la
- *                                     cabecera `X-ARIA-Token`. Si se define aquí,
- *                                     define el mismo valor en la app web como
- *                                     NEXT_PUBLIC_ARIA_LOCAL_TOKEN.
+ *   ARIA_LOCAL_TOKEN=...              token que exige el agente. Si no lo defines,
+ *                                     el agente genera uno la primera vez y lo
+ *                                     guarda en `.aria-local-token` (se imprime en
+ *                                     consola). El usuario lo pega UNA vez en la
+ *                                     app web; queda en el `localStorage` del
+ *                                     navegador, nunca en el bundle.
  *   ARIA_ALLOWED_ORIGINS=...          orígenes extra permitidos (separados por coma).
  *   ARIA_ALLOW_ANY=1                  permite abrir CUALQUIER ejecutable. Sin esta
  *                                     variable, además de las apps del mapa, se
  *                                     permiten rutas existentes y URIs, pero no
  *                                     cualquier nombre de comando.
  *
- * Seguridad: el agente escucha SOLO en 127.0.0.1 (no en la red) y exige el token.
- * Aun así, define un ARIA_LOCAL_TOKEN distinto y no lo compartas.
+ * Seguridad: el agente escucha SOLO en 127.0.0.1 (no en la red), valida el
+ * `Origin` y exige siempre el token (fail-closed). No compartas el token.
  */
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -65,8 +68,36 @@ function loadEnvFile(file) {
 loadEnvFile(path.join(__dirname, '.env'))
 
 const PORT = Number(process.env.ARIA_AGENT_PORT || 8787)
-const TOKEN = process.env.ARIA_LOCAL_TOKEN?.trim() || ''
 const ALLOW_ANY = process.env.ARIA_ALLOW_ANY === '1'
+
+/**
+ * Token que exige el agente. Nunca se expone en el bundle de la web: el usuario
+ * lo pega UNA vez en el navegador y queda en `localStorage`.
+ *
+ * Orden de resolución:
+ *   1. `ARIA_LOCAL_TOKEN` (variable de entorno o `.env`), si está definida.
+ *   2. Un token generado la primera vez y guardado en `.aria-local-token` junto
+ *      a este script (se imprime en consola para poder pegarlo). Así el valor es
+ *      estable entre reinicios y no hace falta configurar nada a mano.
+ */
+const TOKEN_FILE = path.join(__dirname, '.aria-local-token')
+const TOKEN = (() => {
+  const fromEnv = process.env.ARIA_LOCAL_TOKEN?.trim()
+  if (fromEnv) return fromEnv
+  try {
+    if (existsSync(TOKEN_FILE)) {
+      const saved = readFileSync(TOKEN_FILE, 'utf-8').trim()
+      if (saved) return saved
+    }
+    const generated = randomBytes(32).toString('hex')
+    writeFileSync(TOKEN_FILE, generated + '\n', { mode: 0o600 })
+    return generated
+  } catch (err) {
+    console.error('No pude leer/escribir el token local:', err.message)
+    // Fail-closed: sin token, el agente rechaza todo (ver handler de /open).
+    return ''
+  }
+})()
 const EXTRA_ORIGINS = (process.env.ARIA_ALLOWED_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
@@ -253,7 +284,9 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/open') {
-    if (TOKEN && req.headers['x-aria-token'] !== TOKEN) {
+    // Fail-closed: si por lo que sea no hay token (p. ej. no se pudo escribir el
+    // archivo), se rechaza todo en vez de quedar abierto.
+    if (!TOKEN || req.headers['x-aria-token'] !== TOKEN) {
       send(res, 401, { ok: false, error: 'Token incorrecto o ausente.' }, origin)
       return
     }
@@ -308,10 +341,10 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('')
   console.log(`  ARIA Local Agent escuchando en http://127.0.0.1:${PORT}`)
   console.log(`  Plataforma: ${process.platform}${ALLOW_ANY ? ' (modo ARIA_ALLOW_ANY=1)' : ''}`)
-  if (!TOKEN) {
-    console.log('  AVISO: ARIA_LOCAL_TOKEN no está definido; cualquiera que alcance el puerto')
-    console.log('         puede abrir apps. Define un token y pon el mismo en la app web.')
-  }
+  console.log('')
+  console.log(`  Token: ${TOKEN || '(no disponible)'}`)
+  console.log('  Pegalo UNA vez en la app cuando pida el token del agente local')
+  console.log('  (queda guardado en el navegador, no viaja en el bundle de la web).')
   console.log('  Deja esta ventana abierta mientras uses ARIA.')
   console.log('')
 })

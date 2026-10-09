@@ -163,8 +163,8 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
 | `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. Sin ella, la URL es pública | recomendada |
-| `NEXT_PUBLIC_ARIA_LOCAL_AGENT` | URL del agente local que abre apps (por defecto `http://127.0.0.1:8787`) | no |
-| `NEXT_PUBLIC_ARIA_LOCAL_TOKEN` | Token que el navegador envía al agente local. Debe coincidir con `ARIA_LOCAL_TOKEN` del agente | no |
+| `NEXT_PUBLIC_ARIA_LOCAL_AGENT` | URL del agente local que abre apps (por defecto `http://127.0.0.1:8787`). No es un secreto: puede ir en el bundle | no |
+| `ARIA_LOCAL_TOKEN` | Token del **agente local** (no de la web). Si no se define, el agente lo genera y lo imprime. El navegador lo pide una vez y lo guarda en `localStorage`; nunca va en el bundle | agente |
 | `WHATSAPP_TOKEN` | Token permanente de la app de Meta (WhatsApp Cloud API) | para WhatsApp |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business | para WhatsApp |
 | `WHATSAPP_VERIFY_TOKEN` | Cadena inventada por ti para verificar el webhook | para WhatsApp |
@@ -309,14 +309,15 @@ cp local-agent/.env.example local-agent/.env   # define ARIA_LOCAL_TOKEN
 # 2. Arranca el agente (deja la ventana abierta)
 npm run agent
 
-# 3. En .env.local (y secrets de GitHub para producción) define el mismo token:
-#    NEXT_PUBLIC_ARIA_LOCAL_TOKEN=el-mismo-token
-#    NEXT_PUBLIC_ARIA_LOCAL_AGENT=http://127.0.0.1:8787   # opcional
+# 3. (Opcional) define la URL del agente en .env.local / secrets de GitHub:
+#    NEXT_PUBLIC_ARIA_LOCAL_AGENT=http://127.0.0.1:8787
+#    El TOKEN no va aquí: el navegador te lo pide la primera vez que abres una
+#    app y lo guarda en su localStorage.
 ```
 
-El header muestra un indicador verde cuando el agente está conectado. Pide en el chat: *"abre Spotify"*, *"abre VS Code"*, *"abre la carpeta Descargas"*, *"abre la calculadora"*. El agente escucha **solo en `127.0.0.1`** (no en la red) y exige el token; por defecto solo abre apps de su mapa, rutas existentes y URIs. Con `ARIA_ALLOW_ANY=1` permite cualquier ejecutable.
+El header muestra un indicador verde cuando el agente está conectado. Pide en el chat: *"abre Spotify"*, *"abre VS Code"*, *"abre la carpeta Descargas"*, *"abre la calculadora"*. El agente escucha **solo en `127.0.0.1`** (no en la red), valida el `Origin` y **exige siempre el token** (si no defines `ARIA_LOCAL_TOKEN` lo genera al arrancar y lo imprime). Por defecto solo abre apps de su mapa, rutas existentes y URIs. Con `ARIA_ALLOW_ANY=1` permite cualquier ejecutable.
 
-> Si el agente exige token y la app no lo tiene configurado, al intentar abrir una app el navegador te lo pedirá y lo guardará en `localStorage` (así funciona también la versión desplegada, sin recompilar).
+> El token del agente **nunca** se compila dentro de la web (nada de `NEXT_PUBLIC_*`): si lo pide, el navegador te muestra un diálogo y lo guarda en `localStorage`. Así la versión desplegada también funciona, sin recompilar y sin exponer el secreto a quien abra la app.
 
 ## Despliegue (Cloudflare Workers)
 

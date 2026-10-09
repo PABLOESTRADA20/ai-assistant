@@ -47,3 +47,6 @@ next-env.d.ts
 
 # APKs: se publican en GitHub Releases (versiones generadas por el CI)
 /public/apk/*.apk
+
+# agente local: token generado y archivo de entorno (secretos, no van al repo)
+/local-agent/.aria-local-token

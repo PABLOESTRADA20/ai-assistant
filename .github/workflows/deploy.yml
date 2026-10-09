@@ -49,11 +49,11 @@ jobs:
       - name: Build (OpenNext for Cloudflare)
         env:
           NODE_ENV: production
-          # Variables públicas que se inlinean en el bundle del cliente. Si están
-          # vacías, el código usa los valores por defecto (agente local en
-          # http://127.0.0.1:8787, sin token).
+          # Única variable pública que se inlinea en el bundle del cliente. Es
+          # solo una URL (no un secreto): por defecto el código usa
+          # http://127.0.0.1:8787. El token del agente NUNCA se hornea en el
+          # bundle; el navegador lo pide una vez y lo guarda en localStorage.
           NEXT_PUBLIC_ARIA_LOCAL_AGENT: ${{ secrets.NEXT_PUBLIC_ARIA_LOCAL_AGENT }}
-          NEXT_PUBLIC_ARIA_LOCAL_TOKEN: ${{ secrets.NEXT_PUBLIC_ARIA_LOCAL_TOKEN }}
         run: npx opennextjs-cloudflare build
 
       - name: Patch handler.mjs for native WASM import

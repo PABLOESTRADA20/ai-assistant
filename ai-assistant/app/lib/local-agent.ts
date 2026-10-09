@@ -8,9 +8,12 @@
  * `127.0.0.1` un "contexto seguro", así que el fetch desde HTTPS NO se bloquea
  * como contenido mixto.
  *
- * El token (`NEXT_PUBLIC_ARIA_LOCAL_TOKEN`) debe coincidir con el
- * `ARIA_LOCAL_TOKEN` del agente. Va en una cabecera propia para que dispare un
- * preflight CORS y el agente pueda validarlo antes de ejecutar nada.
+ * El token NUNCA se hornea en el bundle (nada de `NEXT_PUBLIC_*`): si estuviera
+ * en el JS publico, cualquiera podria leerlo y abrir apps en tu PC. En su lugar
+ * el usuario lo pega una vez y se guarda en `localStorage` (ver
+ * `saveLocalToken`). Debe coincidir con el `ARIA_LOCAL_TOKEN` del agente; va en
+ * una cabecera propia para que dispare un preflight CORS y el agente pueda
+ * validarlo antes de ejecutar nada.
  */
 
 export interface LocalAgentResult {
@@ -26,8 +29,9 @@ function agentBase(): string {
 }
 
 /**
- * El token sale de `localStorage` (preferido, se puede fijar sin recompilar) o,
- * si no hay, de `NEXT_PUBLIC_ARIA_LOCAL_TOKEN` (inlineado en el build).
+ * El token sale SOLO de `localStorage`, donde lo deja el usuario una vez (ver
+ * `saveLocalToken`). No se lee de ninguna variable `NEXT_PUBLIC_*`: eso lo
+ * inlineaba en el bundle público y lo exponía a cualquiera que abriera la app.
  */
 function agentToken(): string {
   try {
@@ -36,7 +40,7 @@ function agentToken(): string {
   } catch {
     /* localStorage no disponible */
   }
-  return process.env.NEXT_PUBLIC_ARIA_LOCAL_TOKEN?.trim() || ''
+  return ''
 }
 
 /** Guarda el token en el navegador para próximas llamadas. */
