@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { requireAuth } from '@/app/lib/auth'
+import { hydrateMessages } from '@/app/lib/persist-messages'
 
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 
@@ -13,7 +14,14 @@ export async function GET(req: NextRequest) {
       orderBy: { updatedAt: 'desc' },
       include: { messages: { orderBy: { createdAt: 'asc' } } },
     })
-    return NextResponse.json(conversations)
+    return NextResponse.json(
+      await Promise.all(
+        conversations.map(async (conversation) => ({
+          ...conversation,
+          messages: await hydrateMessages(conversation.messages),
+        })),
+      ),
+    )
   } catch {
     return NextResponse.json({ error: 'Error al obtener conversaciones' }, { status: 500 })
   }

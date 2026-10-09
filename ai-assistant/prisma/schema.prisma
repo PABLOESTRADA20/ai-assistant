@@ -31,6 +31,10 @@ model Message {
   content        String
   model          String?
   tools          Json?
+  /// Fuentes del cerebro que ARIA usó para la respuesta (chips, FASE 3).
+  sources        Json?
+  /// Contexto estimado del turno: presupuesto/tokens/compactación (FASE 3).
+  context        Json?
   createdAt      DateTime     @default(now())
 }
 
