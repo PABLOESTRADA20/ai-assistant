@@ -6,9 +6,10 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Copy, Check, User, Sparkles, Volume2, VolumeX } from 'lucide-react'
+import { Copy, Check, User, Sparkles, Volume2, VolumeX, RotateCcw } from 'lucide-react'
 import { Message } from '@/app/types'
 import { useTTS } from '@/app/hooks/useTTS'
+import { isErrorContent } from '@/app/lib/error-message'
 import ToolCard from './ToolCard'
 import SourceChips from './SourceChips'
 import clsx from 'clsx'
@@ -16,6 +17,8 @@ import clsx from 'clsx'
 interface Props {
   message: Message
   isStreaming?: boolean
+  /** Reintenta el turno fallido al que pertenece este mensaje de error. */
+  onRetry?: () => void
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -101,9 +104,11 @@ function SpeakButton({ text }: { text: string }) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-export default function MessageBubble({ message, isStreaming }: Props) {
+export default function MessageBubble({ message, isStreaming, onRetry }: Props) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
+  // Un turno fallido deja un mensaje de error de ARIA: ofrecemos reintentarlo.
+  const showRetry = Boolean(onRetry) && !isUser && !isStreaming && isErrorContent(message.content)
 
   const handleCopyMessage = async () => {
     await navigator.clipboard.writeText(message.content)
@@ -223,6 +228,17 @@ export default function MessageBubble({ message, isStreaming }: Props) {
         {/* Action buttons for assistant messages */}
         {!isUser && !isStreaming && (
           <div className="flex items-center gap-1 ml-1">
+            {showRetry && (
+              <button
+                onClick={onRetry}
+                title="Reintentar: elimina el error y vuelve a pedir la respuesta"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200 hover:opacity-80"
+                style={{ color: 'var(--accent)', background: 'var(--accent-muted)' }}
+              >
+                <RotateCcw size={11} />
+                Reintentar
+              </button>
+            )}
             <button
               onClick={handleCopyMessage}
               className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all duration-200"

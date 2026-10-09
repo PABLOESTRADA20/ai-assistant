@@ -17,6 +17,8 @@ interface Props {
   streamingContext: ContextInfo | null
   currentModel: string
   onSuggestion: (text: string) => void
+  /** Reintentar un turno fallido: recibe el id del mensaje de error. */
+  onRetry: (messageId: string) => void
 }
 
 export default function ChatContainer({
@@ -28,6 +30,7 @@ export default function ChatContainer({
   streamingContext,
   currentModel,
   onSuggestion,
+  onRetry,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -59,7 +62,7 @@ export default function ChatContainer({
     <div className="flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-3xl mx-auto space-y-6">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble key={msg.id} message={msg} onRetry={() => onRetry(msg.id)} />
         ))}
 
         {streamingContext && (

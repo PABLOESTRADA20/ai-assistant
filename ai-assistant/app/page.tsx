@@ -17,6 +17,7 @@ import { Message, Conversation, ToolInvocation, SourceRef, ContextInfo, AVAILABL
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
 import { streamChat, UnauthorizedError } from './lib/chat-client'
 import { loadDraft, saveDraft } from './lib/chat-draft'
+import { ERROR_MESSAGE_PREFIX } from './lib/error-message'
 import {
   getConversations,
   createConversation,
@@ -464,7 +465,7 @@ export default function Home() {
       const errorMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
-        content: `⚠️ **Error**: ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu GROQ_API_KEY en el archivo .env.local'}`,
+        content: `${ERROR_MESSAGE_PREFIX} ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu GROQ_API_KEY en el archivo .env.local'}`,
         createdAt: new Date(),
       }
       // El turno del usuario ya estaba en el estado local pero todavía no en el
@@ -498,13 +499,17 @@ export default function Home() {
     abortRef.current?.abort()
   }, [])
 
-  const handleRegenerate = useCallback(async () => {
+  const handleRegenerate = useCallback(async (messageId?: string) => {
     if (!activeConversation || isLoading) return
     const msgs = activeConversation.messages
     if (msgs.length < 2) return
     if (autoSpeak) prime()
 
-    const trimmed = msgs.slice(0, -1)
+    // Sin id: regenerar la última respuesta. Con id: reintentar un turno
+    // fallido, descartando desde su mensaje de error en adelante.
+    const idx = messageId ? msgs.findIndex((m) => m.id === messageId) : msgs.length - 1
+    if (idx < 1) return
+    const trimmed = msgs.slice(0, idx)
     const convId = activeConversation.id
 
     setConversations((prev) =>
@@ -515,7 +520,7 @@ export default function Home() {
     )
 
     const lastUser = trimmed[trimmed.length - 1]
-    if (!lastUser) return
+    if (!lastUser || lastUser.role !== 'user') return
 
     setIsLoading(true)
     setStreamingContent('')
@@ -587,7 +592,7 @@ export default function Home() {
         const errorMessage: Message = {
           id: uuidv4(),
           role: 'assistant',
-          content: `⚠️ **Error**: ${err.message}`,
+          content: `${ERROR_MESSAGE_PREFIX} ${err.message}`,
           createdAt: new Date(),
         }
         const failedMessages = [...trimmed, errorMessage]
@@ -798,7 +803,7 @@ export default function Home() {
             label: 'Regenerar',
             title: 'Volver a generar la última respuesta',
             icon: <RefreshCw size={14} />,
-            onClick: handleRegenerate,
+            onClick: () => void handleRegenerate(),
             active: false,
             disabled: isLoading,
           },
@@ -1027,6 +1032,7 @@ export default function Home() {
           streamingContext={streamContext}
           currentModel={model}
           onSuggestion={handleSuggestion}
+          onRetry={handleRegenerate}
         />
 
         <div
