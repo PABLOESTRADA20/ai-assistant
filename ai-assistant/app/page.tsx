@@ -86,6 +86,8 @@ export default function Home() {
   const [rescueVisible, setRescueVisible] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
+  // Título original de la pestaña (lo captura el primer streaming para restaurarlo).
+  const defaultTitleRef = useRef<string | null>(null)
   // Saldo de cuota del día (FASE 3.3): neuronas Workers AI + estado Groq.
   const { quota, refresh: refreshQuota } = useQuota()
   // Voz de salida (TTS). `prime` desbloquea la síntesis en iOS durante un gesto.
@@ -623,6 +625,17 @@ export default function Home() {
     setInput(text)
     saveDraft(activeId, text)
   }
+
+  // La pestaña refleja el chat: «ARIA escribiendo…» mientras responde y vuelve
+  // al título normal al terminar o cancelar (sin pisar el del layout).
+  useEffect(() => {
+    if (!isLoading) return
+    defaultTitleRef.current = defaultTitleRef.current ?? document.title
+    document.title = 'ARIA escribiendo…'
+    return () => {
+      document.title = defaultTitleRef.current ?? 'ARIA - AI Assistant'
+    }
+  }, [isLoading])
 
   const handleInputChange = useCallback(
     (value: string) => {
