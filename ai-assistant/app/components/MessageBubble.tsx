@@ -147,6 +147,15 @@ export default function MessageBubble({ message, isStreaming }: Props) {
               {message.model}
             </span>
           )}
+          {!isUser && message.context && message.context.summarizedCount > 0 && (
+            <span
+              className="ml-1 px-1.5 py-0.5 rounded text-xs"
+              style={{ background: 'var(--accent-muted)', color: 'var(--text-muted)', fontSize: '0.65rem' }}
+              title={`${message.context.summarizedCount} mensajes previos plegados en el resumen`}
+            >
+              compactado ({message.context.summarizedCount})
+            </span>
+          )}
         </span>
 
         {!isUser && message.tools && message.tools.length > 0 && (

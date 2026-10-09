@@ -13,7 +13,7 @@ import GithubRepos from './components/GithubRepos'
 import NotesPanel from './components/NotesPanel'
 import { useTTS } from './hooks/useTTS'
 
-import { Message, Conversation, ToolInvocation, SourceRef, AVAILABLE_MODELS } from './types'
+import { Message, Conversation, ToolInvocation, SourceRef, ContextInfo, AVAILABLE_MODELS } from './types'
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
 import { streamChat, UnauthorizedError } from './lib/chat-client'
 import {
@@ -56,6 +56,7 @@ export default function Home() {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingTools, setStreamingTools] = useState<ToolInvocation[]>([])
   const [streamingSources, setStreamingSources] = useState<SourceRef[]>([])
+  const [streamContext, setStreamContext] = useState<ContextInfo | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id)
@@ -341,6 +342,7 @@ export default function Home() {
     setStreamingContent('')
     setStreamingTools([])
     setStreamingSources([])
+    setStreamContext(null)
 
     const apiMessages = updatedMessages.map((m) => ({ role: m.role, content: m.content }))
 
@@ -358,6 +360,7 @@ export default function Home() {
           void runLocalTool(tool, all)
         },
         onSources: (sources) => setStreamingSources(sources),
+        onContext: (ctx) => setStreamContext(ctx),
         onFallback: (from, to, reason) => {
           const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
           const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
@@ -380,6 +383,7 @@ export default function Home() {
         model: result.model,
         tools: result.tools.length > 0 ? result.tools : undefined,
         sources: result.sources.length > 0 ? result.sources : undefined,
+        ...(result.context ? { context: result.context } : {}),
       }
 
       const finalMessages = [...updatedMessages, assistantMessage]
@@ -415,6 +419,7 @@ export default function Home() {
             model,
             tools: streamingTools.length > 0 ? streamingTools : undefined,
             sources: streamingSources.length > 0 ? streamingSources : undefined,
+            ...(streamContext ? { context: streamContext } : {}),
           }
           setConversations((prev) =>
             prev.map((c) => {
@@ -458,9 +463,10 @@ export default function Home() {
       setStreamingContent('')
       setStreamingTools([])
       setStreamingSources([])
+      setStreamContext(null)
       abortRef.current = null
     }
-  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, streamingSources, runLocalTool, autoSpeak, prime, speak])
+  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, streamingSources, streamContext, runLocalTool, autoSpeak, prime, speak])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -489,6 +495,7 @@ export default function Home() {
     setStreamingContent('')
     setStreamingTools([])
     setStreamingSources([])
+    setStreamContext(null)
 
     const apiMessages = trimmed.map((m) => ({ role: m.role, content: m.content }))
 
@@ -505,6 +512,7 @@ export default function Home() {
           void runLocalTool(tool, all)
         },
         onSources: (sources) => setStreamingSources(sources),
+        onContext: (ctx) => setStreamContext(ctx),
         onFallback: (from, to, reason) => {
           const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
           const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
@@ -523,6 +531,7 @@ export default function Home() {
         id: uuidv4(), role: 'assistant', content: result.content, createdAt: new Date(), model: result.model,
         tools: result.tools.length > 0 ? result.tools : undefined,
         sources: result.sources.length > 0 ? result.sources : undefined,
+        ...(result.context ? { context: result.context } : {}),
       }
 
       const finalMessages = [...trimmed, assistantMessage]
@@ -573,6 +582,7 @@ export default function Home() {
       setStreamingContent('')
       setStreamingTools([])
       setStreamingSources([])
+      setStreamContext(null)
     }
   }, [activeConversation, isLoading, runLocalTool, autoSpeak, prime, speak])
 
@@ -969,6 +979,7 @@ export default function Home() {
           streamingContent={streamingContent}
           streamingTools={streamingTools}
           streamingSources={streamingSources}
+          streamingContext={streamContext}
           currentModel={model}
           onSuggestion={handleSuggestion}
         />

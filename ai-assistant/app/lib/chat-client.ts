@@ -12,7 +12,7 @@
  * soporta herramientas.
  */
 import { apiFetch } from '@/app/lib/auth-client'
-import type { SourceRef, ToolInvocation } from '@/app/types'
+import type { ContextInfo, SourceRef, ToolInvocation } from '@/app/types'
 
 export const MODEL_FALLBACK_ORDER = [
   'openai/gpt-oss-120b',
@@ -38,6 +38,8 @@ export interface StreamChatOptions {
   onTool: (tool: ToolInvocation, all: ToolInvocation[]) => void
   /** Se llama cuando llegan las fuentes del cerebro usadas en este turno. */
   onSources?: (sources: SourceRef[]) => void
+  /** Se llama cuando llega el indicador de contexto del turno (presupuesto/compactación). */
+  onContext?: (context: ContextInfo) => void
   /** Se llama justo antes de reintentar con otro modelo. */
   onFallback?: (from: string, to: string, reason: string) => void
   /**
@@ -52,6 +54,8 @@ export interface StreamChatResult {
   tools: ToolInvocation[]
   /** Fuentes del cerebro (memoria/nota/vault/mensaje) usadas en la respuesta. */
   sources: SourceRef[]
+  /** Indicador de contexto del turno, si el servidor lo emitió. */
+  context?: ContextInfo
   /** Modelo que finalmente respondió (puede diferir del solicitado). */
   model: string
   /** Modelo original, si hubo auto-cambio. */
@@ -123,6 +127,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
     let servedModel = candidate
     const toolEvents: ToolInvocation[] = []
     const sourceEvents: SourceRef[] = []
+    let contextEvent: ContextInfo | undefined
 
     if (reader) {
       let buffer = ''
@@ -182,6 +187,20 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
               }
               continue
             }
+            if (parsed.type === 'context') {
+              const c = parsed.context
+              if (c && typeof c === 'object') {
+                const ctx: ContextInfo = {
+                  budget: typeof c.budget === 'number' ? c.budget : 5000,
+                  promptTokens: typeof c.promptTokens === 'number' ? c.promptTokens : 0,
+                  summarizedCount: typeof c.summarizedCount === 'number' ? c.summarizedCount : 0,
+                  hasSummary: Boolean(c.hasSummary),
+                }
+                contextEvent = ctx
+                opts.onContext?.(ctx)
+              }
+              continue
+            }
             if (parsed.content) {
               accumulated += parsed.content
               opts.onContent(accumulated)
@@ -197,6 +216,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
       content: accumulated,
       tools: toolEvents,
       sources: sourceEvents,
+      context: contextEvent,
       model: servedModel,
       switchedFrom: servedModel !== opts.model ? opts.model : undefined,
     }

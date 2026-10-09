@@ -10,6 +10,18 @@ export interface SourceRef {
   source?: string
 }
 
+/** Datos de contexto del turno que el servidor estima (siempre local, sin modelos). */
+export interface ContextInfo {
+  /** Presupuesto de entrada del modelo, en tokens. */
+  budget: number
+  /** Tokens estimados del prompt enviado (~3.5 caracteres/token). */
+  promptTokens: number
+  /** Nº de mensajes plegados en el resumen (compactación incremental). */
+  summarizedCount: number
+  /** Si el turno venía con un resumen persistido de turnos previos. */
+  hasSummary: boolean
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -19,6 +31,8 @@ export interface Message {
   tools?: ToolInvocation[]
   /** Recuerdos/notas del cerebro que ARIA inyectó en el contexto de la respuesta. */
   sources?: SourceRef[]
+  /** Indicadores de contexto de ese turno (presupuesto, compactación). */
+  context?: ContextInfo
 }
 
 export interface ToolInvocation {

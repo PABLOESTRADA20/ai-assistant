@@ -5,7 +5,8 @@ import { useRef, useEffect } from 'react'
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
 import WelcomeScreen from './WelcomeScreen'
-import { Message, ToolInvocation, SourceRef } from '@/app/types'
+import { Message, ToolInvocation, SourceRef, ContextInfo } from '@/app/types'
+import { contextUsagePercent, formatContextUsage } from '@/app/lib/context-info'
 
 interface Props {
   messages: Message[]
@@ -13,6 +14,7 @@ interface Props {
   streamingContent: string
   streamingTools: ToolInvocation[]
   streamingSources: SourceRef[]
+  streamingContext: ContextInfo | null
   currentModel: string
   onSuggestion: (text: string) => void
 }
@@ -23,6 +25,7 @@ export default function ChatContainer({
   streamingContent,
   streamingTools,
   streamingSources,
+  streamingContext,
   currentModel,
   onSuggestion,
 }: Props) {
@@ -58,6 +61,32 @@ export default function ChatContainer({
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
+
+        {streamingContext && (
+          <div className="flex items-center gap-2 px-2" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-[10px] uppercase tracking-[0.12em]">{formatContextUsage(streamingContext)}</span>
+            <div
+              className="h-1 flex-1 max-w-[140px] rounded-full overflow-hidden"
+              style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.round(contextUsagePercent(streamingContext) * 100)}%`,
+                  background: 'linear-gradient(90deg, #ff2e4d, #ff7a8c)',
+                }}
+              />
+            </div>
+            {streamingContext.summarizedCount > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px]"
+                style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
+              >
+                compactado ({streamingContext.summarizedCount})
+              </span>
+            )}
+          </div>
+        )}
 
         {streamingMessage && (
           <MessageBubble message={streamingMessage} isStreaming />

@@ -24,6 +24,7 @@ import { getRepos } from '@/app/lib/github'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
 import { toSourceRefs } from '@/app/lib/sources'
+import { DEFAULT_CONTEXT_BUDGET, estimateMessagesTokens } from '@/app/lib/tokens'
 import {
   MODEL_CONFIG,
   CHEAP_MODEL,
@@ -251,6 +252,11 @@ export async function POST(req: NextRequest) {
 
     const config = MODEL_CONFIG[model] || { max_tokens: 8192, temperature: 0.6 }
 
+    // Indicador de contexto del turno (FASE 3.2): estimación local del prompt
+    // enviado y presupuesto del modelo. Solo lectura: no gasta tokens ni red.
+    const promptTokens = estimateMessagesTokens(allMessages)
+    const contextBudget = config.contextBudget ?? DEFAULT_CONTEXT_BUDGET
+
     // ¿Tiene cuota el modelo de las tareas de fondo? Extracción de memoria y
     // resumen van contra `openai/gpt-oss-20b` aunque el chat esté en reserva;
     // con ese modelo sin cuota solo recibirían 429s. (La consolidación es solo
@@ -348,6 +354,17 @@ export async function POST(req: NextRequest) {
                 ),
               )
             }
+
+            // Indicador de contexto del turno: presupuesto, prompt estimado y
+            // compactación (solo lectura; la estimación es local).
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: 'context',
+                  context: { budget: contextBudget, promptTokens, summarizedCount, hasSummary: Boolean(summary) },
+                })}\n\n`,
+              ),
+            )
 
             // Chips de fuentes: qué recuerdos/notas del cerebro entraron al
             // contexto de esta respuesta. Fuera de `emit` para no sumar al
@@ -611,6 +628,16 @@ export async function POST(req: NextRequest) {
             ),
           )
         }
+
+        // Indicador de contexto del turno (simple mode): mismo formato SSE.
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: 'context',
+              context: { budget: contextBudget, promptTokens, summarizedCount, hasSummary: Boolean(summary) },
+            })}\n\n`,
+          ),
+        )
 
         // Chips de fuentes (simple mode): mismas fuentes, mismo formato SSE.
         if (brainHits.length > 0) {
