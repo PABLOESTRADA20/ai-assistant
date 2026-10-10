@@ -1,11 +1,9 @@
 // app/components/MessageBubble.tsx
 'use client'
 
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Copy, Check, User, Sparkles, Volume2, VolumeX, RotateCcw } from 'lucide-react'
 import { Message } from '@/app/types'
 import { useTTS } from '@/app/hooks/useTTS'
@@ -13,6 +11,10 @@ import { isErrorContent } from '@/app/lib/error-message'
 import ToolCard from './ToolCard'
 import SourceChips from './SourceChips'
 import clsx from 'clsx'
+
+// Highlighter perezoso: vive en su propio chunk y solo se descarga cuando
+// aparece un bloque de código (crédito: T2 de la fase de rendimiento).
+const CodeHighlighter = lazy(() => import('./CodeHighlighter'))
 
 interface Props {
   message: Message
@@ -57,20 +59,25 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         </span>
         <CopyButton text={code} />
       </div>
-      <SyntaxHighlighter
-        language={language || 'text'}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          padding: '1rem',
-          fontSize: '0.8125rem',
-          lineHeight: '1.6',
-          background: 'var(--surface-0)',
-        }}
-        codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
+      <Suspense
+        fallback={
+          <pre
+            className="overflow-x-auto"
+            style={{
+              margin: 0,
+              padding: '1rem',
+              fontSize: '0.8125rem',
+              lineHeight: '1.6',
+              background: 'var(--surface-0)',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            <code>{code}</code>
+          </pre>
+        }
       >
-        {code}
-      </SyntaxHighlighter>
+        <CodeHighlighter language={language || ''} code={code} />
+      </Suspense>
     </div>
   )
 }
