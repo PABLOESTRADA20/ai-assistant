@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { v4 as uuidv4 } from 'uuid'
 import { Menu, RefreshCw, Download, Volume2, VolumeX, Github, X, FileText, MoreVertical, Box } from 'lucide-react'
 
@@ -8,9 +9,7 @@ import Sidebar from './components/Sidebar'
 import ChatContainer from './components/ChatContainer'
 import ChatInput from './components/ChatInput'
 import ModelSelector from './components/ModelSelector'
-import MemoryInspector from './components/MemoryInspector'
-import GithubRepos from './components/GithubRepos'
-import NotesPanel from './components/NotesPanel'
+import PanelLoading from './components/PanelLoading'
 import { useTTS } from './hooks/useTTS'
 
 import { Message, Conversation, ToolInvocation, SourceRef, ContextInfo, AVAILABLE_MODELS } from './types'
@@ -37,6 +36,22 @@ import {
   getToken,
   UNAUTHORIZED_EVENT,
 } from './lib/auth-client'
+
+// Paneles laterales: viven en chunks aparte y se descargan recién al abrirlos
+// (T1 de la fase de rendimiento). `ssr: false` porque son overlays que solo
+// existen con el cliente activo; el fallback evita el hueco al abrir.
+const MemoryInspector = dynamic(() => import('./components/MemoryInspector'), {
+  ssr: false,
+  loading: () => <PanelLoading />,
+})
+const GithubRepos = dynamic(() => import('./components/GithubRepos'), {
+  ssr: false,
+  loading: () => <PanelLoading />,
+})
+const NotesPanel = dynamic(() => import('./components/NotesPanel'), {
+  ssr: false,
+  loading: () => <PanelLoading maxWidth="max-w-lg" />,
+})
 
 /** "Xh Ym" / "Ym" / "Xs" para el banner de cuenta regresiva de la cuota. */
 function formatRemaining(ms: number): string {
@@ -889,11 +904,11 @@ export default function Home() {
         onOpenMemory={() => setMemoryOpen(true)}
       />
 
-      <MemoryInspector open={memoryOpen} onClose={() => setMemoryOpen(false)} />
+      {memoryOpen && <MemoryInspector open={memoryOpen} onClose={() => setMemoryOpen(false)} />}
 
-      <GithubRepos open={githubOpen} onClose={() => setGithubOpen(false)} />
+      {githubOpen && <GithubRepos open={githubOpen} onClose={() => setGithubOpen(false)} />}
 
-      <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
+      {notesOpen && <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />}
 
       <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full">
         <header
