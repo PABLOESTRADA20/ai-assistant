@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { buildCar, type CarBuild } from './car/current-car'
+import { buildLp5000, type CarPart, type Lp5000Build } from './car/lp5000'
 import { disposeObject3D } from './car/utils'
 
 interface AriaSceneProps {
@@ -47,6 +47,12 @@ export default function AriaScene({
 
   const [ready, setReady] = useState(false)
   const readyRef = useRef(false)
+  // `?explode=1`: muestra un slider que desarma/arma el auto por partes.
+  // Se lee una sola vez del query string (client-only).
+  const [explodeMode] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('explode')
+  )
+  const [explodeValue, setExplodeValue] = useState(0)
   const frameIdRef = useRef(0)
   const frameKindRef = useRef<'raf' | 'timeout' | null>(null)
   const unmountedRef = useRef(false)
@@ -56,7 +62,8 @@ export default function AriaScene({
   const sceneRef = useRef<THREE.Scene | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const carGroupRef = useRef<THREE.Group | null>(null)
-  const carBuildRef = useRef<CarBuild | null>(null)
+  const carBuildRef = useRef<Lp5000Build | null>(null)
+  const carPartsRef = useRef<CarPart[]>([])
   const ring1Ref = useRef<THREE.LineSegments | null>(null)
   const ring2Ref = useRef<THREE.LineSegments | null>(null)
   const floorMeshRef = useRef<THREE.Mesh | null>(null)
@@ -100,6 +107,15 @@ export default function AriaScene({
     },
     [onReadyChange]
   )
+
+  /** Desarma/arma el auto moviendo cada parte desde su base según `v` (0..1). */
+  const applyExplode = useCallback((v: number) => {
+    const parts = carPartsRef.current
+    if (parts.length === 0) return
+    for (const p of parts) {
+      p.group.position.copy(p.base).addScaledVector(p.explode, v)
+    }
+  }, [])
 
   const clampRotX = useCallback((v: number) => Math.max(-0.15, Math.min(0.55, v)), [])
   const clampZoom = useCallback((v: number) => Math.max(0.55, Math.min(1.6, v)), [])
@@ -343,17 +359,20 @@ export default function AriaScene({
       key.position.set(4.5, 6.5, 4)
       scene.add(key)
 
-      const build = buildCar()
+      const build = buildLp5000()
       carBuildRef.current = build
       const car = build.group
       scene.add(car)
       carGroupRef.current = car
-      car.position.set(0.15, -0.05, 0)
+      // Suelo en Y=0: las llantas tocan el piso de la escena sin hundirse.
+      car.position.set(0.15, 0, 0)
       car.rotation.y = 0.65
       currentRotYRef.current = 0.65
       targetRotYRef.current = 0.65
       currentRotXRef.current = 0.12
       targetRotXRef.current = 0.12
+      carPartsRef.current = build.parts
+      wheelSpinnersRef.current = build.spinners
 
       // ambiente holografico
       const ring1 = new THREE.LineSegments(
@@ -396,6 +415,13 @@ export default function AriaScene({
           autoSpin: autoSpinRef.current,
         })
         ;(window as unknown as Record<string, unknown>).__aria3dStats = dump
+        if (explodeMode) {
+          ;(window as unknown as Record<string, unknown>).__aria3dExplode = (v: number) => {
+            const k = Math.max(0, Math.min(1, Number(v) || 0))
+            setExplodeValue(k)
+            applyExplode(k)
+          }
+        }
         console.debug('[AriaScene] stats init', dump())
       }
 
@@ -417,7 +443,7 @@ export default function AriaScene({
       setReadyFlag(false)
       onError?.(e)
     }
-  }, [enabled, width, height, autoSpin, reduceMotion, computeView, applyCam, makeEnvTexture, makeShadowTexture, setReadyFlag, startLoop, updateActive, onError])
+  }, [enabled, width, height, autoSpin, reduceMotion, computeView, applyCam, makeEnvTexture, makeShadowTexture, setReadyFlag, startLoop, updateActive, onError, applyExplode, explodeMode])
 
   const resize = useCallback(() => {
     if (!readyRef.current) return
@@ -463,6 +489,7 @@ export default function AriaScene({
       // materiales), anillos y piso, entorno, PMREM y renderer.
       carBuildRef.current?.dispose()
       carBuildRef.current = null
+      carPartsRef.current = []
       const aux = new THREE.Group()
       if (ring1Ref.current) aux.add(ring1Ref.current)
       if (ring2Ref.current) aux.add(ring2Ref.current)
@@ -484,13 +511,48 @@ export default function AriaScene({
   }, [resize])
 
   return (
-    <div
-      ref={containerRef}
-      className={`absolute inset-0 ${className}`}
-      style={{ pointerEvents: 'none', zIndex: 0, opacity }}
-      aria-hidden
-    >
-      <canvas ref={canvasRef} className="w-full h-full block touch-none" />
-    </div>
+    <>
+      <div
+        ref={containerRef}
+        className={`absolute inset-0 ${className}`}
+        style={{ pointerEvents: 'none', zIndex: 0, opacity }}
+        aria-hidden
+      >
+        <canvas ref={canvasRef} className="w-full h-full block touch-none" />
+      </div>
+      {explodeMode && (
+        <div
+          className="fixed bottom-4 right-4 z-[70] flex items-center gap-3 rounded-lg bg-black/75 px-4 py-2 text-xs text-neutral-200 select-none"
+          style={{ pointerEvents: 'auto' }}
+          aria-hidden
+        >
+          <span>Explode</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={explodeValue}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value)
+              setExplodeValue(v)
+              applyExplode(v)
+            }}
+            className="w-40 accent-red-500"
+          />
+          <span>{explodeValue.toFixed(2)}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setExplodeValue(0)
+              applyExplode(0)
+            }}
+            className="rounded bg-neutral-800 px-2 py-0.5 hover:bg-neutral-700"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+    </>
   )
 }
