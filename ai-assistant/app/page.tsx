@@ -30,6 +30,7 @@ import AriaMark from './components/AriaMark'
 import InstallButton from './components/InstallButton'
 import QuotaBadge from './components/QuotaBadge'
 import { useQuota } from './hooks/useQuota'
+import { usePausableInterval } from './hooks/usePausableInterval'
 import {
   apiFetch,
   fetchAuthRequired,
@@ -227,13 +228,9 @@ export default function Home() {
   }, [modelNotice])
 
   // Banner de cuota: cuenta regresiva persistente hasta que la cuota vuelve.
-  // Se re-renderiza cada 15 s para actualizar el "Xh Ym" y se autolimpia unos
-  // segundos después del restablecimiento.
-  useEffect(() => {
-    if (!quotaUntil) return
-    const id = setInterval(() => setQuotaTick((t) => t + 1), 15_000)
-    return () => clearInterval(id)
-  }, [quotaUntil])
+  // Se re-renderiza cada 15 s para actualizar el "Xh Ym" (pausado con la
+  // pestaña oculta, T3) y se autolimpia unos segundos tras el restablecimiento.
+  usePausableInterval(() => setQuotaTick((t) => t + 1), quotaUntil ? 15_000 : null)
   useEffect(() => {
     if (!quotaUntil) return
     const ms = Date.parse(quotaUntil) - Date.now()
@@ -242,20 +239,15 @@ export default function Home() {
   }, [quotaUntil])
 
   // Detectar si el agente local está corriendo (para abrir apps en el PC).
-  // Se revalida cada 30 s por si el usuario lo arranca o lo cierra.
-  useEffect(() => {
-    let cancelled = false
-    const check = async () => {
-      const ok = await checkLocalAgent()
-      if (!cancelled) setLocalAgent(ok)
-    }
-    check()
-    const id = setInterval(check, 30_000)
-    return () => {
-      cancelled = true
-      clearInterval(id)
-    }
+  // Se revalida cada 30 s —pausado con la pestaña oculta (T3)— por si el
+  // usuario lo arranca o lo cierra.
+  const checkLocalAgentNow = useCallback(async () => {
+    setLocalAgent(await checkLocalAgent())
   }, [])
+  useEffect(() => {
+    void checkLocalAgentNow()
+  }, [checkLocalAgentNow])
+  usePausableInterval(() => void checkLocalAgentNow(), 30_000)
 
   // `open_app` lo ejecuta el navegador contra el agente local, no el servidor.
   const runLocalTool = useCallback(async (tool: ToolInvocation, events: ToolInvocation[]) => {

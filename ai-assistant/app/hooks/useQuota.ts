@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/app/lib/auth-client'
+import { usePausableInterval } from '@/app/hooks/usePausableInterval'
 import type { QuotaInfo } from '@/app/types'
 
 /**
@@ -27,9 +28,11 @@ export function useQuota(refreshMs = 5 * 60_000) {
 
   useEffect(() => {
     void refresh()
-    const timer = setInterval(() => void refresh(), refreshMs)
-    return () => clearInterval(timer)
-  }, [refresh, refreshMs])
+  }, [refresh])
+
+  // Refresca cada `refreshMs`, pero se pausa con la pestaña oculta y hace un
+  // refresh inmediato al volver (T3).
+  usePausableInterval(() => void refresh(), refreshMs)
 
   return { quota, refresh }
 }

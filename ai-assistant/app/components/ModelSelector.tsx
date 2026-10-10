@@ -1,9 +1,10 @@
 // app/components/ModelSelector.tsx
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { ChevronDown, Cpu } from 'lucide-react'
 import { AVAILABLE_MODELS, AIModel } from '@/app/types'
+import { usePausableInterval } from '@/app/hooks/usePausableInterval'
 
 interface Props {
   value: string
@@ -17,39 +18,37 @@ export default function ModelSelector({ value, onChange }: Props) {
 
   const current = models.find((m) => m.id === value) || models[0]
 
-  // El servidor dice que modelos pueden responder (los gratis sin clave y los
+  // El servidor dice qué modelos pueden responder (los gratis sin clave y los
   // que ya tienen clave configurada). Si no responde, se usa la lista local.
   // La lista no se filtra: un modelo sin cuota queda visible pero apagado, y se
-  // refresca cada 2 min + al recuperar el foco para que reaparezca al volver
-  // su cuota diaria.
-  useEffect(() => {
-    let alive = true
-    const load = () =>
-      fetch('/api/models')
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (!alive || !data || !Array.isArray(data.models)) return
-          const available: AIModel[] = data.models.map((m: AIModel) => ({
-            id: m.id,
-            name: m.name,
-            description: m.description,
-            badge: m.badge,
-            available: m.available !== false,
-            quotaUntil: typeof m.quotaUntil === 'string' ? m.quotaUntil : undefined,
-          }))
-          if (available.length) setModels(available)
-        })
-        .catch(() => {})
-    load()
-    const id = setInterval(load, 120_000)
-    const onFocus = () => load()
-    window.addEventListener('focus', onFocus)
-    return () => {
-      alive = false
-      clearInterval(id)
-      window.removeEventListener('focus', onFocus)
-    }
+  // refresca cada 2 min —pausado con la pestaña oculta (T3)— + al reenfocar,
+  // para que reaparezca al volver su cuota diaria.
+  const load = useCallback(() => {
+    fetch('/api/models')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data || !Array.isArray(data.models)) return
+        const available: AIModel[] = data.models.map((m: AIModel) => ({
+          id: m.id,
+          name: m.name,
+          description: m.description,
+          badge: m.badge,
+          available: m.available !== false,
+          quotaUntil: typeof m.quotaUntil === 'string' ? m.quotaUntil : undefined,
+        }))
+        if (available.length) setModels(available)
+      })
+      .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    void load()
+    const onFocus = () => void load()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [load])
+
+  usePausableInterval(load, 120_000)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
