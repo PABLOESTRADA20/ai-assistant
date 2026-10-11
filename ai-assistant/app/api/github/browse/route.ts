@@ -3,17 +3,19 @@ import { requireAuth } from '@/app/lib/auth'
 import { listMyRepos } from '@/app/lib/github'
 
 /**
- * Lista los repositorios del usuario autenticado en GitHub para que pueda
- * elegir cuáles agregar sin escribir `owner/repo` a mano.
+ * Lista repositorios para agregar al panel.
  *
- * Requiere `GITHUB_TOKEN` (fine-grained, solo lectura). Sin token responde con
- * `tokenConfigured: false` y un mensaje explicando cómo configurarlo.
+ * - Con `GITHUB_TOKEN`: los repos del usuario autenticado (públicos + privados).
+ * - Sin token: si llega `?user=<usuario>`, los repos PÚBLICOS de ese usuario
+ *   (fallback sin token). Si no llega, responde pidiendo el usuario.
  */
 export async function GET(req: Request) {
   const denied = requireAuth(req)
   if (denied) return denied
 
-  const q = new URL(req.url).searchParams.get('q') ?? ''
-  const result = await listMyRepos(q)
+  const params = new URL(req.url).searchParams
+  const q = params.get('q') ?? ''
+  const user = params.get('user') ?? ''
+  const result = await listMyRepos(q, 100, user || undefined)
   return NextResponse.json(result)
 }

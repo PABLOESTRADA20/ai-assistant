@@ -386,36 +386,23 @@ export interface BrowseReposResult {
 }
 
 /**
- * Lista los repositorios del usuario autenticado.
- *
- * La API anónima de GitHub no sabe "cuáles son tus repos", así que esto exige
- * `GITHUB_TOKEN`. Con un token fine-grained de solo lectura aparecen tanto los
- * públicos como los privados a los que el token tenga acceso, y el usuario
- * puede elegir de una lista en vez de escribir `owner/repo` a mano.
+ * Normaliza y valida un nombre de usuario/u organización de GitHub.
+ * Devuelve `null` si no es válido (evita inyectar rutas raras en la API).
  */
-export async function listMyRepos(query = '', limit = 100): Promise<BrowseReposResult> {
-  if (!hasGithubToken()) {
-    return {
-      ok: false,
-      tokenConfigured: false,
-      repos: [],
-      error:
-        'Para listar tus repositorios hace falta GITHUB_TOKEN. ' +
-        'Configura un token fine-grained de solo lectura (Contents: Read, Issues: Read, Metadata: Read).',
-    }
-  }
+export function normalizeGithubUser(input: string): string | null {
+  const user = input.trim().replace(/^@/, '')
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(user)) return null
+  return user
+}
 
-  const perPage = 100
-  const res = await ghFetch(
-    `/user/repos?per_page=${perPage}&sort=pushed&direction=desc&affiliation=owner%2Ccollaborator%2Corganization_member`,
-  )
-  if (!res.ok) {
-    return { ok: false, tokenConfigured: true, repos: [], error: describeError(res.status, res.data) }
-  }
-
-  const items = (Array.isArray(res.data) ? res.data : []) as Record<string, unknown>[]
+/** Mapea y filtra los items crudos de la API a `GithubRepoSummary`. */
+function mapRepoSummaries(
+  items: Record<string, unknown>[],
+  query: string,
+  limit: number,
+): GithubRepoSummary[] {
   const q = query.trim().toLowerCase()
-  const repos = items
+  return items
     .map((r) => ({
       repo: typeof r.full_name === 'string' ? r.full_name : '',
       description: typeof r.description === 'string' ? r.description : null,
@@ -431,12 +418,84 @@ export async function listMyRepos(query = '', limit = 100): Promise<BrowseReposR
         : true,
     )
     .slice(0, limit)
+}
 
+const REPOS_PER_PAGE = 100
+
+/**
+ * Lista repositorios para el selector del panel.
+ *
+ * - Con `GITHUB_TOKEN`: usa `/user/repos`, así que aparecen los públicos Y los
+ *   privados a los que el token tenga acceso (sin necesidad de usuario).
+ * - Sin token pero con `username`: lista los repos PÚBLICOS de ese usuario
+ *   (`/users/{username}/repos`). Es el "fallback sin token" para verse a uno
+ *   mismo sin configurar nada (límite anónimo de 60 req/hora).
+ * - Sin token y sin usuario: devuelve un error que pide el nombre de usuario.
+ */
+export async function listMyRepos(
+  query = '',
+  limit = 100,
+  username?: string,
+): Promise<BrowseReposResult> {
+  // 1) Con token: todos los repos a los que el token tiene acceso.
+  if (hasGithubToken()) {
+    const res = await ghFetch(
+      `/user/repos?per_page=${REPOS_PER_PAGE}&sort=pushed&direction=desc&affiliation=owner%2Ccollaborator%2Corganization_member`,
+    )
+    if (!res.ok) {
+      return { ok: false, tokenConfigured: true, repos: [], error: describeError(res.status, res.data) }
+    }
+    const items = (Array.isArray(res.data) ? res.data : []) as Record<string, unknown>[]
+    return {
+      ok: true,
+      tokenConfigured: true,
+      repos: mapRepoSummaries(items, query, limit),
+      truncated: items.length >= REPOS_PER_PAGE,
+    }
+  }
+
+  // 2) Sin token, pero con usuario: repos públicos de ese usuario.
+  const user = username ? normalizeGithubUser(username) : null
+  if (username && !user) {
+    return {
+      ok: false,
+      tokenConfigured: false,
+      repos: [],
+      error: 'Nombre de usuario de GitHub inválido.',
+    }
+  }
+  if (user) {
+    const res = await ghFetch(
+      `/users/${encodeURIComponent(user)}/repos?per_page=${REPOS_PER_PAGE}&sort=pushed&direction=desc&type=owner`,
+    )
+    if (!res.ok) {
+      if (res.status === 404) {
+        return {
+          ok: false,
+          tokenConfigured: false,
+          repos: [],
+          error: `No encontré el usuario "${user}" en GitHub.`,
+        }
+      }
+      return { ok: false, tokenConfigured: false, repos: [], error: describeError(res.status, res.data) }
+    }
+    const items = (Array.isArray(res.data) ? res.data : []) as Record<string, unknown>[]
+    return {
+      ok: true,
+      tokenConfigured: false,
+      repos: mapRepoSummaries(items, query, limit),
+      truncated: items.length >= REPOS_PER_PAGE,
+    }
+  }
+
+  // 3) Sin token y sin usuario: pedimos el nombre de usuario.
   return {
-    ok: true,
-    tokenConfigured: true,
-    repos,
-    truncated: items.length >= perPage,
+    ok: false,
+    tokenConfigured: false,
+    repos: [],
+    error:
+      'Sin GITHUB_TOKEN solo puedo listar repos PÚBLICOS: escribí tu usuario de GitHub. ' +
+      'Con un token fine-grained de solo lectura ves también los privados (Contents/Issues/Metadata: Read).',
   }
 }
 

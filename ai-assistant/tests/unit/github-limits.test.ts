@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GITHUB_LIMITS,
   listFiles,
   listIssues,
+  listMyRepos,
+  normalizeGithubUser,
   readFile,
   repoOverview,
 } from '@/app/lib/github'
@@ -105,5 +107,87 @@ describe('topes de resultados de GitHub', () => {
       expect(issue.body.length).toBeLessThanOrEqual(GITHUB_LIMITS.issueBody)
       expect(issue).not.toHaveProperty('pull_request')
     }
+  })
+})
+
+describe('selector de repos: fallback sin token', () => {
+  const originalToken = process.env.GITHUB_TOKEN
+
+  beforeEach(() => {
+    delete process.env.GITHUB_TOKEN
+  })
+  afterEach(() => {
+    if (originalToken === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = originalToken
+  })
+
+  it('normalizeGithubUser valida el nombre de usuario', () => {
+    expect(normalizeGithubUser('PABLOESTRADA20')).toBe('PABLOESTRADA20')
+    expect(normalizeGithubUser('@octocat')).toBe('octocat')
+    expect(normalizeGithubUser('  octo-cat ')).toBe('octo-cat')
+    expect(normalizeGithubUser('bad user')).toBeNull()
+    expect(normalizeGithubUser('a/b')).toBeNull()
+    expect(normalizeGithubUser('')).toBeNull()
+  })
+
+  it('sin token y sin usuario pide el nombre de usuario (sin tocar la red)', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await listMyRepos()
+    expect(out.ok).toBe(false)
+    expect(out.tokenConfigured).toBe(false)
+    expect(out.repos).toEqual([])
+    expect(out.error).toMatch(/usuario de GitHub/i)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('sin token, con usuario, lista sus repos públicos', async () => {
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input)
+      expect(url).toContain('/users/octocat/repos')
+      expect(url).toContain('type=owner')
+      return json([
+        {
+          full_name: 'octocat/Hello-World',
+          description: 'demo',
+          private: false,
+          language: 'Ruby',
+          default_branch: 'master',
+          pushed_at: '2026-01-01T00:00:00Z',
+        },
+      ])
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await listMyRepos('', 100, 'octocat')
+    expect(out.ok).toBe(true)
+    expect(out.tokenConfigured).toBe(false)
+    expect(out.repos).toHaveLength(1)
+    expect(out.repos[0].repo).toBe('octocat/Hello-World')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('un usuario inexistente devuelve un error claro', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'Not Found' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
+    )
+    const out = await listMyRepos('', 100, 'nadie-xyz')
+    expect(out.ok).toBe(false)
+    expect(out.error).toMatch(/No encontré el usuario/i)
+  })
+
+  it('un usuario inválido no dispara peticiones', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await listMyRepos('', 100, 'a/b c')
+    expect(out.ok).toBe(false)
+    expect(out.error).toMatch(/inválido/i)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

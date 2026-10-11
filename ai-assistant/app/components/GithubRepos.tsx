@@ -62,6 +62,8 @@ export default function GithubRepos({ open, onClose }: Props) {
   const [browseLoading, setBrowseLoading] = useState(false)
   const [browseError, setBrowseError] = useState<string | null>(null)
   const [browseQuery, setBrowseQuery] = useState('')
+  const [browseUser, setBrowseUser] = useState('')
+  const [browseSearched, setBrowseSearched] = useState(false)
   const [addingRepo, setAddingRepo] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -126,11 +128,15 @@ export default function GithubRepos({ open, onClose }: Props) {
     }
   }
 
-  const loadBrowse = useCallback(async () => {
+  const loadBrowse = useCallback(async (userOverride?: string) => {
     setBrowseLoading(true)
     setBrowseError(null)
+    const u = (userOverride ?? '').trim()
     try {
-      const res = await apiFetch('/api/github/browse')
+      const url = u
+        ? `/api/github/browse?user=${encodeURIComponent(u)}`
+        : '/api/github/browse'
+      const res = await apiFetch(url)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'No se pudieron cargar tus repositorios')
       setBrowseRepos(Array.isArray(data.repos) ? data.repos : [])
@@ -140,6 +146,7 @@ export default function GithubRepos({ open, onClose }: Props) {
       setBrowseError(e instanceof Error ? e.message : 'Error al cargar repositorios')
     } finally {
       setBrowseLoading(false)
+      setBrowseSearched(true)
     }
   }, [])
 
@@ -147,7 +154,17 @@ export default function GithubRepos({ open, onClose }: Props) {
     setBrowseOpen(true)
     setBrowseQuery('')
     setError(null)
-    void loadBrowse()
+    setBrowseError(null)
+    setBrowseRepos([])
+    setBrowseSearched(false)
+    // Con token ya sabemos "tus repos"; sin token hay que pedir el usuario.
+    if (tokenConfigured) void loadBrowse()
+  }
+
+  const submitBrowseUser = () => {
+    const u = browseUser.trim()
+    if (!u || browseLoading) return
+    void loadBrowse(u)
   }
 
   const addFromBrowse = async (repo: string) => {
@@ -323,7 +340,11 @@ export default function GithubRepos({ open, onClose }: Props) {
                 Volver
               </button>
               <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                Tus repositorios
+                {tokenConfigured
+                  ? 'Tus repositorios'
+                  : browseUser.trim()
+                    ? `Repos públicos de @${browseUser.trim()}`
+                    : 'Repos públicos'}
               </span>
               {browseRepos.length > 0 && (
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -331,6 +352,48 @@ export default function GithubRepos({ open, onClose }: Props) {
                 </span>
               )}
             </div>
+
+            {!tokenConfigured && (
+              <div
+                className="px-4 py-2 flex flex-col gap-2 flex-shrink-0"
+                style={{ borderBottom: '1px solid var(--border)' }}
+              >
+                <div className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <AlertTriangle size={13} style={{ color: '#fbbf24', flexShrink: 0, marginTop: 1 }} />
+                  <span>
+                    Sin token se listan los repos <strong>públicos</strong>. Escribí tu usuario de GitHub:
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs flex-1"
+                    style={inputStyle}
+                  >
+                    <Github size={12} style={{ color: 'var(--text-muted)' }} />
+                    <input
+                      value={browseUser}
+                      onChange={(e) => setBrowseUser(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') submitBrowseUser()
+                      }}
+                      placeholder="usuario de GitHub (p. ej. PABLOESTRADA20)"
+                      className="bg-transparent outline-none flex-1 text-xs"
+                      style={{ color: 'var(--text-primary)' }}
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    onClick={submitBrowseUser}
+                    disabled={browseLoading || !browseUser.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 disabled:opacity-40"
+                    style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid rgba(255,46,77,0.2)' }}
+                  >
+                    {browseLoading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                    Ver
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="px-4 py-2 flex-shrink-0">
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs" style={inputStyle}>
@@ -341,7 +404,7 @@ export default function GithubRepos({ open, onClose }: Props) {
                   placeholder="Buscar por nombre o descripción…"
                   className="bg-transparent outline-none flex-1 text-xs"
                   style={{ color: 'var(--text-primary)' }}
-                  autoFocus
+                  autoFocus={tokenConfigured}
                 />
               </div>
             </div>
@@ -373,9 +436,13 @@ export default function GithubRepos({ open, onClose }: Props) {
                 </div>
               ) : filteredBrowse.length === 0 ? (
                 <div className="text-center py-10 text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {browseRepos.length === 0
-                    ? 'No encontré repositorios con este token.'
-                    : 'Ningún repositorio coincide con la búsqueda.'}
+                  {browseRepos.length > 0
+                    ? 'Ningún repositorio coincide con la búsqueda.'
+                    : !tokenConfigured
+                      ? browseSearched
+                        ? 'Ese usuario no tiene repos públicos (o no existe).'
+                        : 'Escribí tu usuario de GitHub y tocá «Ver» para listar tus repos públicos.'
+                      : 'No encontré repositorios con este token.'}
                 </div>
               ) : (
                 filteredBrowse.map((r) => (
