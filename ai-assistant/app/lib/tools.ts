@@ -413,6 +413,42 @@ export const TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
+      name: 'github_create_pull_request',
+      description:
+        'Create a SAFE proposed change in a GitHub repository: it creates a new aria/* branch, ' +
+        'writes up to 5 text files there, and opens a pull request for human review. It never ' +
+        'writes to the default branch, never merges, never deletes files, and cannot edit ' +
+        '.github/workflows. Use ONLY when the user explicitly asks to implement or modify code, ' +
+        'and only after reading the relevant files. Requires GITHUB_WRITE_ENABLED=true and a ' +
+        'fine-grained token with Contents: write and Pull requests: write.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          title: { type: 'string', description: 'Short pull request title' },
+          body: { type: 'string', description: 'Pull request explanation, tests and risks' },
+          branch: { type: 'string', description: 'Optional short branch description; aria/ is added automatically' },
+          changes: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 5,
+            items: {
+              type: 'object',
+              properties: {
+                path: { type: 'string', description: 'Repository-relative file path' },
+                content: { type: 'string', description: 'Complete new text content for the file' },
+              },
+              required: ['path', 'content'],
+            },
+          },
+        },
+        required: ['repo', 'title', 'changes'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'save_cloud_note',
       description:
         "Save or update a note in the user's cloud ARIA folder (a persistent notes store, " +
@@ -505,6 +541,8 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return githubReadFile(args.repo, args.path, args.ref, args.offset)
     case 'github_list_issues':
       return githubListIssues(args.repo, args.state)
+    case 'github_create_pull_request':
+      return githubCreatePullRequest(args)
     case 'save_cloud_note':
       return saveCloudNote(args.title, args.content, args.tags)
     case 'list_cloud_notes':
@@ -595,6 +633,23 @@ async function githubListIssues(repo?: unknown, state?: unknown): Promise<string
   }
   const gh = await import('@/app/lib/github')
   return gh.listIssues(repo, typeof state === 'string' ? state : 'open')
+}
+
+async function githubCreatePullRequest(args: Record<string, unknown>): Promise<string> {
+  if (typeof args.repo !== 'string' || !args.repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  if (typeof args.title !== 'string' || !args.title.trim() || !Array.isArray(args.changes)) {
+    return JSON.stringify({ error: 'Faltan el título o los archivos del pull request' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.createPullRequest({
+    repo: args.repo,
+    title: args.title,
+    body: typeof args.body === 'string' ? args.body : undefined,
+    branch: typeof args.branch === 'string' ? args.branch : undefined,
+    changes: args.changes as { path: string; content: string }[],
+  })
 }
 
 /* ----------------------- herramientas de notas nube ---------------------- */

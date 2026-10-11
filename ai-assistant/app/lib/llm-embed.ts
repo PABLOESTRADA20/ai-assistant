@@ -7,6 +7,8 @@ export const EMBEDDING_DIM = 1024
 
 /** Entradas de caché más viejas que esto se ignoran (y se barren al escribir). */
 export const EMBEDDING_CACHE_TTL_MS = 30 * 86_400_000
+/** Tope defensivo: 5.000 vectores bge-m3 ocupan alrededor de 20 MiB más índices. */
+export const EMBEDDING_CACHE_MAX_ROWS = 5_000
 
 /**
  * Hash FNV-1a de 32 bits (8 dígitos hex) del texto EXACTO que se embebe
@@ -31,7 +33,7 @@ export async function embeddingCacheGet(text: string): Promise<string | null> {
       SELECT "embedding"
       FROM "EmbeddingCache"
       WHERE "hash" = ${hashEmbedText(text)}
-        AND "createdAt" > NOW() - INTERVAL '30 days'
+        AND "usedAt" > NOW() - INTERVAL '30 days'
       LIMIT 1
     `
     if (rows.length === 0) return null
@@ -61,9 +63,18 @@ export async function embeddingCacheSet(text: string, vector: string): Promise<v
       VALUES (${h}, ${vector}::vector, NOW(), NOW())
       ON CONFLICT ("hash") DO UPDATE SET "embedding" = EXCLUDED."embedding", "usedAt" = NOW()
     `
-    // Barrido defensivo: acota la tabla sin cron jobs (mismo TTL de la lectura).
+    // LRU defensivo: conserva lo usado recientemente y limita el espacio de los
+    // vectores sin cron jobs ni servicios pagos.
     await prisma.$executeRaw`
-      DELETE FROM "EmbeddingCache" WHERE "createdAt" < NOW() - INTERVAL '30 days'
+      DELETE FROM "EmbeddingCache" WHERE "usedAt" < NOW() - INTERVAL '30 days'
+    `
+    await prisma.$executeRaw`
+      DELETE FROM "EmbeddingCache"
+      WHERE "hash" IN (
+        SELECT "hash" FROM "EmbeddingCache"
+        ORDER BY "usedAt" DESC
+        OFFSET ${EMBEDDING_CACHE_MAX_ROWS}
+      )
     `
   } catch {
     /* la caché nunca debe tumbar un request */

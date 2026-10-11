@@ -174,7 +174,8 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `RESEND_API_KEY` | API key de Resend para enviar correo | para correo |
 | `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
 | `EMAIL_ALLOWED_TO` | Lista blanca de destinatarios separada por comas | no |
-| `GITHUB_TOKEN` | Token fine-grained de GitHub (solo `Contents: read` e `Issues: read`; en CI se guarda como el secret `ARIA_GITHUB_TOKEN`) para leer repos privados, **listar tus repositorios en el selector** y subir el límite a 5.000 peticiones/hora. Sin él, solo repos públicos y 60/hora | para GitHub privado |
+| `GITHUB_TOKEN` | Token fine-grained de GitHub. Para lectura: `Metadata/Contents/Issues: read`; para crear PRs: también `Contents: write` y `Pull requests: write`. En CI se guarda como `ARIA_GITHUB_TOKEN` | para GitHub privado/PRs |
+| `GITHUB_WRITE_ENABLED` | Interruptor de seguridad. Solo `true` habilita ramas `aria/*` y PRs; por defecto la integración es de solo lectura | no |
 
 > **Búsqueda web sin API key**: `web_search` usa **Firecrawl keyless** (SERP real
 > y noticias) más APIs gratuitas y sin clave (Wikipedia, Stack Exchange, Hacker
@@ -204,7 +205,9 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 > está reservado por Actions) o directamente en el Worker con
 > `wrangler secret put GITHUB_TOKEN`. Con él, el panel **GitHub** muestra
 > **«Ver mis repositorios»** para elegirlos de una lista (públicos y privados) y
-> el límite sube de 60 a 5.000 peticiones/hora. ARIA sigue siendo de solo lectura.
+> el límite sube de 60 a 5.000 peticiones/hora. ARIA sigue siendo de solo lectura
+> mientras `GITHUB_WRITE_ENABLED` no sea `true`. Para proponer cambios mediante
+> ramas y PRs, agrega `Contents: Write` y `Pull requests: Write`; ARIA nunca hace merge.
 
 ## Características
 
@@ -227,12 +230,13 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 - **Memoria de ARIA** — long-term/factual (tabla `Memory` con `vector(1024)`), dedupe por coseno, extracción automática de preferencias/hechos por turno y retrieval inyectado en el prompt
 - **Memoria viva** — memoria de trabajo aislada por conversación e inyectada en el prompt (hilo de temas), refuerzo de los recuerdos que se usan (sube importancia/confianza), y consolidación/olvido automático: los recuerdos viejos y poco importantes se archivan y dejan de recuperarse; los ya olvidados se purgan y los contextos de sesión caducados se limpian
 - **Inspector de memoria** — panel lateral para ver, buscar (búsqueda semántica), editar, añadir, archivar/olvidar recuerdos y lanzar la consolidación a mano; muestra estadísticas (total, preferencias, hechos, importancia media)
-- **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory, **GitHub (solo lectura)** y **carpeta ARIA** (guardar/listar/leer notas en la nube)
+- **Herramientas ampliadas** — web_search, vault (buscar/leer/guardar), calculate, get_time, get_weather (Open-Meteo), semantic_search, recall_memory, **GitHub (lectura y PRs seguros opcionales)** y **carpeta ARIA** (guardar/listar/leer notas en la nube)
 - **Rate limiting nativo** — límite por ruta con el binding `ratelimits` de Workers (chat 20/min, dictado 15/min) como red de seguridad si la clave se filtra
 - **WhatsApp (API oficial de Meta)** — ARIA recibe y responde mensajes por el webhook `/api/whatsapp/webhook`. Cada número tiene su propia conversación (visible en el sidebar) y comparte el mismo cerebro (memoria, herramientas). Firma `X-Hub-Signature-256` verificada.
 - **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
 - **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
-- **GitHub (solo lectura)** — botón **GitHub** en el header para agregar repos (`owner/repo` o la URL). Con `GITHUB_TOKEN` (fine-grained, solo lectura) además aparece **«Ver mis repositorios»**, que lista tus repos (públicos y privados) con buscador para agregarlos con un clic. ARIA los lee (`github_repo_overview`, `github_list_files`, `github_read_file`, `github_list_issues`) y te propone cómo arreglar bugs, issues y deuda técnica. **Nunca escribe** en GitHub: nada de issues ni PRs.
+- **GitHub seguro** — el panel agrega repos y ARIA los analiza con herramientas de lectura. Opcionalmente, `github_create_pull_request` prepara hasta 5 archivos en una rama nueva `aria/*` y abre un PR. Nunca escribe en la rama principal, nunca fusiona, no elimina archivos y bloquea `.github/workflows`; requiere `GITHUB_WRITE_ENABLED=true`.
+- **Almacenamiento acotado** — la caché gratuita de embeddings vence por último uso a los 30 días y conserva como máximo 5.000 vectores. Índices GIN aceleran la búsqueda del cerebro al crecer mensajes, notas y memorias.
 - **Auto-cambio de modelo** — si el modelo elegido agota su cuota (Groq: tokens/día; Workers AI: neuronas/día), ARIA reintenta la misma pregunta con el siguiente modelo disponible y te avisa con un banner. Así una respuesta no se queda sin salir porque un modelo se quedó sin cupo. Además, si el modelo elegido **no ejecuta herramientas** (DeepSeek) y le pedís algo que sí las necesita (leer un repo de GitHub, buscar en la web, abrir una app), ARIA responde con un modelo de Groq que sí las tiene y te avisa del cambio.
 - **Carpeta ARIA (notas + Obsidian)** — botón **Notas** en el header. ARIA puede guardar, listar y leer notas (`save_cloud_note`, `list_cloud_notes`, `read_cloud_note`) y tú las editas en el panel. Viven en la base de datos (tabla `Note`) a propósito: el Worker **no puede** escribir en el disco del PC, así que así funcionan desde el celular sin tener el ordenador encendido. El botón **Exportar a Obsidian (.zip)** descarga un `.md` por nota (con frontmatter) listo para descomprimir dentro del vault.
 - **Núcleo compartido** — `app/lib/aria-core.ts` centraliza prompt, memoria y contexto; el chat web, WhatsApp y el correo usan exactamente el mismo cerebro.
@@ -329,7 +333,7 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 1. **Neon**: crea el proyecto, copia las dos conexiones (pooled `DATABASE_URL` + directa `DATABASE_URL_UNPOOLED`).
 2. **Cloudflare**: el Worker se llama `ai-assistant`; expone el binding `AI` (Workers AI) para los embeddings.
 3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY` y `ARIA_ACCESS_TOKEN` (obligatorio). Opcional: `FIRECRAWL_API_KEY`.
-4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `ARIA_ACCESS_TOKEN` (**obligatorio**: sin él el deploy aborta). Opcionales: `FIRECRAWL_API_KEY`.
+4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `ARIA_ACCESS_TOKEN` (**obligatorio**: sin él el deploy aborta). Opcionales: `FIRECRAWL_API_KEY`, `ARIA_GITHUB_TOKEN` y `GITHUB_WRITE_ENABLED`.
 
 El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
 

@@ -7,3 +7,7 @@ VAULT_PATH=C:\ruta\a\tu\vault-de-obsidian
 # Obligatoria en produccion (el preview de OpenNext es un build de produccion:
 # sin esta clave la app falla cerrada).
 ARIA_ACCESS_TOKEN=
+# GitHub es lectura por defecto. Para crear ramas aria/* y PRs, configura un
+# token fine-grained de escritura y cambia explícitamente el interruptor.
+GITHUB_TOKEN=
+GITHUB_WRITE_ENABLED=false

@@ -445,9 +445,9 @@ export async function searchBrain(
     safeQuery('vault léxico', () =>
       prisma.$queryRaw<VaultLexRow[]>`
         SELECT "path", "name", "title", "content", "updatedAt",
-               ts_rank_cd(to_tsvector('spanish', concat_ws(' ', COALESCE("title", ''), "content")), ${queryTs}) AS rank
+               ts_rank_cd(to_tsvector('spanish', COALESCE("title", '') || ' ' || "content"), ${queryTs}) AS rank
         FROM "VaultNote"
-        WHERE to_tsvector('spanish', concat_ws(' ', COALESCE("title", ''), "content")) @@ ${queryTs}
+        WHERE to_tsvector('spanish', COALESCE("title", '') || ' ' || "content") @@ ${queryTs}
         ORDER BY "updatedAt" DESC
         LIMIT 10
       `,
@@ -455,9 +455,9 @@ export async function searchBrain(
     safeQuery('notas', () =>
       prisma.$queryRaw<NoteRow[]>`
         SELECT "id", "title", "content", "tags", "source", "createdAt", "updatedAt",
-               ts_rank_cd(to_tsvector('spanish', concat_ws(' ', "title", "content")), ${queryTs}) AS rank
+               ts_rank_cd(to_tsvector('spanish', "title" || ' ' || "content"), ${queryTs}) AS rank
         FROM "Note"
-        WHERE to_tsvector('spanish', concat_ws(' ', "title", "content")) @@ ${queryTs}
+        WHERE to_tsvector('spanish', "title" || ' ' || "content") @@ ${queryTs}
         ORDER BY "updatedAt" DESC
         LIMIT 15
       `,

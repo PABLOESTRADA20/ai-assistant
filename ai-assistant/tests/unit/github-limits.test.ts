@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GITHUB_LIMITS,
+  createPullRequest,
   listFiles,
   listIssues,
   listMyRepos,
@@ -107,6 +108,102 @@ describe('topes de resultados de GitHub', () => {
       expect(issue.body.length).toBeLessThanOrEqual(GITHUB_LIMITS.issueBody)
       expect(issue).not.toHaveProperty('pull_request')
     }
+  })
+})
+
+describe('escritura segura de GitHub', () => {
+  const originalToken = process.env.GITHUB_TOKEN
+  const originalWrite = process.env.GITHUB_WRITE_ENABLED
+
+  afterEach(() => {
+    if (originalToken === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = originalToken
+    if (originalWrite === undefined) delete process.env.GITHUB_WRITE_ENABLED
+    else process.env.GITHUB_WRITE_ENABLED = originalWrite
+  })
+
+  it('queda desactivada por defecto y no toca la red', async () => {
+    process.env.GITHUB_TOKEN = 'test-token'
+    delete process.env.GITHUB_WRITE_ENABLED
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const out = JSON.parse(
+      await createPullRequest({
+        repo: 'owner/repo',
+        title: 'Cambio seguro',
+        changes: [{ path: 'src/index.ts', content: 'export {}' }],
+      }),
+    )
+    expect(out.error).toMatch(/desactivada/i)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('crea rama, archivo y PR sin escribir ni fusionar la rama principal', async () => {
+    process.env.GITHUB_TOKEN = 'test-token'
+    process.env.GITHUB_WRITE_ENABLED = 'true'
+    const calls: { url: string; method: string; body?: Record<string, unknown> }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
+        calls.push({ url, method, body })
+        if (url.endsWith('/repos/owner/repo')) return json({ default_branch: 'main' })
+        if (url.includes('/git/ref/heads/main')) return json({ object: { sha: 'base-sha' } })
+        if (url.endsWith('/git/refs')) return json({ ref: 'refs/heads/aria/test' })
+        if (url.includes('/contents/src%2Findex.ts')) return json({ sha: 'old-sha' })
+        if (url.endsWith('/contents/src/index.ts')) return json({ content: { sha: 'new-sha' } })
+        if (url.endsWith('/pulls')) return json({ number: 7, html_url: 'https://github.test/pr/7' })
+        return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 })
+      }),
+    )
+
+    const out = JSON.parse(
+      await createPullRequest({
+        repo: 'owner/repo',
+        title: 'Cambio seguro',
+        branch: 'mejora',
+        changes: [{ path: 'src/index.ts', content: 'export const safe = true' }],
+      }),
+    )
+    expect(out.success).toBe(true)
+    expect(out.base).toBe('main')
+    expect(out.branch).toMatch(/^aria\/mejora-/)
+    expect(out.merged).toBe(false)
+    expect(calls.some((c) => c.method === 'PUT' && c.body?.branch === out.branch)).toBe(true)
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/pulls'))).toBe(true)
+    expect(calls.some((c) => c.method === 'PUT' && c.body?.branch === 'main')).toBe(false)
+  })
+
+  it('bloquea workflows y lotes demasiado grandes antes de crear una rama', async () => {
+    process.env.GITHUB_TOKEN = 'test-token'
+    process.env.GITHUB_WRITE_ENABLED = 'true'
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const workflow = JSON.parse(
+      await createPullRequest({
+        repo: 'owner/repo',
+        title: 'No permitido',
+        changes: [{ path: '.github/workflows/deploy.yml', content: 'name: deploy' }],
+      }),
+    )
+    expect(workflow.error).toMatch(/no permitida/i)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    const tooMany = JSON.parse(
+      await createPullRequest({
+        repo: 'owner/repo',
+        title: 'Demasiados',
+        changes: Array.from({ length: GITHUB_LIMITS.writeFiles + 1 }, (_, i) => ({
+          path: `src/${i}.ts`,
+          content: '',
+        })),
+      }),
+    )
+    expect(tooMany.error).toMatch(/máximo/i)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

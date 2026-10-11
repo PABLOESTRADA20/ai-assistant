@@ -139,10 +139,17 @@ jobs:
           if [ -n "${{ secrets.EMAIL_ALLOWED_TO }}" ]; then
             echo "${{ secrets.EMAIL_ALLOWED_TO }}" | npx wrangler secret put EMAIL_ALLOWED_TO
           fi
-          # GitHub solo lectura (opcional). Permite leer repos privados y subir
-          # el limite de 60 a 5.000 peticiones/hora. El secret del repo se llama
+          # GitHub (opcional). Es solo lectura salvo que también se active el
+          # interruptor explícito de PRs seguros. El secret del repo se llama
           # ARIA_GITHUB_TOKEN porque "GITHUB_TOKEN" esta reservado por Actions;
           # aqui se mapea al secret GITHUB_TOKEN que lee el Worker.
           if [ -n "${{ secrets.ARIA_GITHUB_TOKEN }}" ]; then
             echo "${{ secrets.ARIA_GITHUB_TOKEN }}" | npx wrangler secret put GITHUB_TOKEN
+          fi
+          if [ "${{ secrets.GITHUB_WRITE_ENABLED }}" = "true" ]; then
+            echo "true" | npx wrangler secret put GITHUB_WRITE_ENABLED
+          else
+            # Evita que un deploy conserve accidentalmente un valor `true`
+            # antiguo cuando se quite o desactive el secret en GitHub.
+            echo "false" | npx wrangler secret put GITHUB_WRITE_ENABLED
           fi

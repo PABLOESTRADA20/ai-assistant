@@ -3,22 +3,22 @@ import type { Prisma } from '../generated/prisma/wasm.js'
 import { sliceWindow } from '@/app/lib/truncate'
 
 /**
- * Integración de SOLO LECTURA con GitHub.
+ * Integración con GitHub: lectura por defecto y escritura segura mediante PR.
  *
  * Por qué existe
  * --------------
  * El usuario quiere poder "agregar repositorios" y que ARIA los lea para
- * proponer ideas de arreglo (bugs, issues, deuda técnica). Escribir en GitHub
- * (crear issues/PRs) queda fuera de alcance a propósito: la app es de un solo
- * usuario y un token con permisos de escritura es mucho más peligroso. Aquí todo
- * es `GET`.
+ * proponer ideas de arreglo (bugs, issues, deuda técnica). Los cambios nunca se
+ * aplican a la rama principal: cuando el usuario lo pide de forma explícita se
+ * crea una rama `aria/*`, se escriben allí los archivos y se abre un PR.
  *
  * Token
  * -----
  * `GITHUB_TOKEN` es OPCIONAL. Los repos públicos se pueden leer sin token, pero
  * el límite sin autenticar es de 60 peticiones/hora por IP; con un token
- * (fine-grained, solo `Contents: read` y `Issues: read` de los repos que te
- * interesen) sube a 5.000/hora. Si no hay token, se avisa en el resultado.
+ * (fine-grained, `Contents: read` y `Issues: read`) sube a 5.000/hora. Para
+ * crear PRs requiere además `Contents: write`, `Pull requests: write` y el
+ * interruptor explícito `GITHUB_WRITE_ENABLED=true`.
  */
 
 const GITHUB_API = 'https://api.github.com'
@@ -34,6 +34,8 @@ export const GITHUB_LIMITS = {
   readFile: 6000,
   issues: 10,
   issueBody: 200,
+  writeFiles: 5,
+  writeChars: 200_000,
 } as const
 
 export interface GithubRepoRef {
@@ -50,6 +52,10 @@ const REPOS_TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000
 
 export function hasGithubToken(): boolean {
   return Boolean(process.env.GITHUB_TOKEN?.trim())
+}
+
+export function githubWriteEnabled(): boolean {
+  return process.env.GITHUB_WRITE_ENABLED?.trim().toLowerCase() === 'true'
 }
 
 /** Acepta `owner/repo`, URLs de GitHub y remotos SSH. Devuelve null si no es válido. */
@@ -148,17 +154,23 @@ interface GhResult {
   data: unknown
 }
 
-async function ghFetch(path: string): Promise<GhResult> {
+async function ghFetch(
+  path: string,
+  options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown } = {},
+): Promise<GhResult> {
   const token = process.env.GITHUB_TOKEN?.trim()
   let res: Response
   try {
     res = await fetch(`${GITHUB_API}${path}`, {
+      method: options.method ?? 'GET',
       headers: {
         Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'ARIA-Assistant',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     })
   } catch (err) {
     return { ok: false, status: 0, data: { message: String(err) } }
@@ -186,8 +198,188 @@ function describeError(status: number, data: unknown): string {
     ).trim()
   }
   if (status === 401) return 'GITHUB_TOKEN inválido o caducado.'
+  if (status === 409) return `GitHub rechazó el cambio por un conflicto: ${message || 'la rama cambió'}`
+  if (status === 422) return `GitHub rechazó los datos del cambio: ${message || 'validación fallida'}`
   if (status === 0) return `No pude contactar con GitHub: ${message}`
   return `GitHub respondió ${status}${message ? `: ${message}` : ''}`
+}
+
+/* --------------------- escritura segura mediante pull request ----------- */
+
+export interface GithubFileChange {
+  path: string
+  content: string
+}
+
+export interface GithubPullRequestInput {
+  repo: string
+  title: string
+  body?: string
+  branch?: string
+  changes: GithubFileChange[]
+}
+
+function cleanRepoPath(path: string): string | null {
+  const clean = path.trim().replace(/^\/+/, '').replace(/\\/g, '/')
+  if (!clean || clean.includes('\0') || clean.split('/').some((part) => part === '..')) return null
+  // Los workflows pueden ejecutar código con secretos y requieren permisos extra.
+  if (clean.toLowerCase().startsWith('.github/workflows/')) return null
+  return clean
+}
+
+function branchSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9._/-]+/g, '-')
+    .replace(/\.{2,}|\/{2,}/g, '-')
+    .replace(/^[./-]+|[./-]+$/g, '')
+    .slice(0, 60)
+}
+
+function encodeBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
+}
+
+/**
+ * Crea cambios únicamente en una rama nueva y abre un PR. No borra archivos,
+ * no hace merge y nunca actualiza directamente la rama por defecto.
+ */
+export async function createPullRequest(input: GithubPullRequestInput): Promise<string> {
+  const parsed = repoFrom(input.repo)
+  if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
+  if (!hasGithubToken()) return JSON.stringify({ error: 'Falta GITHUB_TOKEN para crear el pull request.' })
+  if (!githubWriteEnabled()) {
+    return JSON.stringify({
+      error:
+        'La escritura segura está desactivada. Define GITHUB_WRITE_ENABLED=true y usa un token ' +
+        'fine-grained con Contents: write y Pull requests: write.',
+    })
+  }
+
+  const title = input.title?.trim().slice(0, 200)
+  if (!title) return JSON.stringify({ error: 'Falta el título del pull request.' })
+  if (!Array.isArray(input.changes) || input.changes.length === 0) {
+    return JSON.stringify({ error: 'El pull request necesita al menos un archivo.' })
+  }
+  if (input.changes.length > GITHUB_LIMITS.writeFiles) {
+    return JSON.stringify({ error: `Máximo ${GITHUB_LIMITS.writeFiles} archivos por pull request.` })
+  }
+
+  const changes: GithubFileChange[] = []
+  const seen = new Set<string>()
+  let totalChars = 0
+  for (const change of input.changes) {
+    if (!change || typeof change.path !== 'string' || typeof change.content !== 'string') {
+      return JSON.stringify({ error: 'Cada cambio necesita path y content de texto.' })
+    }
+    const path = cleanRepoPath(change.path)
+    if (!path) {
+      return JSON.stringify({
+        error: `Ruta no permitida: "${change.path}". No se aceptan rutas relativas ni workflows.`,
+      })
+    }
+    const key = path.toLowerCase()
+    if (seen.has(key)) return JSON.stringify({ error: `Archivo repetido en el cambio: "${path}".` })
+    seen.add(key)
+    totalChars += change.content.length
+    changes.push({ path, content: change.content })
+  }
+  if (totalChars > GITHUB_LIMITS.writeChars) {
+    return JSON.stringify({ error: `Contenido total demasiado grande (máximo ${GITHUB_LIMITS.writeChars} caracteres).` })
+  }
+
+  const { owner, repo } = parsed
+  const repoInfo = await ghFetch(`/repos/${owner}/${repo}`)
+  if (!repoInfo.ok) return JSON.stringify({ error: describeError(repoInfo.status, repoInfo.data) })
+  const base = (repoInfo.data as { default_branch?: string }).default_branch || 'main'
+
+  const baseRef = await ghFetch(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(base)}`)
+  if (!baseRef.ok) return JSON.stringify({ error: describeError(baseRef.status, baseRef.data) })
+  const baseSha = (baseRef.data as { object?: { sha?: string } }).object?.sha
+  if (!baseSha) return JSON.stringify({ error: 'GitHub no devolvió el SHA de la rama principal.' })
+
+  const requested = branchSlug(input.branch ?? title) || 'cambio'
+  const branch = `aria/${requested}-${Date.now().toString(36)}`
+  const createRef = await ghFetch(`/repos/${owner}/${repo}/git/refs`, {
+    method: 'POST',
+    body: { ref: `refs/heads/${branch}`, sha: baseSha },
+  })
+  if (!createRef.ok) return JSON.stringify({ error: describeError(createRef.status, createRef.data) })
+
+  const written: string[] = []
+  for (const change of changes) {
+    const encodedPath = change.path.split('/').map(encodeURIComponent).join('/')
+    const current = await ghFetch(
+      `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`,
+    )
+    if (!current.ok && current.status !== 404) {
+      return JSON.stringify({
+        error: describeError(current.status, current.data),
+        branch,
+        written,
+        note: 'La rama quedó creada para poder revisar o recuperar el trabajo parcial.',
+      })
+    }
+    const sha = current.ok ? (current.data as { sha?: string }).sha : undefined
+    const update = await ghFetch(`/repos/${owner}/${repo}/contents/${encodedPath}`, {
+      method: 'PUT',
+      body: {
+        message: `${title}: ${change.path}`.slice(0, 250),
+        content: encodeBase64(change.content),
+        branch,
+        ...(sha ? { sha } : {}),
+      },
+    })
+    if (!update.ok) {
+      return JSON.stringify({
+        error: describeError(update.status, update.data),
+        branch,
+        written,
+        note: 'La rama quedó creada para poder revisar o recuperar el trabajo parcial.',
+      })
+    }
+    written.push(change.path)
+  }
+
+  const pull = await ghFetch(`/repos/${owner}/${repo}/pulls`, {
+    method: 'POST',
+    body: {
+      title,
+      head: branch,
+      base,
+      body:
+        input.body?.trim().slice(0, 20_000) ||
+        'Cambios preparados por ARIA en una rama aislada. Revisa las pruebas y el diff antes de fusionar.',
+    },
+  })
+  if (!pull.ok) {
+    return JSON.stringify({
+      error: describeError(pull.status, pull.data),
+      branch,
+      written,
+      note: 'Los commits están en la rama; solo falló la creación del pull request.',
+    })
+  }
+
+  const data = pull.data as { number?: number; html_url?: string }
+  return JSON.stringify({
+    success: true,
+    repo: `${owner}/${repo}`,
+    base,
+    branch,
+    files: written,
+    pull_request: data.number ?? null,
+    url: data.html_url ?? null,
+    merged: false,
+    note: 'No se modificó la rama principal. El cambio requiere revisión y merge manual.',
+  })
 }
 
 function repoFrom(input: string): { owner: string; repo: string } | null {

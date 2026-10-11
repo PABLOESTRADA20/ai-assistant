@@ -49,6 +49,14 @@ describe('selectTools', () => {
 
     const explicit = names('mira github.com/facebook/react', false)
     expect(explicit.has('github_read_file')).toBe(true)
+    expect(explicit.has('github_create_pull_request')).toBe(false)
+
+    const write = names('modifica el código de mi repo y crea un pull request', true)
+    expect(write.has('github_read_file')).toBe(true)
+    expect(write.has('github_create_pull_request')).toBe(true)
+
+    const reviewPr = names('revisa el pull request de mi repo', true)
+    expect(reviewPr.has('github_create_pull_request')).toBe(false)
   })
 
   it('detecta abrir apps, correo, clima y memoria', () => {

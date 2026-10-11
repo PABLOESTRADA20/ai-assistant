@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { EMBEDDING_CACHE_TTL_MS, hashEmbedText } from '@/app/lib/llm-embed'
+import {
+  EMBEDDING_CACHE_MAX_ROWS,
+  EMBEDDING_CACHE_TTL_MS,
+  hashEmbedText,
+} from '@/app/lib/llm-embed'
 
 /**
  * Clave de la caché de embeddings: pura y sin I/O.
@@ -36,5 +40,10 @@ describe('hashEmbedText (clave de caché de embeddings)', () => {
   it('el TTL de la caché es positivo y acotado', () => {
     expect(EMBEDDING_CACHE_TTL_MS).toBeGreaterThan(0)
     expect(EMBEDDING_CACHE_TTL_MS).toBeLessThanOrEqual(90 * 86_400_000)
+  })
+
+  it('limita la cantidad de vectores para proteger el almacenamiento gratuito', () => {
+    expect(EMBEDDING_CACHE_MAX_ROWS).toBeGreaterThan(0)
+    expect(EMBEDDING_CACHE_MAX_ROWS).toBeLessThanOrEqual(10_000)
   })
 })

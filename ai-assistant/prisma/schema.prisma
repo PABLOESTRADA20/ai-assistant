@@ -36,6 +36,8 @@ model Message {
   /// Contexto estimado del turno: presupuesto/tokens/compactación (FASE 3).
   context        Json?
   createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 model VaultNote {
@@ -63,6 +65,7 @@ model Memory {
 
   @@index([type])
   @@index([category])
+  @@index([isCompressed, updatedAt])
 }
 
 model SessionContext {
@@ -72,6 +75,8 @@ model SessionContext {
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
 }
 
 model EmbeddingCache {

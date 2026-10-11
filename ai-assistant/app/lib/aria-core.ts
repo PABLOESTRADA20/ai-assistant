@@ -40,8 +40,8 @@ Respond in the same language the user writes in (Spanish, English, etc.).
 If the user asks you to search, look something up or find recent information, you MUST call web_search before answering, even if you think you already know the answer. Your memory of versions, commands and APIs goes stale, and a confident wrong answer is worse than a slower right one.
 After searching, base the answer on what the sources actually say. If they lack the detail, say it is not in the sources; never invent release notes, version numbers or command syntax.
 
-## GitHub (read-only)
-You can read repositories, files and issues, but never create, edit, close or delete anything on GitHub. Ground every suggestion in what you actually read (cite the file paths); never guess at file contents you did not fetch. If the user configured repositories, a list appears in your context — use it when they say "my repo", but confirm which one if it is ambiguous.
+## GitHub
+You can read repositories, files and issues. Ground every suggestion in what you actually read (cite file paths); never guess at file contents you did not fetch. If the user explicitly asks you to implement or modify code, you may use github_create_pull_request only after reading every affected file. That tool creates an isolated branch and a PR: never claim the change is merged, never use it without an explicit modification request, and never try to bypass its path or size protections. If configured repositories are listed in context, use them when the user says "my repo", but confirm which one if it is ambiguous.
 
 ## Cloud notes
 The ARIA cloud folder is the user's persistent notes store, exportable to Obsidian. Save a note when the user explicitly asks you to save, note down or remember something as a note; ordinary preferences and facts are handled automatically by memory. Write clean Markdown with a short title, and list or read notes before assuming what is stored.
@@ -151,7 +151,13 @@ export const TOOL_GROUPS = {
   web: ['web_search'],
   vault: ['search_vault', 'semantic_search_vault', 'read_note', 'save_note'],
   cloudNotes: ['list_cloud_notes', 'read_cloud_note', 'save_cloud_note'],
-  github: ['github_repo_overview', 'github_list_files', 'github_read_file', 'github_list_issues'],
+  github: [
+    'github_repo_overview',
+    'github_list_files',
+    'github_read_file',
+    'github_list_issues',
+  ],
+  githubWrite: ['github_create_pull_request'],
   memory: ['recall_memory'],
   time: ['get_time'],
   math: ['calculate'],
@@ -163,6 +169,8 @@ export const TOOL_GROUPS = {
 const RX_GITHUB =
   /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request)\b/i
 const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
+const RX_GITHUB_WRITE =
+  /\b(modifica|modificar|edita|editar|cambia|cambiar|implementa|implementar|corrige|corregir|arregla|arreglar|crea(?:r)?|actualiza|actualizar|haz(?:me)? (?:el )?cambio)\b/i
 const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
 const RX_CLOUD_NOTES =
   /\b(nube|cloud|notas? de (?:aria|la nube)|guarda(?:me)? (?:una )?nota|mis notas)\b/i
@@ -204,7 +212,10 @@ export function selectTools(
   // Búsqueda web: reutiliza la heurística que ya forzaba la herramienta.
   if (wantsWebSearch([{ role: 'user', content: text }])) add(TOOL_GROUPS.web)
 
-  if (RX_GITHUB.test(text) && (hasRepos || RX_GITHUB_URL.test(text))) add(TOOL_GROUPS.github)
+  if (RX_GITHUB.test(text) && (hasRepos || RX_GITHUB_URL.test(text))) {
+    add(TOOL_GROUPS.github)
+    if (RX_GITHUB_WRITE.test(text)) add(TOOL_GROUPS.githubWrite)
+  }
   if (RX_VAULT.test(text)) add(TOOL_GROUPS.vault)
   if (RX_CLOUD_NOTES.test(text)) add(TOOL_GROUPS.cloudNotes)
   if (RX_MEMORY.test(text)) add(TOOL_GROUPS.memory)
