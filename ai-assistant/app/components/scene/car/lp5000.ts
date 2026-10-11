@@ -188,21 +188,25 @@ export function buildLp5000(): Lp5000Build {
   }
 
   const M: Lp5000Materials = {
-    // Rojo brillante con clearcoat: el acabado objetivo de la Fase 3 (T3).
+    // Rojo brillante con clearcoat: el acabado del documento (Fase 3 T3).
+    // clearcoat 1 + clearcoatRoughness bajo da el reflejo nítido de laca.
     paint: new THREE.MeshPhysicalMaterial({
       color: 0xc4161c,
       metalness: 0.4,
-      roughness: 0.3,
+      roughness: 0.28,
       clearcoat: 1,
-      clearcoatRoughness: 0.06,
+      clearcoatRoughness: 0.05,
       envMapIntensity: 1.2,
       side: THREE.DoubleSide, // el casco extrudido no debe verse por dentro a baja altura
     }),
     black: new THREE.MeshStandardMaterial({ color: 0x0b0b0d, metalness: 0.35, roughness: 0.55, envMapIntensity: 0.9 }),
+    // Vidrio oscuro con reflejo alto y refracción física sutil (sin transmission,
+    // que exigiría un pipeline aparte): apenas un ior realzado.
     glass: new THREE.MeshPhysicalMaterial({
       color: 0x0b1016,
       metalness: 0.1,
-      roughness: 0.05,
+      roughness: 0.04,
+      ior: 1.5,
       transparent: true,
       opacity: 0.85,
       envMapIntensity: 2.0,

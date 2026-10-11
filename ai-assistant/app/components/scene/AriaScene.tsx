@@ -5,6 +5,9 @@ import * as THREE from 'three'
 import { buildLp5000, type CarPart, type Lp5000Build } from './car/lp5000'
 import { disposeObject3D } from './car/utils'
 
+/** Duración de la animación de entrada "el auto se arma" (segundos). */
+const ASSEMBLE_SECONDS = 1.7
+
 interface AriaSceneProps {
   enabled: boolean
   width?: number
@@ -27,8 +30,13 @@ interface AriaSceneProps {
  * - El loop se pausa cuando la pestaña está oculta o el visor sale del
  *   viewport, renderiza bajo demanda cuando no hay animación, adapta el DPR
  *   al rendimiento y libera todo al desmontar.
+ * - Acabado (Fase 3 T3): laca roja con clearcoat, HDRI procedural ≤ 256 px,
+ *   luz key + relleno + rim, sombra de contacto falsa y animación de entrada
+ *   "el auto se arma".
  * - Con `?stats=1` en la URL expone `window.__aria3dStats()` para medir
  *   `renderer.info`, DPR, frame time promedio y cap de fps.
+ * - Con `?explode=1` expone un slider y `window.__aria3dExplode(v)`.
+ * - Con `?holo=1` superpone un holograma de alambre sobre el casco.
  */
 export default function AriaScene({
   enabled,
@@ -53,6 +61,10 @@ export default function AriaScene({
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('explode')
   )
   const [explodeValue, setExplodeValue] = useState(0)
+  // `?holo=1`: superpone un holograma de alambre sobre el casco (opcional).
+  const [holoMode] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('holo')
+  )
   const frameIdRef = useRef(0)
   const frameKindRef = useRef<'raf' | 'timeout' | null>(null)
   const unmountedRef = useRef(false)
@@ -85,6 +97,9 @@ export default function AriaScene({
   const speedRef = useRef(0.014)
   const autoSpinRef = useRef(autoSpin && !reduceMotion)
   const lastTimeRef = useRef(0)
+  // Animación de entrada: el auto "se arma" (explode 1 → 0) al montar.
+  const assemblingRef = useRef(false)
+  const assembleProgressRef = useRef(0)
 
   // Rendimiento
   const activeRef = useRef(true) // visible && en viewport
@@ -143,36 +158,64 @@ export default function AriaScene({
     if (car) car.scale.setScalar(narrowRef.current ? 0.75 : 1)
   }, [])
 
+  /**
+   * HDRI procedural como equiparable equirectangular ≤ 256 px (presupuesto del
+   * documento). Define la respuesta del clearcoat: un softbox blanco arriba a la
+   * izquierda (línea de reflejo), un relleno frío a la derecha y una franja
+   * cálida en el horizonte (rebote del piso). Sin CDN ni assets externos.
+   */
   const makeEnvTexture = useCallback((): THREE.Texture => {
     const c = document.createElement('canvas')
-    c.width = 512
-    c.height = 256
+    c.width = 256
+    c.height = 128
     const g = c.getContext('2d')!
-    const grd = g.createLinearGradient(0, 0, 0, 256)
-    grd.addColorStop(0.0, '#4a0d1a')
-    grd.addColorStop(0.38, '#14141c')
-    grd.addColorStop(0.52, '#1b1b24')
-    grd.addColorStop(1.0, '#000000')
-    g.fillStyle = grd
-    g.fillRect(0, 0, 512, 256)
-    g.fillStyle = 'rgba(255,255,255,0.9)'
-    g.fillRect(48, 34, 210, 20)
-    g.fillStyle = 'rgba(180,220,255,0.55)'
-    g.fillRect(300, 52, 130, 14)
-    g.fillStyle = 'rgba(255,70,100,0.85)'
-    g.fillRect(60, 96, 300, 12)
+    const sky = g.createLinearGradient(0, 0, 0, 128)
+    sky.addColorStop(0.0, '#0a0c11')
+    sky.addColorStop(0.4, '#241521')
+    sky.addColorStop(0.5, '#57233a')
+    sky.addColorStop(0.62, '#180f16')
+    sky.addColorStop(1.0, '#040506')
+    g.fillStyle = sky
+    g.fillRect(0, 0, 256, 128)
+    // Softbox principal (arriba-izquierda): la línea nítida del clearcoat.
+    const box = g.createRadialGradient(72, 26, 4, 72, 26, 62)
+    box.addColorStop(0.0, 'rgba(255,255,255,1)')
+    box.addColorStop(0.45, 'rgba(255,242,236,0.42)')
+    box.addColorStop(1.0, 'rgba(255,255,255,0)')
+    g.fillStyle = box
+    g.fillRect(0, 0, 256, 128)
+    // Relleno frío (arriba-derecha): levanta el lateral en sombra.
+    const fill = g.createRadialGradient(198, 32, 4, 198, 32, 54)
+    fill.addColorStop(0.0, 'rgba(150,190,255,0.75)')
+    fill.addColorStop(1.0, 'rgba(150,190,255,0)')
+    g.fillStyle = fill
+    g.fillRect(0, 0, 256, 128)
+    // Franja cálida del horizonte (rebote rojizo del piso).
+    const strip = g.createLinearGradient(0, 68, 0, 98)
+    strip.addColorStop(0.0, 'rgba(255,60,90,0)')
+    strip.addColorStop(0.5, 'rgba(255,84,112,0.55)')
+    strip.addColorStop(1.0, 'rgba(255,60,90,0)')
+    g.fillStyle = strip
+    g.fillRect(0, 68, 256, 30)
     const t = new THREE.CanvasTexture(c)
     t.mapping = THREE.EquirectangularReflectionMapping
     return t
   }, [])
 
+  /**
+   * Sombra de contacto falsa: gradiente radial negro y blando, estirado bajo el
+   * auto (footprint ~4.8 × 2.6). Se mezcla en modo normal para oscurecer el
+   * fondo, no como glow aditivo.
+   */
   const makeShadowTexture = useCallback((): THREE.Texture => {
     const c = document.createElement('canvas')
-    c.width = c.height = 256
+    c.width = 256
+    c.height = 256
     const g = c.getContext('2d')!
-    const grd = g.createRadialGradient(128, 128, 8, 128, 128, 128)
-    grd.addColorStop(0.0, 'rgba(0,0,0,0.9)')
-    grd.addColorStop(0.55, 'rgba(0,0,0,0.38)')
+    const grd = g.createRadialGradient(128, 128, 10, 128, 128, 126)
+    grd.addColorStop(0.0, 'rgba(0,0,0,0.8)')
+    grd.addColorStop(0.42, 'rgba(0,0,0,0.52)')
+    grd.addColorStop(0.72, 'rgba(0,0,0,0.2)')
     grd.addColorStop(1.0, 'rgba(0,0,0,0)')
     g.fillStyle = grd
     g.fillRect(0, 0, 256, 256)
@@ -210,6 +253,18 @@ export default function AriaScene({
         car.rotation.x = currentRotXRef.current
       }
 
+      // Animación de entrada: el auto se arma (explode 1 → 0) con easeOutCubic.
+      if (assemblingRef.current) {
+        const p = Math.max(0, assembleProgressRef.current - dt / ASSEMBLE_SECONDS)
+        assembleProgressRef.current = p
+        applyExplode(1 - Math.pow(1 - p, 3))
+        needsRender = true
+        if (p <= 0) {
+          assemblingRef.current = false
+          applyExplode(0)
+        }
+      }
+
       let settled = true
       if (autoSpinRef.current) {
         targetRotYRef.current += speedRef.current * dt * 60
@@ -232,7 +287,7 @@ export default function AriaScene({
         dprReducedRef.current = true
       }
 
-      if (autoSpinRef.current || !settled || dirtyRef.current) {
+      if (autoSpinRef.current || !settled || dirtyRef.current || assemblingRef.current) {
         if (cap30Ref.current) {
           frameKindRef.current = 'timeout'
           frameIdRef.current = window.setTimeout(() => tick(performance.now()), 33)
@@ -245,7 +300,7 @@ export default function AriaScene({
         idleRef.current = true
       }
     },
-    [speedRef, autoSpinRef]
+    [speedRef, autoSpinRef, applyExplode]
   )
 
   const startLoop = useCallback(() => {
@@ -350,14 +405,22 @@ export default function AriaScene({
         target?.dispose?.()
       }
 
-      // luz
-      const amb = new THREE.AmbientLight(0x2a0d16, 1.0)
+      // Iluminación de estudio: ambiente bajo + key cálida + relleno frío + rim.
+      const amb = new THREE.AmbientLight(0x2a0d16, 0.9)
       scene.add(amb)
       const hemi = new THREE.HemisphereLight(0x8ea8d8, 0x140306, 0.55)
       scene.add(hemi)
-      const key = new THREE.DirectionalLight(0xfff5ea, 2.6)
+      const key = new THREE.DirectionalLight(0xfff5ea, 2.7)
       key.position.set(4.5, 6.5, 4)
       scene.add(key)
+      // Relleno frío en el lado opuesto: levanta la panza en sombra sin lavar el rojo.
+      const fill = new THREE.DirectionalLight(0x93b4ff, 0.65)
+      fill.position.set(-5, 3.2, -3.5)
+      scene.add(fill)
+      // Rim cálido desde atrás: despega el techo y la cola del fondo.
+      const rim = new THREE.DirectionalLight(0xff8a6a, 0.5)
+      rim.position.set(-2, 2.6, 6)
+      scene.add(rim)
 
       const build = buildLp5000()
       carBuildRef.current = build
@@ -374,6 +437,15 @@ export default function AriaScene({
       carPartsRef.current = build.parts
       wheelSpinnersRef.current = build.spinners
 
+      // Animación de entrada "el auto se arma": arranca desarmado y se ensambla.
+      // Se saltea con reduced-motion (escena estática) y con el slider ?explode=1
+      // abierto (ahí manda el usuario). La interpolación la hace el tick.
+      if (!reduceMotion && !explodeMode) {
+        assemblingRef.current = true
+        assembleProgressRef.current = 1
+        applyExplode(1)
+      }
+
       // ambiente holografico
       const ring1 = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.CylinderGeometry(2.0, 2.0, 0.02, 48), 1),
@@ -389,12 +461,35 @@ export default function AriaScene({
       ;(ring2.material as THREE.LineBasicMaterial).opacity = 0.08
       scene.add(ring2)
       ring2Ref.current = ring2
+
+      // Holograma opcional (`?holo=1`): alambre rojo sobre casco y vidrios,
+      // compartiendo la geometría ya fusionada (sin costo de memoria) y
+      // realzando los anillos ambientales. Apagado por defecto.
+      if (holoMode) {
+        for (const id of ['body', 'glass'] as const) {
+          const part = build.parts.find((p) => p.id === id)
+          if (!part) continue
+          for (const child of [...part.group.children]) {
+            if (child instanceof THREE.Mesh) {
+              const wire = new THREE.Mesh(child.geometry, build.materials.holo)
+              wire.castShadow = false
+              wire.receiveShadow = false
+              part.group.add(wire)
+            }
+          }
+        }
+        ;(ring1.material as THREE.LineBasicMaterial).opacity = 0.32
+        ;(ring2.material as THREE.LineBasicMaterial).opacity = 0.16
+      }
+      // Sombra de contacto falsa: elipse oscura y blanda bajo el auto (footprint
+      // largo × ancho), en blending normal para oscurecer el fondo.
       const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(6, 6, 1, 1),
-        new THREE.MeshBasicMaterial({ map: makeShadowTexture(), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({ map: makeShadowTexture(), transparent: true, opacity: 0.5, depthWrite: false })
       )
       floor.rotation.x = -Math.PI / 2
-      floor.position.y = 0.01
+      floor.scale.set(2.7, 4.9, 1)
+      floor.position.set(0.15, 0.012, -0.05)
       scene.add(floor)
       floorMeshRef.current = floor
 
@@ -443,7 +538,7 @@ export default function AriaScene({
       setReadyFlag(false)
       onError?.(e)
     }
-  }, [enabled, width, height, autoSpin, reduceMotion, computeView, applyCam, makeEnvTexture, makeShadowTexture, setReadyFlag, startLoop, updateActive, onError, applyExplode, explodeMode])
+  }, [enabled, width, height, autoSpin, reduceMotion, computeView, applyCam, makeEnvTexture, makeShadowTexture, setReadyFlag, startLoop, updateActive, onError, applyExplode, explodeMode, holoMode])
 
   const resize = useCallback(() => {
     if (!readyRef.current) return

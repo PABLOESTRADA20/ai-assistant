@@ -114,6 +114,26 @@ describe('Countach LP5000 QV — geometría (Fase 3 T2)', () => {
     }
   })
 
+  it('el acabado sigue la spec del documento (Fase 3 T3)', () => {
+    const build = buildLp5000()
+    try {
+      const p = build.materials.paint
+      expect(p).toBeInstanceOf(THREE.MeshPhysicalMaterial)
+      expect(p.color.getHex()).toBe(0xc4161c)
+      expect(p.metalness).toBeGreaterThanOrEqual(0.3)
+      expect(p.metalness).toBeLessThanOrEqual(0.5)
+      expect(p.roughness).toBeCloseTo(0.28, 5)
+      expect(p.clearcoat).toBe(1)
+      expect(p.clearcoatRoughness).toBeCloseTo(0.05, 5)
+      expect(p.envMapIntensity).toBeCloseTo(1.2, 5)
+      // El vidrio es físico con reflejo alto (para que tome la HDRI).
+      expect(build.materials.glass).toBeInstanceOf(THREE.MeshPhysicalMaterial)
+      expect(build.materials.glass.envMapIntensity).toBeGreaterThan(1)
+    } finally {
+      build.dispose()
+    }
+  })
+
   it('libera la geometría al desmontar sin romper el grupo', () => {
     const build = buildLp5000()
     build.dispose()
