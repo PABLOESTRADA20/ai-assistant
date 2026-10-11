@@ -48,7 +48,7 @@ describe.skipIf(!RUN)('caché de embeddings (integración)', () => {
   it('barre entradas vencidas al escribir (sin cron)', async () => {
     await prisma.$executeRaw`
       INSERT INTO "EmbeddingCache" ("hash", "embedding", "createdAt", "usedAt")
-      VALUES (${hashEmbedText(stale)}, ${vec(0.5)}::vector, NOW() - INTERVAL '40 days', NOW())
+      VALUES (${hashEmbedText(stale)}, ${vec(0.5)}::vector, NOW(), NOW() - INTERVAL '40 days')
     `
 
     // Escribir cualquier cosa dispara la limpieza de la tabla completa.
