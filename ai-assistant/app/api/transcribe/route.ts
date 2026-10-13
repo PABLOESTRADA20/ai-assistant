@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { requireAuth } from '@/app/lib/auth'
 import { rateLimit } from '@/app/lib/rate-limit'
+import { encodeBase64 } from '@/app/lib/base64'
 
 /**
  * Dictado por voz.
@@ -117,21 +118,10 @@ async function transcribeWithWorkersAI(bytes: ArrayBuffer, language: string): Pr
     run: (model: string, input: Record<string, unknown>) => Promise<{ text?: string }>
   }
   const out = await ai.run(CF_MODEL, {
-    audio: toBase64(bytes),
+    audio: encodeBase64(bytes),
     language,
     task: 'transcribe',
     vad_filter: true,
   })
   return (out?.text || '').trim()
-}
-
-function toBase64(buf: ArrayBuffer): string {
-  if (typeof Buffer !== 'undefined') return Buffer.from(buf).toString('base64')
-  const bytes = new Uint8Array(buf)
-  let binary = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
-  }
-  return btoa(binary)
 }

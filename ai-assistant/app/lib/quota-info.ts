@@ -1,20 +1,13 @@
 import type { QuotaInfo } from '@/app/types'
+import { formatCompactNumber } from './format'
+
+// Re-export del formateador compartido para no romper imports existentes.
+export { formatCompactNumber }
 
 /**
  * Helpers puros para el badge de saldo de cuota del día (FASE 3.3).
  * Sin red, sin BD y sin dependencias de React: testables en unit.
  */
-
-/** 6100 -> "6.1k", 999 -> "999", 12000 -> "12k". */
-export function formatCompactNumber(n: number): string {
-  if (!Number.isFinite(n)) return '0'
-  if (n >= 1000) {
-    const k = n / 1000
-    const rounded = k < 100 ? (Math.round(k * 10) / 10).toString() : String(Math.round(k))
-    return `${rounded.replace(/\.0$/, '')}k`
-  }
-  return String(Math.round(n))
-}
 
 /** Neurons restantes de la reserva de Workers AI, compactas y nunca negativas. */
 export function formatNeuronsRemaining(quota: QuotaInfo): string {

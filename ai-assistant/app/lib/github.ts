@@ -1,6 +1,7 @@
 import { prisma } from '@/app/lib/prisma'
 import type { Prisma } from '../generated/prisma/wasm.js'
 import { sliceWindow } from '@/app/lib/truncate'
+import { decodeBase64 } from '@/app/lib/base64'
 
 /**
  * Integración con GitHub: lectura por defecto y escritura segura mediante PR.
@@ -689,10 +690,4 @@ export async function listMyRepos(
       'Sin GITHUB_TOKEN solo puedo listar repos PÚBLICOS: escribí tu usuario de GitHub. ' +
       'Con un token fine-grained de solo lectura ves también los privados (Contents/Issues/Metadata: Read).',
   }
-}
-
-function decodeBase64(b64: string): string {
-  const binary = atob(b64.replace(/\s/g, ''))
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
-  return new TextDecoder().decode(bytes)
 }

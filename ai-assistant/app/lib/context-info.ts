@@ -6,6 +6,10 @@
  * muestra bajo el mensaje. Nunca llama a un modelo ni a la red.
  */
 import type { ContextInfo } from '@/app/types'
+import { formatCompactNumber } from './format'
+
+// Alias de `formatCompactNumber` para no romper imports existentes.
+export { formatCompactNumber as formatCompactTokens }
 
 /** Porcentaje de presupuesto ocupado por el prompt estimado, recortado a [0,1]. */
 export function contextUsagePercent(ctx: ContextInfo): number {
@@ -13,18 +17,8 @@ export function contextUsagePercent(ctx: ContextInfo): number {
   return Math.min(1, Math.max(0, ctx.promptTokens / ctx.budget))
 }
 
-/** 1.234 → "1.2k"; 10.000 → "10k"; 12.500 → "12.5k"; 850 → "850". */
-export function formatCompactTokens(n: number): string {
-  if (n >= 1000) {
-    const k = n / 1000
-    const s = k < 100 ? k.toFixed(1) : String(Math.round(k))
-    return `${s.endsWith('.0') ? s.slice(0, -2) : s}k`
-  }
-  return String(Math.round(n))
-}
-
 /** Etiqueta corta: `ctx ~3.4k/5k tokens · 68%`. */
 export function formatContextUsage(ctx: ContextInfo): string {
   const pct = Math.round(contextUsagePercent(ctx) * 100)
-  return `ctx ~${formatCompactTokens(ctx.promptTokens)}/${formatCompactTokens(ctx.budget)} tokens · ${pct}%`
+  return `ctx ~${formatCompactNumber(ctx.promptTokens)}/${formatCompactNumber(ctx.budget)} tokens · ${pct}%`
 }
