@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonInvalid, readJson } from '@/app/lib/api'
 import { addRepo, getRepos, hasGithubToken, removeRepo } from '@/app/lib/github'
 
 /**
@@ -9,24 +9,14 @@ import { addRepo, getRepos, hasGithubToken, removeRepo } from '@/app/lib/github'
  * la lista sea la misma desde el PC y desde el móvil, sin migraciones nuevas.
  */
 
-export async function GET(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const GET = withAuth(async () => {
   const repos = await getRepos()
   return NextResponse.json({ repos, tokenConfigured: hasGithubToken() })
-}
+})
 
-export async function POST(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
-  let body: { repo?: string; note?: string }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
-  }
+export const POST = withAuth(async (req: Request) => {
+  const body = await readJson<{ repo?: string; note?: string }>(req)
+  if (!body) return jsonInvalid()
 
   const repo = typeof body.repo === 'string' ? body.repo : ''
   if (!repo.trim()) {
@@ -38,23 +28,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
   return NextResponse.json({ repos: result.repos, tokenConfigured: hasGithubToken() })
-}
+})
 
-export async function DELETE(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
-  let repo = ''
-  try {
-    const body = await req.json()
-    repo = typeof body.repo === 'string' ? body.repo : ''
-  } catch {
-    /* body vacío: se interpreta como "no borrar nada" */
-  }
+export const DELETE = withAuth(async (req: Request) => {
+  const body = await readJson<{ repo?: string }>(req)
+  // Body vacío o inválido: se interpreta como "no borrar nada".
+  const repo = typeof body?.repo === 'string' ? body.repo : ''
   if (!repo.trim()) {
     return NextResponse.json({ error: 'Falta el repositorio a eliminar' }, { status: 400 })
   }
 
   const repos = await removeRepo(repo)
   return NextResponse.json({ repos, tokenConfigured: hasGithubToken() })
-}
+})

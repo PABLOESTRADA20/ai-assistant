@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError } from '@/app/lib/api'
 
 /**
  * Búsqueda unificada del cerebro: memoria a largo plazo + notas de la carpeta
@@ -11,10 +11,7 @@ import { requireAuth } from '@/app/lib/auth'
  * Devuelve `{ hits: BrainHit[] }`, cada uno con `kind` ('memory' | 'note' |
  * 'vault' | 'message'), `content`, `snippet`, `score` (0..1) y origen.
  */
-export async function POST(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async (req: Request) => {
   try {
     const body = (await req.json()) as {
       query?: unknown
@@ -37,6 +34,6 @@ export async function POST(req: Request) {
     })
     return NextResponse.json({ hits })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})

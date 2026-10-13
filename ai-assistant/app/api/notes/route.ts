@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError, jsonInvalid, readJson } from '@/app/lib/api'
 import { listNotes, saveNote } from '@/app/lib/notes'
 
 /**
@@ -9,29 +9,19 @@ import { listNotes, saveNote } from '@/app/lib/notes'
  * POST /api/notes         → guarda o actualiza por título
  */
 
-export async function GET(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const GET = withAuth(async (req: Request) => {
   try {
     const q = new URL(req.url).searchParams.get('q') ?? undefined
     const notes = await listNotes(q)
     return NextResponse.json({ notes })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})
 
-export async function POST(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
-  let body: { title?: unknown; content?: unknown; tags?: unknown }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
-  }
+export const POST = withAuth(async (req: Request) => {
+  const body = await readJson<{ title?: unknown; content?: unknown; tags?: unknown }>(req)
+  if (!body) return jsonInvalid()
 
   if (typeof body.title !== 'string' || !body.title.trim()) {
     return NextResponse.json({ error: 'Falta el título de la nota' }, { status: 400 })
@@ -50,6 +40,6 @@ export async function POST(req: Request) {
     await mirrorNoteToMemory(note).catch(() => {})
     return NextResponse.json({ note })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})

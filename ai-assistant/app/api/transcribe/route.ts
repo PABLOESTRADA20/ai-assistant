@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth } from '@/app/lib/api'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { encodeBase64 } from '@/app/lib/base64'
 
@@ -31,10 +31,7 @@ const MAX_BYTES = 24 * 1024 * 1024 // Groq free tier: 25 MB; dejamos margen
 
 type AudioFile = { arrayBuffer: () => Promise<ArrayBuffer>; name?: string; type?: string }
 
-export async function POST(req: NextRequest) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async (req: NextRequest) => {
   const limited = await rateLimit(req, 'TRANSCRIBE_RATE_LIMITER')
   if (limited) return limited
 
@@ -109,7 +106,7 @@ export async function POST(req: NextRequest) {
     { error: 'No se pudo transcribir el audio. Intentalo de nuevo.', code: 'transcription_failed' },
     { status: 502 },
   )
-}
+})
 
 async function transcribeWithWorkersAI(bytes: ArrayBuffer, language: string): Promise<string> {
   const { getCloudflareContext } = await import('@opennextjs/cloudflare')

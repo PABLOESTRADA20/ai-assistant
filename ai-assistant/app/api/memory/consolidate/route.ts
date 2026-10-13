@@ -1,20 +1,17 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError } from '@/app/lib/api'
 
 /**
  * Ejecuta consolidación y olvido a demanda (botón del inspector de memoria).
  * El mismo trabajo se lanza de fondo, de forma perezosa, desde el chat.
  */
-export async function POST(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async () => {
   try {
     const { consolidateMemories, getMemoryStats } = await import('@/app/lib/memory')
     const result = await consolidateMemories()
     const stats = await getMemoryStats()
     return NextResponse.json({ ...result, stats })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})

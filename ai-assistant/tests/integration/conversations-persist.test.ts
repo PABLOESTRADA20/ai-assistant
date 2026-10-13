@@ -105,7 +105,9 @@ describe.skipIf(!RUN)('persistencia de fuentes y contexto (integración)', () =>
     const oneBody = await one.json()
     expect(oneBody.messages[1].context).toEqual(context)
 
-    const all = await getList(new NextRequest('http://x/api/conversations', { headers: auth }))
+    const all = await getList(new NextRequest('http://x/api/conversations', { headers: auth }), {
+      params: Promise.resolve({}),
+    })
     expect(all.status).toBe(200)
     const allBody = await all.json()
     const found = allBody.find((c: { id: string }) => c.id === conv.id)

@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError } from '@/app/lib/api'
 
-export async function POST(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async (req: Request) => {
   try {
     const body = await req.json()
     const { query, limit = 8, minSimilarity = 0 } = body
@@ -20,6 +17,6 @@ export async function POST(req: Request) {
     )
     return NextResponse.json({ memories })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})

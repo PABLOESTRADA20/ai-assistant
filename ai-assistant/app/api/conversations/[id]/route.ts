@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth } from '@/app/lib/api'
 import { hydrateMessages, persistMessages } from '@/app/lib/persist-messages'
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const GET = withAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params
   try {
     const conversation = await prisma.conversation.findUnique({
@@ -23,12 +20,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch {
     return NextResponse.json({ error: 'Error al obtener conversación' }, { status: 500 })
   }
-}
+})
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const PUT = withAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params
   try {
     const body = await req.json()
@@ -55,12 +49,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch {
     return NextResponse.json({ error: 'Error al actualizar conversación' }, { status: 500 })
   }
-}
+})
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const DELETE = withAuth(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params
   try {
     await prisma.conversation.delete({ where: { id } })
@@ -68,4 +59,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   } catch {
     return NextResponse.json({ error: 'Error al eliminar conversación' }, { status: 500 })
   }
-}
+})

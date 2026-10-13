@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError } from '@/app/lib/api'
 
-export async function GET(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const GET = withAuth(async () => {
   try {
     const { getVaultIndex } = await import('@/app/lib/vault-index')
     const index = getVaultIndex(true)
@@ -35,6 +32,6 @@ export async function GET(req: Request) {
       embeddings,
     })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})

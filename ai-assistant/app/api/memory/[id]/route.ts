@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError } from '@/app/lib/api'
 
-export async function PATCH(
+export const PATCH = withAuth(async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+) => {
   const { id } = await params
   try {
     const body = await req.json()
@@ -24,23 +21,20 @@ export async function PATCH(
     })
     return NextResponse.json({ memory })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 400 })
+    return jsonError(err, 400)
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAuth(async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+) => {
   const { id } = await params
   try {
     const { deleteMemory } = await import('@/app/lib/memory')
     await deleteMemory(id)
     return NextResponse.json({ ok: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 404 })
+    return jsonError(err, 404)
   }
-}
+})

@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth, jsonError } from '@/app/lib/api'
 
-export async function GET(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const GET = withAuth(async (req: Request) => {
   const url = new URL(req.url)
   const type = url.searchParams.get('type') || undefined
   const category = url.searchParams.get('category') || undefined
@@ -22,14 +19,11 @@ export async function GET(req: Request) {
     ])
     return NextResponse.json({ memories, total: memories.length, stats })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})
 
-export async function POST(req: Request) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async (req: Request) => {
   try {
     const body = await req.json()
     const { type, category, content, importance, confidence, tags, source } = body
@@ -49,6 +43,6 @@ export async function POST(req: Request) {
     })
     return NextResponse.json({ memory }, { status: 201 })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return jsonError(err)
   }
-}
+})

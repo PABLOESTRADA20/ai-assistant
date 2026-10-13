@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth } from '@/app/lib/api'
 import { hydrateMessages } from '@/app/lib/persist-messages'
 
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 
-export async function GET(req: NextRequest) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const GET = withAuth(async (req: NextRequest) => {
   try {
     const conversations = await prisma.conversation.findMany({
       orderBy: { updatedAt: 'desc' },
@@ -25,12 +22,9 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Error al obtener conversaciones' }, { status: 500 })
   }
-}
+})
 
-export async function POST(req: NextRequest) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async (req: NextRequest) => {
   try {
     const body = await req.json()
     const { model = DEFAULT_MODEL } = body
@@ -42,4 +36,4 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Error al crear conversación' }, { status: 500 })
   }
-}
+})
