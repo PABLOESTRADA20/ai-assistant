@@ -28,6 +28,7 @@ import { Prisma } from '../generated/prisma/wasm.js'
 import { prisma } from './prisma'
 import { embed } from './llm-embed'
 import { createMemory } from './memory'
+import { round01 } from './num'
 
 /* ------------------------------------------------------------------ *
  * Helpers puros (unit-testeados)                                      *
@@ -44,7 +45,7 @@ export function orFuse(scores: number[]): number {
     if (Number.isFinite(s) && s > 0) p *= 1 - Math.min(1, Math.max(0, s))
   }
   const fused = 1 - p
-  return Math.round(Math.max(0, Math.min(1, fused)) * 1000) / 1000
+  return round01(fused)
 }
 
 /** Clasifica qué tan fuerte es una coincidencia léxica, en [0,1]. */
@@ -81,11 +82,6 @@ export function normalizeLexical(
   if (r === 0) return 0
   const k = Number.isFinite(smoothing) && smoothing > 0 ? smoothing : LEXICAL_SMOOTHING
   return Math.min(0.999, Math.round((r / (r + k)) * 1000) / 1000)
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.round(Math.max(0, Math.min(1, value)) * 1000) / 1000
 }
 
 function preview(content: string, max = 240): string {
@@ -232,7 +228,7 @@ const RECENCY_HALF_LIFE_DAYS = 120
 export function rankBoost(hit: BrainHit, now: number = Date.now()): number {
   const imp = hit.importance
   const importance =
-    typeof imp === 'number' && Number.isFinite(imp) ? clamp01((imp - 1) / 9) : 0
+    typeof imp === 'number' && Number.isFinite(imp) ? round01((imp - 1) / 9) : 0
   const ts = Date.parse(hit.createdAt)
   const recency = Number.isFinite(ts)
     ? Math.pow(0.5, Math.max(0, now - ts) / 86_400_000 / RECENCY_HALF_LIFE_DAYS)
@@ -336,7 +332,7 @@ function vaultCandidate(
 
 function memoryHit(
   row: MemoryRow,
-  score: (sim: number) => number = clamp01,
+  score: (sim: number) => number = round01,
 ): Candidate {
   return {
     scores: [score(row.sim)],
@@ -377,7 +373,7 @@ export async function searchBrain(
   if (!q) return []
 
   const limit = Math.min(Math.max(1, options.limit ?? 8), MAX_LIMIT)
-  const minScore = clamp01(options.minScore ?? 0)
+  const minScore = round01(options.minScore ?? 0)
   const conversationId = options.conversationId || null
 
   // El embedding puede fallar (cuota, red, binding ausente en Node): el cerebro
@@ -480,7 +476,7 @@ export async function searchBrain(
   for (const row of memVectorial) push(memoryHit(row))
   // Vía léxica: el ts_rank_cd crudo se normaliza a [0,1] antes de fundir.
   for (const row of memLexical) push(memoryHit(row, normalizeLexical))
-  for (const row of vaultRows) push(vaultCandidate(row, [clamp01(row.sim)]))
+  for (const row of vaultRows) push(vaultCandidate(row, [round01(row.sim)]))
   for (const row of vaultLexRows) push(vaultCandidate(row, [normalizeLexical(row.rank)]))
   for (const row of noteRows) {
     const lex = lexicalSim(row.title, row.content, q)
@@ -528,7 +524,7 @@ export async function searchBrain(
     // Importancia + recencia ponderan el puntaje devuelto y el ORDEN final
     // (ver `rankBoost`), pero el umbral sigue midiendo relevancia pura: el
     // empujón no mete al contexto un resultado sin suficiente relevancia.
-    const score = clamp01(base * rankBoost(candidate.hit, now))
+    const score = round01(base * rankBoost(candidate.hit, now))
     hits.push({ ...candidate.hit, score })
   }
 

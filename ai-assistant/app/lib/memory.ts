@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { Prisma } from '../generated/prisma/wasm.js'
 import { prisma } from './prisma'
 import { embed } from './llm-embed'
+import { clamp01, round01 } from './num'
 
 export const MEMORY_TYPES = {
   longTerm: 'long_term',
@@ -49,15 +50,6 @@ export interface StoredMemory {
   similarity?: number
 }
 
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value))
-}
-
-function roundScore(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.round(Math.max(0, Math.min(1, value)) * 1000) / 1000
-}
-
 function toTags(json: unknown): string[] {
   if (Array.isArray(json)) return json.filter((t): t is string => typeof t === 'string')
   return []
@@ -87,7 +79,7 @@ function toStored(row: {
     source: row.source,
     isCompressed: row.isCompressed,
     createdAt: row.createdAt,
-    ...(row.similarity !== undefined ? { similarity: roundScore(row.similarity) } : {}),
+    ...(row.similarity !== undefined ? { similarity: round01(row.similarity) } : {}),
   }
 }
 
@@ -359,7 +351,7 @@ export async function getMemoryStats(): Promise<MemoryStats> {
     compressed,
     byType,
     byCategory,
-    avgImportance: rows.length ? roundScore(sum / rows.length) : 0,
+    avgImportance: rows.length ? round01(sum / rows.length) : 0,
     updatedAt: new Date().toISOString(),
   }
 }

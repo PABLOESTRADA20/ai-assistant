@@ -3,6 +3,7 @@ import path from 'path'
 import { prisma } from './prisma'
 import { getVaultIndex } from './vault-index'
 import { embed, EMBEDDING_DIM, MODEL } from './llm-embed'
+import { round01 } from './num'
 import type { VaultEntry } from './vault-index'
 
 const MAX_EMBED_CHARS = 900
@@ -103,16 +104,11 @@ export async function semanticSearchDb(
     `
     return rows.map((row) => {
       const snippet = matchSnippet(row.content, query)
-      return { path: row.path, score: roundScore(row.similarity), snippet }
+      return { path: row.path, score: round01(row.similarity), snippet }
     })
   } catch {
     return null
   }
-}
-
-function roundScore(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.round(Math.max(0, Math.min(1, value)) * 1000) / 1000
 }
 
 function matchSnippet(content: string, query: string): string | undefined {
