@@ -16,6 +16,7 @@ import {
   Search,
 } from 'lucide-react'
 import { apiFetch } from '@/app/lib/auth-client'
+import SidePanel, { inputStyle } from '@/app/components/SidePanel'
 
 interface Repo {
   repo: string
@@ -85,15 +86,6 @@ export default function GithubRepos({ open, onClose }: Props) {
   useEffect(() => {
     if (open) void load()
   }, [open, load])
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
 
   /** Agrega un repo a la lista guardada. Devuelve true si salió bien. */
   const submitRepo = async (value: string, repoNote?: string): Promise<boolean> => {
@@ -194,14 +186,6 @@ export default function GithubRepos({ open, onClose }: Props) {
     }
   }
 
-  if (!open) return null
-
-  const inputStyle = {
-    background: 'var(--surface-2)',
-    border: '1px solid var(--border)',
-    color: 'var(--text-primary)',
-  }
-
   const q = browseQuery.trim().toLowerCase()
   const filteredBrowse = q
     ? browseRepos.filter(
@@ -212,14 +196,8 @@ export default function GithubRepos({ open, onClose }: Props) {
     : browseRepos
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-
-      <aside
-        className="relative w-full max-w-md h-full flex flex-col"
-        style={{ background: 'var(--surface-1)', borderLeft: '1px solid var(--border)' }}
-      >
-        {/* Header */}
+    <SidePanel open={open} onClose={onClose}>
+      {/* Header */}
         <div
           className="flex items-center justify-between p-4 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--border)' }}
@@ -557,7 +535,6 @@ export default function GithubRepos({ open, onClose }: Props) {
         <div className="px-4 py-3 text-xs flex-shrink-0" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
           En el chat, pídele por ejemplo: «revisá este repo y decime cómo arreglar los bugs abiertos».
         </div>
-      </aside>
-    </div>
+    </SidePanel>
   )
 }

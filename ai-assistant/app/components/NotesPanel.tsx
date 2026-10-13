@@ -15,6 +15,9 @@ import {
 } from 'lucide-react'
 import { apiFetch } from '@/app/lib/auth-client'
 import { createZip, safeFileName } from '@/app/lib/zip'
+import { downloadBlob } from '@/app/lib/download'
+import { fmtDate } from '@/app/lib/format'
+import SidePanel, { inputStyle } from '@/app/components/SidePanel'
 
 interface Note {
   id: string
@@ -31,27 +34,10 @@ interface Props {
   onClose: () => void
 }
 
-function fmtDate(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
 /** Nota como Markdown con frontmatter, lista para soltar en Obsidian. */
 function noteToMarkdown(n: Note): string {
   const tags = n.tags?.length ? `\ntags: [${n.tags.join(', ')}]` : ''
   return `---\ntitle: ${n.title}${tags}\nupdated: ${n.updatedAt}\n---\n\n# ${n.title}\n\n${n.content}\n`
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
 function today(): string {
@@ -98,15 +84,6 @@ export default function NotesPanel({ open, onClose }: Props) {
   useEffect(() => {
     if (open) void load()
   }, [open, load])
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -212,25 +189,11 @@ export default function NotesPanel({ open, onClose }: Props) {
     }
   }
 
-  if (!open) return null
-
-  const inputStyle = {
-    background: 'var(--surface-2)',
-    border: '1px solid var(--border)',
-    color: 'var(--text-primary)',
-  }
-
   const isEditing = creating || editingId !== null
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-
-      <aside
-        className="relative w-full max-w-lg h-full flex flex-col"
-        style={{ background: 'var(--surface-1)', borderLeft: '1px solid var(--border)' }}
-      >
-        {/* Header */}
+    <SidePanel open={open} onClose={onClose} maxWidth="lg">
+      {/* Header */}
         <div
           className="flex items-center justify-between p-4 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--border)' }}
@@ -434,7 +397,6 @@ export default function NotesPanel({ open, onClose }: Props) {
             </div>
           </>
         )}
-      </aside>
-    </div>
+    </SidePanel>
   )
 }

@@ -17,7 +17,9 @@ export function formatCompactNumber(n: number): string {
   return String(Math.round(n))
 }
 
-/** Fecha corta en español: "12 oct 2026". */
-export function fmtDate(d: Date): string {
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+/** Fecha corta en español: "12 oct 2026". Acepta Date o ISO; vacío si no vale. */
+export function fmtDate(d: Date | string): string {
+  const date = typeof d === 'string' ? new Date(d) : d
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
 }

@@ -16,6 +16,7 @@ import { Message, Conversation, ToolInvocation, SourceRef, ContextInfo, AVAILABL
 import { checkLocalAgent, openAppLocally, saveLocalToken } from './lib/local-agent'
 import { streamChat, UnauthorizedError } from './lib/chat-client'
 import { loadDraft, saveDraft } from './lib/chat-draft'
+import { downloadBlob } from './lib/download'
 import { ERROR_MESSAGE_PREFIX } from './lib/error-message'
 import {
   getConversations,
@@ -725,15 +726,7 @@ export default function Home() {
     }
 
     const safeTitle = title.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60) || 'conversacion'
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `ARIA-${safeTitle}.md`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    downloadBlob(new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }), `ARIA-${safeTitle}.md`)
   }
 
   // Salida de emergencia: desregistra el service worker, borra cachés y recarga.
