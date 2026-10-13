@@ -327,6 +327,157 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handler)
   }, [handleNew])
 
+  // Turno compartido de chat: envío y regeneración hacen lo mismo después de
+  // preparar la conversación (armar mensajes, trims, estado). Antes esto vivía
+  // duplicado en handleSubmit y handleRegenerate (~110 líneas casi idénticas).
+  const runChatTurn = useCallback(
+    async (opts: { convId: string; history: Message[]; model: string }): Promise<void> => {
+      const { convId, history, model } = opts
+
+      setIsLoading(true)
+      setStreamingContent('')
+      setStreamingTools([])
+      setStreamingSources([])
+      setStreamContext(null)
+
+      const apiMessages = history.map((m) => ({ role: m.role, content: m.content }))
+
+      try {
+        abortRef.current = new AbortController()
+
+        const result = await streamChat({
+          messages: apiMessages,
+          model,
+          conversationId: convId,
+          signal: abortRef.current.signal,
+          onContent: setStreamingContent,
+          onTool: (tool, all) => {
+            setStreamingTools([...all])
+            void runLocalTool(tool, all)
+          },
+          onSources: (sources) => setStreamingSources(sources),
+          onContext: (ctx) => setStreamContext(ctx),
+          onFallback: (from, to, reason) => {
+            const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
+            const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
+            setModelNotice(
+              reason === 'no_tools'
+                ? `🔄 ${fromName} no ejecuta herramientas. Pasé a ${toName} para poder hacerlo.`
+                : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
+            )
+          },
+          onQuota: (until) => setQuotaUntil(until),
+        })
+
+        if (result.switchedFrom) setModel(result.model)
+        // La cuota del día bajó: refrescar el badge del header.
+        void refreshQuota()
+
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: result.content,
+          createdAt: new Date(),
+          model: result.model,
+          tools: result.tools.length > 0 ? result.tools : undefined,
+          sources: result.sources.length > 0 ? result.sources : undefined,
+          ...(result.context ? { context: result.context } : {}),
+        }
+
+        const finalMessages = [...history, assistantMessage]
+        try {
+          const updated = await updateConversation(convId, {
+            messages: finalMessages,
+            model: result.model,
+          })
+          setConversations((prev) =>
+            prev.map((c) => (c.id === convId ? updated : c))
+          )
+        } catch {
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id !== convId) return c
+              return { ...c, messages: finalMessages, updatedAt: new Date() }
+            })
+          )
+        }
+
+        // Voz: se lee la respuesta final (no el streaming, que sería entrecortado).
+        if (autoSpeak && result.content.trim()) speak(result.content)
+      } catch (err: unknown) {
+        // 401: apiFetch ya limpió el token y la app volvió al login.
+        if (err instanceof UnauthorizedError) return
+        if (err instanceof Error && err.name === 'AbortError') {
+          // Stream cortado a mitad: conservar lo que ya se generó.
+          if (streamingContent || streamingTools.length > 0 || streamingSources.length > 0) {
+            const partialMessage: Message = {
+              id: uuidv4(),
+              role: 'assistant',
+              content: streamingContent,
+              createdAt: new Date(),
+              model,
+              tools: streamingTools.length > 0 ? streamingTools : undefined,
+              sources: streamingSources.length > 0 ? streamingSources : undefined,
+              ...(streamContext ? { context: streamContext } : {}),
+            }
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== convId) return c
+                return {
+                  ...c,
+                  messages: [...c.messages, partialMessage],
+                  updatedAt: new Date(),
+                }
+              })
+            )
+          }
+          return
+        }
+
+        // El turno ya estaba en el estado local pero todavía no en el servidor
+        // (solo se guarda al terminar). En caso de error se persiste igual,
+        // usuario + error, para que un recargue no se lleve el mensaje.
+        const errorMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: `${ERROR_MESSAGE_PREFIX} ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu GROQ_API_KEY en el archivo .env.local'}`,
+          createdAt: new Date(),
+        }
+        const failedMessages = [...history, errorMessage]
+        try {
+          const updated = await updateConversation(convId, { messages: failedMessages })
+          setConversations((prev) =>
+            prev.map((c) => (c.id === convId ? updated : c))
+          )
+        } catch {
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id !== convId) return c
+              return { ...c, messages: failedMessages, updatedAt: new Date() }
+            })
+          )
+        }
+      } finally {
+        setIsLoading(false)
+        setStreamingContent('')
+        setStreamingTools([])
+        setStreamingSources([])
+        setStreamContext(null)
+        abortRef.current = null
+      }
+    },
+    [
+      streamingContent,
+      streamingTools,
+      streamingSources,
+      streamContext,
+      runLocalTool,
+      autoSpeak,
+      speak,
+      refreshQuota,
+    ],
+  )
+
   const handleSubmit = useCallback(async () => {
     const content = input.trim()
     if (!content || isLoading) return
@@ -373,137 +524,9 @@ export default function Home() {
     setInput('')
     // El texto ya pasó a la conversación: el borrador del input se agota.
     saveDraft(activeId, '')
-    setIsLoading(true)
-    setStreamingContent('')
-    setStreamingTools([])
-    setStreamingSources([])
-    setStreamContext(null)
 
-    const apiMessages = updatedMessages.map((m) => ({ role: m.role, content: m.content }))
-
-    try {
-      abortRef.current = new AbortController()
-
-      const result = await streamChat({
-        messages: apiMessages,
-        model,
-        conversationId: convId ?? undefined,
-        signal: abortRef.current.signal,
-        onContent: setStreamingContent,
-        onTool: (tool, all) => {
-          setStreamingTools([...all])
-          void runLocalTool(tool, all)
-        },
-        onSources: (sources) => setStreamingSources(sources),
-        onContext: (ctx) => setStreamContext(ctx),
-        onFallback: (from, to, reason) => {
-          const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
-          const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
-          setModelNotice(
-            reason === 'no_tools'
-              ? `🔄 ${fromName} no ejecuta herramientas. Pasé a ${toName} para poder hacerlo.`
-              : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
-          )
-        },
-        onQuota: (until) => setQuotaUntil(until),
-      })
-
-      if (result.switchedFrom) setModel(result.model)
-      // La cuota del día bajó: refrescar el badge del header.
-      void refreshQuota()
-
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: result.content,
-        createdAt: new Date(),
-        model: result.model,
-        tools: result.tools.length > 0 ? result.tools : undefined,
-        sources: result.sources.length > 0 ? result.sources : undefined,
-        ...(result.context ? { context: result.context } : {}),
-      }
-
-      const finalMessages = [...updatedMessages, assistantMessage]
-      try {
-        const updated = await updateConversation(convId!, {
-          messages: finalMessages,
-          model: result.model,
-        })
-        setConversations((prev) =>
-          prev.map((c) => (c.id === convId ? updated : c))
-        )
-      } catch {
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== convId) return c
-            return { ...c, messages: finalMessages, updatedAt: new Date() }
-          })
-        )
-      }
-
-      // Voz: se lee la respuesta final (no el streaming, que sería entrecortado).
-      if (autoSpeak && result.content.trim()) speak(result.content)
-    } catch (err: unknown) {
-      // 401: apiFetch ya limpió el token y la app volvió al login.
-      if (err instanceof UnauthorizedError) return
-      if (err instanceof Error && err.name === 'AbortError') {
-        if (streamingContent || streamingTools.length > 0 || streamingSources.length > 0) {
-          const partialMessage: Message = {
-            id: uuidv4(),
-            role: 'assistant',
-            content: streamingContent,
-            createdAt: new Date(),
-            model,
-            tools: streamingTools.length > 0 ? streamingTools : undefined,
-            sources: streamingSources.length > 0 ? streamingSources : undefined,
-            ...(streamContext ? { context: streamContext } : {}),
-          }
-          setConversations((prev) =>
-            prev.map((c) => {
-              if (c.id !== convId) return c
-              return {
-                ...c,
-                messages: [...c.messages, partialMessage],
-                updatedAt: new Date(),
-              }
-            })
-          )
-        }
-        return
-      }
-
-      const errorMessage: Message = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: `${ERROR_MESSAGE_PREFIX} ${err instanceof Error ? err.message : 'No se pudo conectar con la API. Verifica tu GROQ_API_KEY en el archivo .env.local'}`,
-        createdAt: new Date(),
-      }
-      // El turno del usuario ya estaba en el estado local pero todavía no en el
-      // servidor (solo se guarda al terminar). En caso de error se persiste
-      // igual, usuario + error, para que un recargue no se lleve el mensaje.
-      const failedMessages = [...updatedMessages, errorMessage]
-      try {
-        const updated = await updateConversation(convId!, { messages: failedMessages })
-        setConversations((prev) =>
-          prev.map((c) => (c.id === convId ? updated : c))
-        )
-      } catch {
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== convId) return c
-            return { ...c, messages: failedMessages, updatedAt: new Date() }
-          })
-        )
-      }
-    } finally {
-      setIsLoading(false)
-      setStreamingContent('')
-      setStreamingTools([])
-      setStreamingSources([])
-      setStreamContext(null)
-      abortRef.current = null
-    }
-  }, [input, isLoading, activeId, conversations, model, streamingContent, streamingTools, streamingSources, streamContext, runLocalTool, autoSpeak, prime, speak, refreshQuota])
+    void runChatTurn({ convId: convId!, history: updatedMessages, model })
+  }, [input, isLoading, activeId, conversations, model, autoSpeak, prime, runChatTurn])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -532,102 +555,8 @@ export default function Home() {
     const lastUser = trimmed[trimmed.length - 1]
     if (!lastUser || lastUser.role !== 'user') return
 
-    setIsLoading(true)
-    setStreamingContent('')
-    setStreamingTools([])
-    setStreamingSources([])
-    setStreamContext(null)
-
-    const apiMessages = trimmed.map((m) => ({ role: m.role, content: m.content }))
-
-    try {
-      abortRef.current = new AbortController()
-      const result = await streamChat({
-        messages: apiMessages,
-        model: activeConversation.model,
-        conversationId: convId,
-        signal: abortRef.current.signal,
-        onContent: setStreamingContent,
-        onTool: (tool, all) => {
-          setStreamingTools([...all])
-          void runLocalTool(tool, all)
-        },
-        onSources: (sources) => setStreamingSources(sources),
-        onContext: (ctx) => setStreamContext(ctx),
-        onFallback: (from, to, reason) => {
-          const fromName = AVAILABLE_MODELS.find((m) => m.id === from)?.name ?? from
-          const toName = AVAILABLE_MODELS.find((m) => m.id === to)?.name ?? to
-          setModelNotice(
-            reason === 'no_tools'
-              ? `🔄 ${fromName} no ejecuta herramientas. Pasé a ${toName} para poder hacerlo.`
-              : `🔄 ${fromName} se quedó sin cuota. Pasé a ${toName}.`,
-          )
-        },
-        onQuota: (until) => setQuotaUntil(until),
-      })
-
-      if (result.switchedFrom) setModel(result.model)
-      // La cuota del día bajó: refrescar el badge del header.
-      void refreshQuota()
-
-      const assistantMessage: Message = {
-        id: uuidv4(), role: 'assistant', content: result.content, createdAt: new Date(), model: result.model,
-        tools: result.tools.length > 0 ? result.tools : undefined,
-        sources: result.sources.length > 0 ? result.sources : undefined,
-        ...(result.context ? { context: result.context } : {}),
-      }
-
-      const finalMessages = [...trimmed, assistantMessage]
-      try {
-        const updated = await updateConversation(convId, { messages: finalMessages, model: result.model })
-        setConversations((prev) =>
-          prev.map((c) => (c.id === convId ? updated : c))
-        )
-      } catch {
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== convId) return c
-            return { ...c, messages: finalMessages, updatedAt: new Date() }
-          })
-        )
-      }
-
-      if (autoSpeak && result.content.trim()) speak(result.content)
-    } catch (err) {
-      if (err instanceof UnauthorizedError) return
-      if (err instanceof Error && err.name !== 'AbortError') {
-        console.error(err)
-        // Igual que en el envío normal: persistir el error para que un
-        // recargue no se lleve el historial regenerado.
-        const errorMessage: Message = {
-          id: uuidv4(),
-          role: 'assistant',
-          content: `${ERROR_MESSAGE_PREFIX} ${err.message}`,
-          createdAt: new Date(),
-        }
-        const failedMessages = [...trimmed, errorMessage]
-        try {
-          const updated = await updateConversation(convId, { messages: failedMessages })
-          setConversations((prev) =>
-            prev.map((c) => (c.id === convId ? updated : c))
-          )
-        } catch {
-          setConversations((prev) =>
-            prev.map((c) => {
-              if (c.id !== convId) return c
-              return { ...c, messages: failedMessages, updatedAt: new Date() }
-            })
-          )
-        }
-      }
-    } finally {
-      setIsLoading(false)
-      setStreamingContent('')
-      setStreamingTools([])
-      setStreamingSources([])
-      setStreamContext(null)
-    }
-  }, [activeConversation, isLoading, runLocalTool, autoSpeak, prime, speak, refreshQuota])
+    void runChatTurn({ convId, history: trimmed, model: activeConversation.model })
+  }, [activeConversation, isLoading, autoSpeak, prime, runChatTurn])
 
   const handleSuggestion = (text: string) => {
     setInput(text)
