@@ -12,6 +12,7 @@
  * soporta herramientas.
  */
 import { apiFetch } from '@/app/lib/auth-client'
+import { readSseLines, sseData } from '@/app/lib/sse'
 import type { ContextInfo, SourceRef, ToolInvocation } from '@/app/types'
 
 export const MODEL_FALLBACK_ORDER = [
@@ -120,8 +121,7 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
       throw new Error(message)
     }
 
-    const reader = res.body?.getReader()
-    const decoder = new TextDecoder()
+    const body = res.body
     let accumulated = ''
     // Puede cambiar si el servidor avisa que cambió de modelo para usar tools.
     let servedModel = candidate
@@ -129,87 +129,77 @@ export async function streamChat(opts: StreamChatOptions): Promise<StreamChatRes
     const sourceEvents: SourceRef[] = []
     let contextEvent: ContextInfo | undefined
 
-    if (reader) {
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') continue
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.type === 'model_switch') {
-              servedModel = typeof parsed.to === 'string' ? parsed.to : candidate
-              const reason = typeof parsed.reason === 'string' ? parsed.reason : 'no_tools'
-              if (typeof parsed.until === 'string') opts.onQuota?.(parsed.until)
-              opts.onFallback?.(
-                typeof parsed.from === 'string' ? parsed.from : candidate,
-                servedModel,
-                reason,
-              )
-              continue
-            }
-            if (parsed.type === 'tool_call') {
-              const tool: ToolInvocation = {
-                name: parsed.tool?.name || '',
-                args: parsed.tool?.args || {},
-                result: parsed.tool?.result,
-                status: parsed.tool?.status === 'error' ? 'error' : 'done',
-              }
-              toolEvents.push(tool)
-              opts.onTool(tool, toolEvents)
-              continue
-            }
-            if (parsed.type === 'sources') {
-              const list = parsed.sources
-              if (Array.isArray(list)) {
-                sourceEvents.length = 0
-                for (const s of list) {
-                  if (!s || typeof s.kind !== 'string' || typeof s.id !== 'string') continue
-                  sourceEvents.push({
-                    kind: ['memory', 'note', 'vault', 'message'].includes(s.kind)
-                      ? s.kind
-                      : 'message',
-                    id: s.id,
-                    title: typeof s.title === 'string' ? s.title : undefined,
-                    snippet: typeof s.snippet === 'string' ? s.snippet : undefined,
-                    score: typeof s.score === 'number' ? s.score : 0,
-                    source: typeof s.source === 'string' ? s.source : undefined,
-                  })
-                }
-                opts.onSources?.(sourceEvents)
-              }
-              continue
-            }
-            if (parsed.type === 'context') {
-              const c = parsed.context
-              if (c && typeof c === 'object') {
-                const ctx: ContextInfo = {
-                  budget: typeof c.budget === 'number' ? c.budget : 5000,
-                  promptTokens: typeof c.promptTokens === 'number' ? c.promptTokens : 0,
-                  summarizedCount: typeof c.summarizedCount === 'number' ? c.summarizedCount : 0,
-                  hasSummary: Boolean(c.hasSummary),
-                }
-                contextEvent = ctx
-                opts.onContext?.(ctx)
-              }
-              continue
-            }
-            if (parsed.content) {
-              accumulated += parsed.content
-              opts.onContent(accumulated)
-            }
-          } catch {
-            /* chunk malformado: se ignora */
+    if (body) {
+      await readSseLines(body, (line) => {
+        const data = sseData(line)
+        if (!data || data === '[DONE]') return
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'model_switch') {
+            servedModel = typeof parsed.to === 'string' ? parsed.to : candidate
+            const reason = typeof parsed.reason === 'string' ? parsed.reason : 'no_tools'
+            if (typeof parsed.until === 'string') opts.onQuota?.(parsed.until)
+            opts.onFallback?.(
+              typeof parsed.from === 'string' ? parsed.from : candidate,
+              servedModel,
+              reason,
+            )
+            return
           }
+          if (parsed.type === 'tool_call') {
+            const tool: ToolInvocation = {
+              name: parsed.tool?.name || '',
+              args: parsed.tool?.args || {},
+              result: parsed.tool?.result,
+              status: parsed.tool?.status === 'error' ? 'error' : 'done',
+            }
+            toolEvents.push(tool)
+            opts.onTool(tool, toolEvents)
+            return
+          }
+          if (parsed.type === 'sources') {
+            const list = parsed.sources
+            if (Array.isArray(list)) {
+              sourceEvents.length = 0
+              for (const s of list) {
+                if (!s || typeof s.kind !== 'string' || typeof s.id !== 'string') continue
+                sourceEvents.push({
+                  kind: ['memory', 'note', 'vault', 'message'].includes(s.kind)
+                    ? s.kind
+                    : 'message',
+                  id: s.id,
+                  title: typeof s.title === 'string' ? s.title : undefined,
+                  snippet: typeof s.snippet === 'string' ? s.snippet : undefined,
+                  score: typeof s.score === 'number' ? s.score : 0,
+                  source: typeof s.source === 'string' ? s.source : undefined,
+                })
+              }
+              opts.onSources?.(sourceEvents)
+            }
+            return
+          }
+          if (parsed.type === 'context') {
+            const c = parsed.context
+            if (c && typeof c === 'object') {
+              const ctx: ContextInfo = {
+                budget: typeof c.budget === 'number' ? c.budget : 5000,
+                promptTokens: typeof c.promptTokens === 'number' ? c.promptTokens : 0,
+                summarizedCount: typeof c.summarizedCount === 'number' ? c.summarizedCount : 0,
+                hasSummary: Boolean(c.hasSummary),
+              }
+              contextEvent = ctx
+              opts.onContext?.(ctx)
+            }
+            return
+          }
+          if (parsed.content) {
+            accumulated += parsed.content
+            opts.onContent(accumulated)
+          }
+        } catch {
+          /* chunk malformado: se ignora */
         }
-      }
+      })
     }
 
     return {

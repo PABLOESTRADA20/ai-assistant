@@ -7,6 +7,7 @@
  * mismo prompt + memoria que el chat) y `callGroqWithTools` (el mismo bucle de
  * herramientas), y se limita a drenar el stream a un string.
  */
+import { openAiDelta, readSseLines } from '@/app/lib/sse'
 import { callGroqWithTools, groqFetch, type ToolCallRecord } from '@/app/lib/tools'
 import {
   buildAriaContext,
@@ -48,31 +49,11 @@ export interface TextReplyResult {
 }
 
 async function drainToText(stream: ReadableStream): Promise<string> {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
   let text = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6)
-      if (data === '[DONE]') continue
-      try {
-        const parsed = JSON.parse(data)
-        const content = parsed.choices?.[0]?.delta?.content || ''
-        if (content) text += content
-      } catch {
-        /* fragmento malformado */
-      }
-    }
-  }
-
+  await readSseLines(stream as ReadableStream<Uint8Array>, (line) => {
+    const delta = openAiDelta(line)
+    if (delta?.content) text += delta.content
+  })
   return text.trim()
 }
 

@@ -19,11 +19,12 @@ import {
   nextMidnightUtc,
 } from '@/app/lib/quota'
 import { workersAiChatStream } from '@/app/lib/workers-ai'
-import { requireAuth } from '@/app/lib/auth'
+import { withAuth } from '@/app/lib/api'
 import { getRepos } from '@/app/lib/github'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
 import { toSourceRefs } from '@/app/lib/sources'
+import { openAiDelta, readSseLines } from '@/app/lib/sse'
 import { DEFAULT_CONTEXT_BUDGET, estimateMessagesTokens } from '@/app/lib/tokens'
 import {
   MODEL_CONFIG,
@@ -132,10 +133,7 @@ async function groqErrorResponse(status: number, errText: string, provider: Prov
   )
 }
 
-export async function POST(req: NextRequest) {
-  const denied = requireAuth(req)
-  if (denied) return denied
-
+export const POST = withAuth(async (req: NextRequest) => {
   const limited = await rateLimit(req, 'CHAT_RATE_LIMITER')
   if (limited) return limited
 
@@ -392,36 +390,13 @@ export async function POST(req: NextRequest) {
                 )
               }
 
-              const reader = stream.getReader()
-              const decoder = new TextDecoder()
-              let buffer = ''
-
-              while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-
-                buffer += decoder.decode(value, { stream: true })
-                const lines = buffer.split('\n')
-                buffer = lines.pop() || ''
-
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const data = line.slice(6)
-                    if (data === '[DONE]') continue
-                    try {
-                      const parsed = JSON.parse(data)
-                      const delta = parsed.choices?.[0]?.delta ?? {}
-                      if (typeof delta.reasoning === 'string') {
-                        reasoningChars += delta.reasoning.length
-                      }
-                      const fr = parsed.choices?.[0]?.finish_reason
-                      if (fr) finishReason = fr
-                      const content = delta.content || ''
-                      if (content) emit(content)
-                    } catch { /* skip parse errors */ }
-                  }
-                }
-              }
+              await readSseLines(stream as ReadableStream<Uint8Array>, (line) => {
+                const delta = openAiDelta(line)
+                if (!delta) return
+                if (delta.reasoning) reasoningChars += delta.reasoning.length
+                if (delta.finishReason) finishReason = delta.finishReason
+                if (delta.content) emit(delta.content)
+              })
 
               // Ultimo recurso: el modelo consumio las rondas de herramientas y
               // cerro el stream solo con `reasoning` (sin una sola palabra de
@@ -454,26 +429,10 @@ export async function POST(req: NextRequest) {
                 })
 
                 if (retry.ok) {
-                  const reader2 = retry.body!.getReader()
-                  const decoder2 = new TextDecoder()
-                  let buffer2 = ''
-                  while (true) {
-                    const { done: d2, value: v2 } = await reader2.read()
-                    if (d2) break
-                    buffer2 += decoder2.decode(v2, { stream: true })
-                    const lines2 = buffer2.split('\n')
-                    buffer2 = lines2.pop() || ''
-                    for (const line2 of lines2) {
-                      if (!line2.startsWith('data: ')) continue
-                      const d2text = line2.slice(6)
-                      if (d2text === '[DONE]') continue
-                      try {
-                        const p2 = JSON.parse(d2text)
-                        const c2 = p2.choices?.[0]?.delta?.content || ''
-                        if (c2) emit(c2)
-                      } catch { /* skip */ }
-                    }
-                  }
+                  await readSseLines(retry.body!, (line) => {
+                    const delta = openAiDelta(line)
+                    if (delta?.content) emit(delta.content)
+                  })
                 } else {
                   await retry.text().catch(() => '')
                   emit('\n\n_No pude generar una respuesta en este intento. Reintenta._')
@@ -649,39 +608,18 @@ export async function POST(req: NextRequest) {
         }
 
         const drain = async (res: Response): Promise<number> => {
-          const reader = res.body!.getReader()
-          const decoder = new TextDecoder()
-          let buffer = ''
-
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || ''
-
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue
-              const data = line.slice(6)
-              if (data === '[DONE]') continue
-              try {
-                const parsed = JSON.parse(data)
-                const delta = parsed.choices?.[0]?.delta ?? {}
-                if (typeof delta.reasoning === 'string') {
-                  reasoningChars += delta.reasoning.length
-                }
-                const content = delta.content || ''
-                if (content) {
-                  emitted++
-                  contentChars += content.length
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
-                  )
-                }
-              } catch { /* skip parse errors */ }
+          await readSseLines(res.body!, (line) => {
+            const delta = openAiDelta(line)
+            if (!delta) return
+            if (delta.reasoning) reasoningChars += delta.reasoning.length
+            if (delta.content) {
+              emitted++
+              contentChars += delta.content.length
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ content: delta.content })}\n\n`)
+              )
             }
-          }
+          })
           return emitted
         }
 
@@ -750,4 +688,4 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     })
   }
-}
+})

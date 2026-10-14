@@ -14,6 +14,8 @@
  * filtra ese bloque aunque llegue troceado entre chunks.
  */
 
+import { readSseLines } from '@/app/lib/sse'
+
 type AiBinding = {
   run: (model: string, input: Record<string, unknown>) => Promise<unknown>
 }
@@ -118,14 +120,11 @@ class ThinkFilter {
 }
 
 export function normalizeToOpenAiSse(raw: unknown): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder()
   const source = raw as ReadableStream<Uint8Array>
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      const reader = source.getReader()
       const filter = new ThinkFilter((text) => controller.enqueue(sseChunk(text)))
-      let buffer = ''
 
       const handleLine = (line: string) => {
         const trimmed = line.trim()
@@ -148,15 +147,7 @@ export function normalizeToOpenAiSse(raw: unknown): ReadableStream<Uint8Array> {
       }
 
       try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) handleLine(line)
-        }
-        if (buffer) handleLine(buffer)
+        await readSseLines(source, handleLine)
         filter.end()
       } catch (err) {
         console.error('Workers AI stream error:', err)
