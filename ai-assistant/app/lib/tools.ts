@@ -524,6 +524,37 @@ export const TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
+      name: 'search_code',
+      description:
+        "Semantic search over the user's own project, which is indexed locally as " +
+        'function/class/file chunks (built by `npm run db:index-code`). It combines ' +
+        'vector similarity with exact identifier matching and returns path, line range, ' +
+        'symbol and the code itself, so you can locate WHERE something lives without ' +
+        'reading files one by one. Use it first to jump to the right place, then ' +
+        'github_read_file for exact bytes around it. It only searches what is indexed; ' +
+        'an empty result means the index is missing or stale, not that the code does not exist.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              'What you need: a symbol, an identifier, or what you want to understand, ' +
+              'e.g. "where is the tool loop bounded" or "applyPatch"',
+          },
+          repo: {
+            type: 'string',
+            description: 'Optional "owner/repo" label to filter; omit to search everything indexed',
+          },
+          limit: { type: 'integer', description: 'How many results, 1-10 (default 6)' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'save_cloud_note',
       description:
         "Save or update a note in the user's cloud ARIA folder (a persistent notes store, " +
@@ -622,6 +653,8 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return githubApplyPatch(args)
     case 'github_get_check_runs':
       return githubGetCheckRuns(args.repo, args.pr, args.branch)
+    case 'search_code':
+      return searchCodeTool(args)
     case 'save_cloud_note':
       return saveCloudNote(args.title, args.content, args.tags)
     case 'list_cloud_notes':
@@ -892,6 +925,45 @@ async function getWeather(location: string): Promise<string> {
     })
   } catch (err) {
     return JSON.stringify({ error: `Error obteniendo clima: ${String(err)}` })
+  }
+}
+
+/**
+ * Búsqueda sobre el índice de código (FASE 3).
+ *
+ * El índice lo construye `scripts/index-code.ts` en la PC; acá solo se consulta
+ * la tabla `CodeChunk`. Se importa en diferido para no cargar el módulo (y su
+ * Prisma) cuando la herramienta no se usa.
+ */
+async function searchCodeTool(args: Record<string, unknown>): Promise<string> {
+  const query = typeof args.query === 'string' ? args.query.trim() : ''
+  if (!query) return JSON.stringify({ error: 'query vacía' })
+
+  const rawLimit = Number(args.limit)
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(1, Math.floor(rawLimit)), 10) : 6
+  const repo = typeof args.repo === 'string' && args.repo.trim() ? args.repo.trim() : null
+
+  try {
+    const { searchCode, formatCodeLocation } = await import('@/app/lib/code-index')
+    const hits = await searchCode(query, { limit, repo })
+    if (hits.length === 0) {
+      return JSON.stringify({
+        results: [],
+        note:
+          'El índice de código no devolvió nada. O no está construido (ejecutar ' +
+          '`npm run db:index-code` en la PC donde está el repo) o el tema no está cubierto. ' +
+          'Puedes leer el fichero concreto con github_read_file.',
+      })
+    }
+    return JSON.stringify({
+      results: hits.map((hit) => ({
+        where: formatCodeLocation(hit),
+        score: hit.score,
+        code: hit.content.slice(0, 900),
+      })),
+    })
+  } catch (err) {
+    return JSON.stringify({ error: `Error buscando en el índice de código: ${String(err)}` })
   }
 }
 

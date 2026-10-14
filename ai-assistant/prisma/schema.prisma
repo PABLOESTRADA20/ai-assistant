@@ -112,3 +112,37 @@ model Note {
 
   @@index([updatedAt])
 }
+
+/// Trozo de código indexado por significado (FASE 3).
+///
+/// Lo llena `scripts/index-code.ts` desde la PC (donde está el repo clonado);
+/// el Worker solo consulta con `search_code` y no puede leer el disco.
+///
+/// `fileHash` es el hash del fichero COMPLETO: si no cambió, el script cambió
+/// solo ese fichero y no gasta ni una llamada de embeddings (aceptación de la
+/// FASE 3: segunda ejecución sin cambios = cero llamadas).
+model CodeChunk {
+  id          String   @id @default(uuid())
+  /// `owner/repo`, o `local` si no se declaró `CODE_INDEX_REPO`.
+  repo        String
+  /// Ruta relativa al raíz indexado, siempre con `/`.
+  path        String
+  /// Nombre de la función/clase/constante cuando el troceado lo detectó.
+  symbol      String?
+  kind        String
+  lang        String?
+  startLine   Int
+  endLine     Int
+  content     String
+  /// Hash del texto del trozo (fino, para comparar dentro de un fichero).
+  contentHash String
+  /// Hash del fichero entero: la puerta que salta lo que no cambió.
+  fileHash    String
+  embedding   Unsupported("vector(1024)")?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([repo, path])
+  @@index([fileHash])
+  @@index([kind])
+}

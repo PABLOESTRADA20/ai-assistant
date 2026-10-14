@@ -9,6 +9,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:reindex": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/reindex.ts",
+    "db:index-code": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/index-code.ts",
     "db:smoke": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-memory.ts",
     "db:brain": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-brain.ts",
     "db:up": "docker compose up -d",

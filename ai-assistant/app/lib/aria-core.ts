@@ -37,11 +37,13 @@ Sé crítico pero constructivo: el objetivo es que la idea salga mejor, no demol
 Respond in the same language the user writes in (Spanish, English, etc.).
 
 ## When the user asks you to search
-If the user asks you to search, look something up or find recent information, you MUST call web_search before answering, even if you think you already know the answer. Your memory of versions, commands and APIs goes stale, and a confident wrong answer is worse than a slower right one.
-After searching, base the answer on what the sources actually say. If they lack the detail, say it is not in the sources; never invent release notes, version numbers or command syntax.
+If the user asks you to search, look something up or find recent information, you MUST call web_search before answering, even if you think you know it: your memory of versions, commands and APIs goes stale. Base the answer on what the sources say; if they lack the detail, say so — never invent release notes, versions or syntax.
 
 ## GitHub
-You can read repos, files and issues; ground every suggestion in what you read, never guess at unfetched contents. To modify code, read the files first, then use github_apply_patch: each patch is {path, search, replace}, search must match the file exactly once, and baseSha aborts if it changed. Use github_create_pull_request only to create or rewrite a file. Both open an isolated aria/* branch and a PR: never claim a merge, never use them unless asked, and never bypass their protections. After opening or fixing a PR call github_get_check_runs; never call it ready while checks fail or are pending, and patch again at most twice on the same branch. Keep edits minimal; don't reformat unrelated code. If repos are configured, use them for "my repo"; confirm if ambiguous.
+You can read repos, files and issues; ground every suggestion in what you read, never guess. To modify code, read the files first, then use github_apply_patch ({path, search, replace}): search must match exactly once and baseSha aborts if the file changed. Use github_create_pull_request only to create or rewrite a file. Both open an isolated aria/* branch and a PR: never claim a merge, use them only when asked, never bypass their protections. After opening or fixing a PR call github_get_check_runs; never call it ready while checks fail or are pending, and patch again at most twice per branch. Keep edits minimal. Use configured repos for "my repo"; confirm if ambiguous.
+
+## Code index
+search_code searches an index of the user's own project and returns path, lines and code: use it to locate where something lives before opening files. If it returns nothing, the local index may be missing or stale.
 
 ## Cloud notes
 The ARIA cloud folder is the user's persistent notes store, exportable to Obsidian. Save a note when the user asks you to save, note down or remember something; ordinary preferences and facts are handled by memory. Write clean Markdown with a short title and list notes before assuming what is stored.
@@ -158,6 +160,7 @@ export const TOOL_GROUPS = {
     'github_list_issues',
     'github_get_check_runs',
   ],
+  code: ['search_code'],
   githubWrite: ['github_create_pull_request', 'github_apply_patch'],
   memory: ['recall_memory'],
   time: ['get_time'],
@@ -179,6 +182,16 @@ const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
  */
 const RX_CODE_REVIEW =
   /\b(revis\w*|analiz\w*|an[aá]lisis|audit\w*|mejor\w*|refactor\w*|depur\w*|debug\w*|optimiz\w*|corrig\w*|arregl\w*)\b[^.!?]{0,60}\b(c[oó]digo|proyecto|repositorio|repos?|archivos?|funciones?|clases?|m[oó]dulos?|app|aplicaci[oó]n|pull request|rama|branch)\b/i
+/**
+ * Intención de CONSULTAR el código indexado.
+ *
+ * A diferencia de `github_*`, no necesita un repo configurado: el índice de
+ * `CodeChunk` vive en la base y lo llena `db:index-code` en la PC, así que
+ * "¿dónde se guarda una nota?" o "cómo funciona el bucle de herramientas"
+ * pueden resolverse sin tocar GitHub.
+ */
+const RX_CODE_SEARCH =
+  /\b(d[oó]nde (?:est[aá]|se (?:usa|define|encuentra|declara|guarda))|busca\w* en (?:el|mi) c[oó]digo|definici[oó]n de|implementaci[oó]n de|c[oó]mo (?:funciona|est[aá] (?:implement\w*|hecho))|qu[eé] (?:archivo|fichero|funci[oó]n|clase) (?:define|contiene|usa|hace))\b/i
 const RX_GITHUB_WRITE =
   /\b(modifica|modificar|modific[aá]|edita|editar|edit[aá]|cambia|cambiar|cambi[aá]|implementa|implementar|implement[aá]|corrige|corregir|correg[ií]|arregla|arreglar|arregl[aá]|crea(?:r)?|actualiza|actualizar|actualiz[aá]|haz(?:me)? (?:el )?cambio|parche\w*|aplica|aplicar|aplic[aá])(?!\w)/i
 const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
@@ -226,6 +239,8 @@ export function selectTools(
     add(TOOL_GROUPS.github)
     if (RX_GITHUB_WRITE.test(text)) add(TOOL_GROUPS.githubWrite)
   }
+  // El índice de código NO depende de GitHub: se ofrece aunque no haya repos.
+  if (RX_CODE_REVIEW.test(text) || RX_CODE_SEARCH.test(text)) add(TOOL_GROUPS.code)
   if (RX_VAULT.test(text)) add(TOOL_GROUPS.vault)
   if (RX_CLOUD_NOTES.test(text)) add(TOOL_GROUPS.cloudNotes)
   if (RX_MEMORY.test(text)) add(TOOL_GROUPS.memory)

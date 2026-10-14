@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-14 (creación del roadmap + **Fase 0 cerrada**).
+> Última actualización: 2026-10-14 (Fases 0, 1, 2 y 3 implementadas; aceptación en vivo de 1–3 pendiente).
 
 ## Objetivo
 
@@ -18,7 +18,7 @@
 | 0 | Ajustes del PC (WSL, Next, Vitest) | ✅ Hecha | Alta |
 | 1 | Edición precisa por parches | ✅ Hecha | Máxima |
 | 2 | Verificar antes de dar por bueno (CI) | ✅ Hecha | Alta |
-| 3 | Índice de código + mapa del repo | ⬜ Pendiente | Media |
+| 3 | Índice de código + mapa del repo | ✅ Hecha | Media |
 | 4 | Modificar memorias y notas por id | ⬜ Pendiente | Media |
 | 5 | Clasificador de herramientas (opcional) | ⬜ Pendiente | Baja |
 | 6 | LoRA de estilo/código (opcional) | ⬜ Pendiente | Baja |
@@ -66,17 +66,18 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 
 **Aceptación:** **Falta** la prueba en vivo (si el CI falla, ARIA reporta qué falló y puede corregir en la misma rama).
 
-## Fase 3 — Índice de código + mapa del repo
+## Fase 3 — Índice de código + mapa del repo ✅
 
-- [ ] Migración Prisma + modelo `CodeChunk` con índices HNSW y GIN (seguir el patrón de las migraciones `20261007120000_brain_hnsw` y `20261011003000_search_and_storage_indexes`)
-- [ ] `scripts/index-code.ts`: troceo por función/clase/archivo, salta lo que no cambió (`contentHash`), lotes pequeños, respeta la cuota de Workers AI, reutiliza `EmbeddingCache`
-- [ ] Búsqueda en `app/lib/code-index.ts` y herramienta `search_code` (registrada en `tools.ts` y `TOOL_GROUPS`)
-- [ ] `REPO_MAP.md` generado por script, solo se regenera si cambió algo (omitir si el índice ya lo cubre)
-- [ ] Tests del troceado y de la fusión de resultados
-- [ ] Medir neuronas de Workers AI del indexado inicial (cuota: 10.000/día según el README)
+- [x] Migración Prisma + modelo `CodeChunk` con índices HNSW y GIN (siguiendo el patrón de `20261007120000_brain_hnsw` y `20261011003000_search_and_storage_indexes`) → `prisma/migrations/20261014120000_code_index/` (tabla + `CodeChunk_embedding_hnsw_idx` + `CodeChunk_fts_idx`).
+- [x] `scripts/index-code.ts`: troceo por función/clase/archivo, salta ficheros sin cambios por `fileHash` (y `contentHash` por trozo), reutiliza `EmbeddingCache`, swap atómico por fichero, lotes pequeños y respeta la reserva diaria de Workers AI (`fallbackBudgetLeft`).
+- [x] Búsqueda en `app/lib/code-index.ts` (`searchCode`: vectorial + léxica fundidas con `orFuse`) y herramienta `search_code` (registrada en `tools.ts`, en `selectTools` y en `TOOL_GROUPS.code`).
+- [x] `REPO_MAP.md` generado por el script, reescrito SOLO si cambia su contenido (sin timestamp, para que no cambie solo).
+- [x] Tests del troceado (`chunkCode`) y de la fusión (`fuseCodeScores`): 15 tests en `tests/unit/code-index.test.ts`; selección de la herramienta en español en `tests/unit/select-tools.test.ts`.
+- [ ] Medir neuronas de Workers AI del indexado inicial — **por medir**: el script ya informa `embeddings.api`, `embeddings.cache`, `estimatedNeurons` y el estado de la cuota en cada pasada; falta correrlo contra una BD real.
 
-**Aceptación:** segunda ejecución sin cambios = cero llamadas de embeddings; sin procesos pesados residuales.
-**Nota:** el workflow de Actions para reindexar se crea solo si lo pido explícitamente.
+**Aceptación:** la segunda ejecución sin cambios no debe llamar a ningún embedding (el `fileHash` del fichero coincide → se salta antes de trocear/embeber). **Falta la prueba en vivo**: aplicar la migración y correr `db:index-code` dos veces sobre una BD real.
+
+**Nota:** `REPO_MAP.md` no existe hasta la primera indexación; lo crea el script. El workflow de Actions para reindexar sigue sin crearse (solo si se pide). El troceo es heurístico (no un parser): puede partir un trozo de más, nunca perder código.
 
 ## Fase 4 — Modificar memorias y notas
 
@@ -114,15 +115,20 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 | 2026-10-14 | Modelo propio pasa a opcional y al final | No mejora la edición de código; el modelo actual razona mejor |
 | 2026-10-14 | Fase 0: se conserva `webpackMemoryOptimizations: true` pese a no medir ahorro | No rompe nada y ayuda cuando la RAM es escasa (p. ej. CI); el ahorro real está en `maxWorkers` |
 | 2026-10-14 | Fase 0: no se usa `isolate: false` en Vitest | Compartiría el registro de módulos entre archivos; `github-patch` y `github-checks` mockean Prisma con estados distintos y se pisarían |
+| 2026-10-14 | Fase 3: un solo modelo `CodeChunk` (el hash del fichero se repite por trozo), sin tabla `CodeFile` aparte | El `fileHash` basta para saltar la reindexación de lo que no cambió; una tabla extra no aporta y suma mantenimiento |
+| 2026-10-14 | Fase 3: índice léxico con configuración `simple` (sin stemming) | El código se busca por identificadores literales (`saveNote` debe casar con `saveNote`), no por raíces de español |
+| 2026-10-14 | Fase 3: `search_code` NO se gatea por repos configurados | El índice vive en la BD y lo llena un script local; no depende de GitHub |
+| 2026-10-14 | Fase 3: se recortó el system prompt (búsqueda web y GitHub) al añadir `search_code` | El prompt no puede crecer de 900 tokens; el detalle ya vive en las descripciones de las herramientas |
 
 ## Pendiente de verificar
 
 - ~~**RAM real**: confirmar.~~ **Resuelto (2026-10-14)**: 16 GB (2×8 GB), 8C/12T; verificado con `Win32_PhysicalMemory`, `Win32_ComputerSystem` y `Win32_OperatingSystem`.
 - **`.wslconfig`**: sin distro WSL instalada no se pudo medir su efecto; requiere instalar/arrancar una distro tras `wsl --shutdown`.
 - **Fases 1 y 2**: falta la prueba en vivo (edición real en rama `aria/*` y PR con CI). Implementación y tests unitarios en verde.
+- **Fase 3**: aplicar la migración `20261014120000_code_index` y correr `npm run db:index-code` **dos veces**. La segunda pasada debe informar `embeddings.api: 0` y `repoMap: "sin cambios"` (y la primera, crear `REPO_MAP.md`). Requiere una BD (Docker/VPS) y `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` para los embeddings. Sin esa prueba no se dan por buenos el troceado real ni el conteo de neuronas.
 - **Versión de Next**: la instalada reporta `15.5.25` en el banner de `next dev`, pero el lockfile dice `15.5.27`. Confirmar cuál está activa.
 - **Compatibilidad de Next con `@opennextjs/cloudflare` 1.20.6**: la nota original decía Next 16.3, pero **no aplica**: la versión instalada es Next 15.5.x (no 16.x). Revisar solo si se planea subir a Next 16.
-- Datos del repo tomados del prompt original (líneas de código, migraciones, límites): confirmar al leer el repo (Fase 3).
+- ~~Datos del repo tomados del prompt original (líneas de código, migraciones, límites): confirmar al leer el repo (Fase 3).~~ **Resuelto (2026-10-14)**: leídos directamente del repo durante la Fase 3.
 - Cifras de Unsloth/Colab (Fases 5 y 6): son de terceros.
 
 ## Cómo se mantiene este archivo

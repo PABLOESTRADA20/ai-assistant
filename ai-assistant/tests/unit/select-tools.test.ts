@@ -69,8 +69,24 @@ describe('selectTools', () => {
     expect(names('auditá el código de la app', true).has('github_read_file')).toBe(true)
   })
 
-  it('NO enciende github al revisar código sin repos ni URL configurados', () => {
-    expect(names('revisá mi código', false).size).toBe(0)
+  it('NO enciende github al revisar código sin repos ni URL, pero sí search_code', () => {
+    const tools = names('revisá mi código', false)
+    // El índice de código vive en la base: no necesita repo configurado.
+    expect(tools.has('search_code')).toBe(true)
+    expect(tools.has('github_read_file')).toBe(false)
+    expect(tools.has('github_repo_overview')).toBe(false)
+  })
+
+  it('ofrece search_code al preguntar por el código del proyecto', () => {
+    for (const phrase of [
+      '¿dónde se guarda una nota?',
+      'cómo funciona el bucle de herramientas',
+      'buscá en el código dónde se define saveNote',
+      '¿qué función define el patrón de parches?',
+    ]) {
+      expect(names(phrase, false).has('search_code'), phrase).toBe(true)
+    }
+    expect(names('hola, ¿todo bien?', false).has('search_code')).toBe(false)
   })
 
   it('detecta abrir apps, correo, clima y memoria', () => {
