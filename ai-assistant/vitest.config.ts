@@ -50,6 +50,19 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    // Fase 0 — workers concurrentes limitados. Con `isolate` por defecto Vitest
+    // arranca un worker nuevo por archivo (27 en `test:unit`), cada uno con su
+    // propio proceso de Node. El nombre exacto en vitest 5.0.3 es `maxWorkers`
+    // (no `maxThreads`, que era el de fork/thread pools). En una PC de 16 GB
+    // con 12 hilos, 4 workers recortan bastante el pico de RAM y apenas cuestan
+    // tiempo: los archivos unitarios duran milisegundos.
+    maxWorkers: 4,
+    // Reutiliza las transformaciones en disco entre ejecuciones: los reruns de
+    // `npm run test:unit` no vuelven a transformar los 27 archivos. NO se usa
+    // `isolate: false`: compartiría el registro de módulos entre archivos y
+    // github-patch/github-checks mockean Prisma con estados distintos (se
+    // pisarían). `fsModuleCache` cachea el build, no el estado de runtime.
+    fsModuleCache: true,
     // Las pruebas de integración hacen viaje a la base de datos: margen amplio.
     testTimeout: 30_000,
     hookTimeout: 60_000,
