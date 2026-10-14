@@ -21,8 +21,8 @@ export const SYSTEM_PROMPT = `You are ARIA (Advanced Reasoning & Intelligence As
 - Always give complete, runnable code; never truncate with "...rest of code".
 - Handle errors and edge cases. Tag the language in every code block.
 - For bugs: identify the root cause, explain WHY it fails, then fix it.
-- For complex problems: outline the approach first, then write the code.
-- Use Markdown and headers for long answers; comment non-obvious logic briefly.
+- For complex problems: outline the approach, then write the code.
+- Use Markdown headers for long answers; comment non-obvious logic briefly.
 
 ## Pensamiento crítico (comportamiento por defecto)
 Cuando el usuario proponga una idea, plan, arquitectura, compra o decisión:
@@ -41,10 +41,10 @@ If the user asks you to search, look something up or find recent information, yo
 After searching, base the answer on what the sources actually say. If they lack the detail, say it is not in the sources; never invent release notes, version numbers or command syntax.
 
 ## GitHub
-You can read repositories, files and issues. Ground every suggestion in what you actually read (cite file paths); never guess at file contents you did not fetch. If the user explicitly asks you to implement or modify code, you may use github_create_pull_request only after reading every affected file. That tool creates an isolated branch and a PR: never claim the change is merged, never use it without an explicit modification request, and never try to bypass its path or size protections. If configured repositories are listed in context, use them when the user says "my repo", but confirm which one if it is ambiguous.
+You can read repos, files and issues; ground every suggestion in what you read, never guess at unfetched contents. To modify code, read the files first, then use github_apply_patch: each patch is {path, search, replace}, search must match the file exactly once, and baseSha aborts if it changed. Use github_create_pull_request only to create or rewrite a file. Both open an isolated aria/* branch and a PR: never claim a merge, never use them unless asked, and never bypass their protections. After opening or fixing a PR call github_get_check_runs; never call it ready while checks fail or are pending, and patch again at most twice on the same branch. Keep edits minimal; don't reformat unrelated code. If repos are configured, use them for "my repo"; confirm if ambiguous.
 
 ## Cloud notes
-The ARIA cloud folder is the user's persistent notes store, exportable to Obsidian. Save a note when the user explicitly asks you to save, note down or remember something as a note; ordinary preferences and facts are handled automatically by memory. Write clean Markdown with a short title, and list or read notes before assuming what is stored.
+The ARIA cloud folder is the user's persistent notes store, exportable to Obsidian. Save a note when the user asks you to save, note down or remember something; ordinary preferences and facts are handled by memory. Write clean Markdown with a short title and list notes before assuming what is stored.
 
 When a tool is offered and it would improve your answer, use it. Cite your sources when you use web_search. Always aim to be the best engineer and teacher you can be.`
 
@@ -156,8 +156,9 @@ export const TOOL_GROUPS = {
     'github_list_files',
     'github_read_file',
     'github_list_issues',
+    'github_get_check_runs',
   ],
-  githubWrite: ['github_create_pull_request'],
+  githubWrite: ['github_create_pull_request', 'github_apply_patch'],
   memory: ['recall_memory'],
   time: ['get_time'],
   math: ['calculate'],
@@ -167,7 +168,7 @@ export const TOOL_GROUPS = {
 } as const
 
 const RX_GITHUB =
-  /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request)\b/i
+  /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request|\bci\b|\bchecks?\b|workflow)\b/i
 const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
 /**
  * Intención de REVISAR código. Las `github_*` son de solo lectura y no se
@@ -179,7 +180,7 @@ const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
 const RX_CODE_REVIEW =
   /\b(revis\w*|analiz\w*|an[aá]lisis|audit\w*|mejor\w*|refactor\w*|depur\w*|debug\w*|optimiz\w*|corrig\w*|arregl\w*)\b[^.!?]{0,60}\b(c[oó]digo|proyecto|repositorio|repos?|archivos?|funciones?|clases?|m[oó]dulos?|app|aplicaci[oó]n|pull request|rama|branch)\b/i
 const RX_GITHUB_WRITE =
-  /\b(modifica|modificar|edita|editar|cambia|cambiar|implementa|implementar|corrige|corregir|arregla|arreglar|crea(?:r)?|actualiza|actualizar|haz(?:me)? (?:el )?cambio)\b/i
+  /\b(modifica|modificar|modific[aá]|edita|editar|edit[aá]|cambia|cambiar|cambi[aá]|implementa|implementar|implement[aá]|corrige|corregir|correg[ií]|arregla|arreglar|arregl[aá]|crea(?:r)?|actualiza|actualizar|actualiz[aá]|haz(?:me)? (?:el )?cambio|parche\w*|aplica|aplicar|aplic[aá])(?!\w)/i
 const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
 const RX_CLOUD_NOTES =
   /\b(nube|cloud|notas? de (?:aria|la nube)|guarda(?:me)? (?:una )?nota|mis notas)\b/i

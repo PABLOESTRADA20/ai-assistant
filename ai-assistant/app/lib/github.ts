@@ -33,10 +33,32 @@ export const GITHUB_LIMITS = {
   readme: 1500,
   listFiles: 150,
   readFile: 8000,
+  /** Líneas por defecto si se pide una ventana por rango de líneas. */
+  readFileLines: 400,
   issues: 10,
   issueBody: 200,
-  writeFiles: 5,
+  /**
+   * Máximo de archivos por PR o por tanda de parches. Antes 5: con token el
+   * rate limit (5000/h) no es el cuello de botella, así que el tope solo acota
+   * el radio de explosión. 10 cubre un cambio lógico (renombrar una función y
+   * ajustar sus llamadas) sin permitir refactors enormes en un solo PR.
+   */
+  writeFiles: 10,
   writeChars: 200_000,
+  /** Operaciones {search, replace} por llamada a github_apply_patch. */
+  patchOps: 20,
+  /** Tamaño máximo de un bloque `search`, para que no se pueda "pegar el archivo entero" y borrarlo. */
+  patchSearchChars: 20_000,
+  /** Líneas netas eliminadas toleradas por archivo (eliminadas − añadidas). */
+  patchMaxRemovedLines: 120,
+  /** No se parchean archivos mayores: la Contents API devuelve contenido hasta ~1 MB. */
+  patchFileBytes: 500_000,
+  /** Check runs analizados por commit (se piden con filter=latest). */
+  checkRuns: 50,
+  /** Caracteres por mensaje de detalle de un check (salida o anotación). */
+  checkTextChars: 300,
+  /** Anotaciones leídas por cada check fallido. */
+  checkAnnotations: 5,
 } as const
 
 export interface GithubRepoRef {
@@ -50,6 +72,20 @@ export interface GithubRepoRef {
 const REPOS_KEY = 'github:repos'
 // Los repos configurados no caducan de forma práctica (10 años).
 const REPOS_TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000
+
+/**
+ * Correcciones automáticas permitidas sobre una MISMA rama `aria/*`.
+ *
+ * Tras abrir un pull request (o aplicar el primer parche), ARIA puede corregir
+ * ese mismo PR como máximo esta cantidad de veces. Sin este tope, un CI que
+ * falla siempre por una causa que el modelo no entiende produce un bucle de
+ * parches y de cuota. Al superarlo, `applyPatch` rechaza el parche y pide
+ * revisión humana (no es un fallo: es la red de seguridad).
+ */
+export const MAX_FIX_ATTEMPTS = 2
+
+/** Vigencia del contador de correcciones por rama (se limpia solo). */
+const FIX_ATTEMPTS_TTL_MS = 24 * 60 * 60 * 1000
 
 export function hasGithubToken(): boolean {
   return Boolean(process.env.GITHUB_TOKEN?.trim())
@@ -145,6 +181,55 @@ export async function removeRepo(input: string): Promise<GithubRepoRef[]> {
     : repos
   await saveRepos(next)
   return next
+}
+
+/* ------------------- correcciones automáticas por rama ------------------- */
+
+/**
+ * Contador de correcciones automáticas sobre una rama `aria/*`.
+ *
+ * Se guarda en `SessionContext` (igual que la lista de repos) porque el estado
+ * debe sobrevivir entre turnos: la corrección de un PR ocurre en una petición
+ * distinta a la de apertura. Es best-effort: si la base falla, se devuelve 0 y
+ * no se bloquea nada (mejor un parche de más que romper la herramienta).
+ */
+function fixAttemptsKey(repo: string, branch: string): string {
+  // `key` es único en la tabla y Postgres lo admite como texto; el límite es
+  // solo para no guardar claves absurdas si llegara una rama gigante.
+  return `github:fix:${repo.toLowerCase()}:${branch}`.slice(0, 200)
+}
+
+/** Correcciones ya registradas para una rama (0 si no hay datos o falla la DB). */
+export async function getFixAttempts(repo: string, branch: string): Promise<number> {
+  try {
+    const row = await prisma.sessionContext.findUnique({
+      where: { key: fixAttemptsKey(repo, branch) },
+    })
+    const value = row?.value as { count?: unknown } | null | undefined
+    const count = value?.count
+    return typeof count === 'number' && Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+  } catch {
+    return 0
+  }
+}
+
+/** Suma una corrección a la rama y devuelve el total (o el previo si falla la DB). */
+async function recordFixAttempt(repo: string, branch: string): Promise<number> {
+  const key = fixAttemptsKey(repo, branch)
+  const previous = await getFixAttempts(repo, branch)
+  const next = previous + 1
+  try {
+    const expiresAt = new Date(Date.now() + FIX_ATTEMPTS_TTL_MS)
+    const value = { count: next } as unknown as Prisma.InputJsonValue
+    await prisma.sessionContext.upsert({
+      where: { key },
+      update: { value, expiresAt },
+      create: { key, value, expiresAt },
+    })
+    return next
+  } catch {
+    return previous
+  }
 }
 
 /* ------------------------------ API de GitHub ---------------------------- */
@@ -387,6 +472,645 @@ function repoFrom(input: string): { owner: string; repo: string } | null {
   return parseRepo(input)
 }
 
+/* ------------------------- edición precisa por parches ------------------- */
+
+export interface GithubPatchOp {
+  path: string
+  /** Bloque literal a encontrar; debe coincidir EXACTAMENTE una vez. */
+  search: string
+  /** Texto que reemplaza a `search`. */
+  replace: string
+  /** SHA del blob que se leyó con github_read_file; si no coincide, se aborta. */
+  baseSha?: string
+}
+
+export interface GithubApplyPatchInput {
+  repo: string
+  title: string
+  body?: string
+  /** Rama `aria/*` existente. Si se omite, se crea una rama nueva y un PR. */
+  branch?: string
+  patches: GithubPatchOp[]
+}
+
+/** Número de líneas de un fragmento ('' = 0). */
+function countLines(value: string): number {
+  return value === '' ? 0 : value.split('\n').length
+}
+
+/**
+ * Aplica una lista de {search, replace} sobre el TEXTO de un archivo.
+ *
+ * Reglas de seguridad (fallan con mensaje claro, sin tocar nada):
+ * - `search` no puede ser vacío.
+ * - `search` debe aparecer EXACTAMENTE una vez (0 = no está; >1 = ambiguo).
+ * - El bloque `search` no puede superar `patchSearchChars`.
+ * - No puede eliminarse más de `patchMaxRemovedLines` líneas netas.
+ * - No puede dejar el archivo vacío si antes tenía contenido.
+ *
+ * Tolerancia a saltos de línea: compara sobre texto normalizado a `\n` y, al
+ * terminar, restaura los `\r\n` originales del archivo. Así el modelo puede
+ * copiar el bloque con `\n` aunque el archivo use CRLF, sin corromperlo.
+ */
+export function applyTextPatches(
+  text: string,
+  ops: { search: string; replace: string }[],
+): { ok: true; content: string } | { ok: false; error: string } {
+  const usesCrlf = text.includes('\r\n')
+  let work = text.replace(/\r\n/g, '\n')
+  let removed = 0
+  let added = 0
+
+  for (const op of ops) {
+    if (!op.search) {
+      return { ok: false, error: 'Cada parche necesita un bloque "search" no vacío.' }
+    }
+    const search = op.search.replace(/\r\n/g, '\n')
+    const replace = op.replace.replace(/\r\n/g, '\n')
+
+    if (search.length > GITHUB_LIMITS.patchSearchChars) {
+      return {
+        ok: false,
+        error: `El bloque "search" es demasiado grande (máximo ${GITHUB_LIMITS.patchSearchChars} caracteres).`,
+      }
+    }
+
+    const first = work.indexOf(search)
+    if (first === -1) {
+      return {
+        ok: false,
+        error:
+          'El bloque "search" no aparece en el archivo. Copialo exactamente como lo ' +
+          'devolvió github_read_file (con su indentación) o volvé a leerlo: pudo cambiar.',
+      }
+    }
+    if (work.indexOf(search, first + 1) !== -1) {
+      return {
+        ok: false,
+        error:
+          'El bloque "search" aparece más de una vez. Incluí más contexto ' +
+          '(líneas vecinas) para que sea único.',
+      }
+    }
+
+    const before = countLines(search)
+    const after = countLines(replace)
+    removed += Math.max(0, before - after)
+    added += Math.max(0, after - before)
+
+    work = work.slice(0, first) + replace + work.slice(first + search.length)
+  }
+
+  const net = removed - added
+  if (net > GITHUB_LIMITS.patchMaxRemovedLines) {
+    return {
+      ok: false,
+      error:
+        `El parche elimina demasiadas líneas (${net} netas, máximo ` +
+        `${GITHUB_LIMITS.patchMaxRemovedLines}). Si es intencional, reescribí el archivo ` +
+        'completo con github_create_pull_request.',
+    }
+  }
+  if (work.length === 0 && text.length > 0) {
+    return { ok: false, error: 'El parche dejaría el archivo vacío. Rechazado por seguridad.' }
+  }
+
+  return { ok: true, content: usesCrlf ? work.replace(/\n/g, '\r\n') : work }
+}
+
+/**
+ * Aplica parches {path, search, replace} y los commitea. Reutiliza TODAS las
+ * protecciones de `createPullRequest`: requiere token y `GITHUB_WRITE_ENABLED`,
+ * valida rutas (bloquea `.github/workflows/` y `..`), nunca toca la rama por
+ * defecto, nunca fusiona y nunca borra archivos.
+ *
+ * - Sin `branch`: crea una rama `aria/*` nueva desde la rama por defecto y abre
+ *   un PR (igual que createPullRequest, pero editando, no reescribiendo).
+ * - Con `branch` (debe empezar por `aria/`): commitea ahí, pensado para
+ *   corregir un PR ya abierto en la misma rama.
+ */
+export async function applyPatch(input: GithubApplyPatchInput): Promise<string> {
+  const parsed = repoFrom(input.repo)
+  if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
+  if (!hasGithubToken()) return JSON.stringify({ error: 'Falta GITHUB_TOKEN para aplicar el parche.' })
+  if (!githubWriteEnabled()) {
+    return JSON.stringify({
+      error:
+        'La escritura segura está desactivada. Define GITHUB_WRITE_ENABLED=true y usa un token ' +
+        'fine-grained con Contents: write y Pull requests: write.',
+    })
+  }
+
+  const title = input.title?.trim().slice(0, 200)
+  if (!title) return JSON.stringify({ error: 'Falta el título del pull request.' })
+  if (!Array.isArray(input.patches) || input.patches.length === 0) {
+    return JSON.stringify({ error: 'El parche necesita al menos una operación {path, search, replace}.' })
+  }
+  if (input.patches.length > GITHUB_LIMITS.patchOps) {
+    return JSON.stringify({ error: `Máximo ${GITHUB_LIMITS.patchOps} operaciones por llamada.` })
+  }
+
+  // Validación y agrupación por archivo, respetando el orden de llegada.
+  const files = new Map<string, { path: string; ops: GithubPatchOp[] }>()
+  for (const op of input.patches) {
+    if (
+      !op ||
+      typeof op.path !== 'string' ||
+      typeof op.search !== 'string' ||
+      typeof op.replace !== 'string'
+    ) {
+      return JSON.stringify({ error: 'Cada parche necesita path, search y replace de texto.' })
+    }
+    if (!op.search) {
+      return JSON.stringify({ error: 'Cada parche necesita un bloque "search" no vacío.' })
+    }
+    if (op.baseSha !== undefined && typeof op.baseSha !== 'string') {
+      return JSON.stringify({ error: 'baseSha debe ser texto.' })
+    }
+    if (op.search.length > GITHUB_LIMITS.patchSearchChars) {
+      return JSON.stringify({
+        error: `El bloque "search" de "${op.path}" es demasiado grande (máximo ${GITHUB_LIMITS.patchSearchChars} caracteres).`,
+      })
+    }
+    const path = cleanRepoPath(op.path)
+    if (!path) {
+      return JSON.stringify({
+        error: `Ruta no permitida: "${op.path}". No se aceptan rutas relativas ni workflows.`,
+      })
+    }
+    const key = path.toLowerCase()
+    const entry = files.get(key)
+    if (entry) entry.ops.push({ ...op, path })
+    else files.set(key, { path, ops: [{ ...op, path }] })
+  }
+  if (files.size > GITHUB_LIMITS.writeFiles) {
+    return JSON.stringify({ error: `Máximo ${GITHUB_LIMITS.writeFiles} archivos por parche.` })
+  }
+
+  const { owner, repo } = parsed
+  const repoInfo = await ghFetch(`/repos/${owner}/${repo}`)
+  if (!repoInfo.ok) return JSON.stringify({ error: describeError(repoInfo.status, repoInfo.data) })
+  const base = (repoInfo.data as { default_branch?: string }).default_branch || 'main'
+
+  // Rama objetivo: una nueva `aria/*` (y PR) o una existente para corregir.
+  let branch: string
+  let createdBranch = false
+  const requestedBranch = input.branch?.trim()
+  if (requestedBranch) {
+    const valid = /^aria\/[A-Za-z0-9._/-]+$/.test(requestedBranch) && !requestedBranch.includes('..')
+    if (!valid) {
+      return JSON.stringify({ error: 'Solo puedo aplicar parches sobre una rama "aria/*".' })
+    }
+    const refRes = await ghFetch(
+      `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(requestedBranch)}`,
+    )
+    if (!refRes.ok) {
+      return JSON.stringify({
+        error: `No encontré la rama "${requestedBranch}": ${describeError(refRes.status, refRes.data)}`,
+      })
+    }
+    branch = requestedBranch
+    // Tope de correcciones por PR: evita el bucle "CI falla → parcheo → CI
+    // falla" cuando la causa se le escapa al modelo. Al superarlo se para y se
+    // pide revisión humana.
+    const attempts = await getFixAttempts(`${owner}/${repo}`, branch)
+    if (attempts >= MAX_FIX_ATTEMPTS) {
+      return JSON.stringify({
+        error:
+          `La rama "${branch}" ya recibió ${attempts} correcciones automáticas ` +
+          `(máximo ${MAX_FIX_ATTEMPTS}). No aplico más parches automáticos: revisá ` +
+          'el pull request a mano.',
+        branch,
+        fix_attempts: attempts,
+        fix_attempts_max: MAX_FIX_ATTEMPTS,
+      })
+    }
+  } else {
+    const baseRef = await ghFetch(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(base)}`)
+    if (!baseRef.ok) return JSON.stringify({ error: describeError(baseRef.status, baseRef.data) })
+    const baseSha = (baseRef.data as { object?: { sha?: string } }).object?.sha
+    if (!baseSha) return JSON.stringify({ error: 'GitHub no devolvió el SHA de la rama principal.' })
+    const requested = branchSlug(title) || 'parche'
+    branch = `aria/${requested}-${Date.now().toString(36)}`
+    const createRef = await ghFetch(`/repos/${owner}/${repo}/git/refs`, {
+      method: 'POST',
+      body: { ref: `refs/heads/${branch}`, sha: baseSha },
+    })
+    if (!createRef.ok) return JSON.stringify({ error: describeError(createRef.status, createRef.data) })
+    createdBranch = true
+  }
+
+  const partialNote = createdBranch
+    ? { note: 'La rama quedó creada para poder revisar o recuperar el trabajo parcial.' }
+    : { note: 'La rama existente conserva los commits ya aplicados.' }
+
+  const written: string[] = []
+  for (const { path, ops } of files.values()) {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+    const current = await ghFetch(
+      `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`,
+    )
+    if (current.status === 404) {
+      return JSON.stringify({
+        error: `El archivo "${path}" no existe en la rama. Para crearlo usá github_create_pull_request.`,
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+    if (!current.ok) {
+      return JSON.stringify({ error: describeError(current.status, current.data), branch, written, ...partialNote })
+    }
+
+    const d = current.data as { content?: string; encoding?: string; size?: number; sha?: string; type?: string }
+    if (d.type === 'dir') {
+      return JSON.stringify({ error: `"${path}" es un directorio.`, branch, written, ...partialNote })
+    }
+    if (!d.content || d.encoding !== 'base64') {
+      return JSON.stringify({
+        error: `No pude leer "${path}" para parchearlo (archivo demasiado grande o binario).`,
+        size: d.size ?? null,
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+    if ((d.size ?? 0) > GITHUB_LIMITS.patchFileBytes) {
+      return JSON.stringify({
+        error: `"${path}" supera el límite de ${GITHUB_LIMITS.patchFileBytes} bytes para parchear. Usá github_create_pull_request o editalo por partes.`,
+        size: d.size ?? null,
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+
+    // Concurrencia: el modelo puede reenviar el sha que leyó. Si cambió, se aborta
+    // ANTES de escribir (además, el PUT con `sha` caducado lo rechaza GitHub).
+    const knownSha = ops.find((o) => o.baseSha)?.baseSha
+    if (knownSha && d.sha && knownSha !== d.sha) {
+      return JSON.stringify({
+        error: `El archivo "${path}" cambió desde que lo leíste (SHA distinto). Volvé a leerlo con github_read_file y regenerá el parche.`,
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+
+    const text = decodeBase64(d.content)
+    const applied = applyTextPatches(text, ops)
+    if (!applied.ok) {
+      return JSON.stringify({
+        error: `No pude aplicar el parche en "${path}": ${applied.error}`,
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+    if (applied.content === text) {
+      return JSON.stringify({
+        error: `El parche en "${path}" no cambia nada (search y replace son iguales).`,
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+
+    const update = await ghFetch(`/repos/${owner}/${repo}/contents/${encodedPath}`, {
+      method: 'PUT',
+      body: {
+        message: `${title}: ${path}`.slice(0, 250),
+        content: encodeBase64(applied.content),
+        branch,
+        ...(d.sha ? { sha: d.sha } : {}),
+      },
+    })
+    if (!update.ok) {
+      return JSON.stringify({
+        error: describeError(update.status, update.data),
+        branch,
+        written,
+        ...partialNote,
+      })
+    }
+    written.push(path)
+  }
+
+  let pullNumber: number | null = null
+  let pullUrl: string | null = null
+  if (createdBranch) {
+    const pull = await ghFetch(`/repos/${owner}/${repo}/pulls`, {
+      method: 'POST',
+      body: {
+        title,
+        head: branch,
+        base,
+        body:
+          input.body?.trim().slice(0, 20_000) ||
+          'Cambios precisos preparados por ARIA en una rama aislada. Revisa el diff antes de fusionar.',
+      },
+    })
+    if (!pull.ok) {
+      return JSON.stringify({
+        error: describeError(pull.status, pull.data),
+        branch,
+        written,
+        note: 'Los commits están en la rama; solo falló la creación del pull request.',
+      })
+    }
+    const data = pull.data as { number?: number; html_url?: string }
+    pullNumber = data.number ?? null
+    pullUrl = data.html_url ?? null
+  }
+
+  // Corrección sobre un PR abierto: se cuenta para el tope de arriba. El
+  // parche inicial (rama nueva) no cuenta, es la primera propuesta.
+  const fixAttempts = createdBranch ? 0 : await recordFixAttempt(`${owner}/${repo}`, branch)
+
+  return JSON.stringify({
+    success: true,
+    repo: `${owner}/${repo}`,
+    base,
+    branch,
+    files: written,
+    pull_request: pullNumber,
+    url: pullUrl,
+    merged: false,
+    fix_attempts: fixAttempts,
+    fix_attempts_max: MAX_FIX_ATTEMPTS,
+    note: createdBranch
+      ? 'No se modificó la rama principal. El cambio requiere revisión y merge manual.'
+      : `Parche agregado a la rama existente (corrección ${fixAttempts} de ${MAX_FIX_ATTEMPTS}). ` +
+        'Consultá los checks con github_get_check_runs antes de darlo por bueno.',
+  })
+}
+
+/* ---------------------- verificación del CI (solo lectura) --------------- */
+
+export interface GithubCheckRunsInput {
+  repo: string
+  /** Número de pull request (preferido). */
+  pr?: unknown
+  /** Rama (por ejemplo la `aria/*`) si no se tiene el número del PR. */
+  branch?: unknown
+}
+
+interface GhCheckRun {
+  id?: number
+  name?: string
+  status?: string
+  conclusion?: string | null
+  html_url?: string
+  details_url?: string
+  output?: { title?: string; summary?: string; annotations_count?: number }
+}
+
+interface GhStatusItem {
+  state?: string
+  context?: string
+  description?: string
+  target_url?: string
+}
+
+interface GhAnnotation {
+  path?: string
+  start_line?: number
+  annotation_level?: string
+  message?: string
+}
+
+function asPositiveInt(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.floor(n)
+}
+
+/** Colapsa espacios y recorta un texto para que no infle el contexto. */
+function clip(value: unknown, max: number): string {
+  if (typeof value !== 'string') return ''
+  const clean = value.replace(/\s+/g, ' ').trim()
+  return clean.length > max ? `${clean.slice(0, max)}…` : clean
+}
+
+/**
+ * Estado del CI de un commit (solo lectura).
+ *
+ * Reúne las DOS fuentes de GitHub, porque los CI modernos y los antiguos usan
+ * APIs distintas:
+ * - Checks API (`/commits/{sha}/check-runs`): lo que generan GitHub Actions y
+ *   la mayoría de CI modernos, un *check run* por job.
+ * - Status API (`/commits/{sha}/status`): CI antiguos que publican un estado.
+ *
+ * Para el detalle del fallo se leen las **anotaciones** del check (archivo,
+ * línea, mensaje) y su `output`. LÍMITE HONESTO: el log completo de Actions no
+ * se puede leer de forma práctica desde la API (devuelve un ZIP y exige
+ * `actions: read`), así que cuando no hay anotaciones se dice y se apunta al
+ * check en GitHub en vez de inventar la causa.
+ *
+ * Detecta cambios concurrentes devolviendo el SHA del commit consultado: tras
+ * un parche de corrección, los checks que importan son los del commit NUEVO.
+ */
+export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string> {
+  const parsed = repoFrom(input.repo)
+  if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
+  const { owner, repo } = parsed
+  const fullRepo = `${owner}/${repo}`
+
+  const prNumber = asPositiveInt(input.pr)
+  const requestedBranch = typeof input.branch === 'string' ? input.branch.trim() : ''
+  if (!prNumber && !requestedBranch) {
+    return JSON.stringify({
+      error: 'Indicá "pr" (número de pull request) o "branch" para saber qué commit revisar.',
+    })
+  }
+
+  // 1) Resolver el commit a consultar y los metadatos del PR.
+  let sha = ''
+  let branch: string | null = requestedBranch || null
+  let base: string | null = null
+  const prMeta: Record<string, unknown> = {}
+  const warnings: string[] = []
+
+  if (prNumber) {
+    const prRes = await ghFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`)
+    if (!prRes.ok) return JSON.stringify({ error: describeError(prRes.status, prRes.data) })
+    const p = prRes.data as {
+      title?: string
+      state?: string
+      merged?: boolean
+      draft?: boolean
+      html_url?: string
+      head?: { sha?: string; ref?: string }
+      base?: { ref?: string }
+    }
+    sha = p.head?.sha ?? ''
+    if (!sha) return JSON.stringify({ error: 'GitHub no devolvió el commit del pull request.' })
+    branch = p.head?.ref ?? branch
+    base = p.base?.ref ?? null
+    prMeta.pr = prNumber
+    prMeta.pr_title = p.title ?? null
+    prMeta.pr_state = p.state ?? null
+    prMeta.pr_merged = p.merged === true
+    prMeta.pr_draft = p.draft === true
+    prMeta.pr_url = p.html_url ?? null
+    if (p.merged === true) {
+      warnings.push('El pull request ya fue fusionado; estos checks son del último commit de su rama.')
+    }
+  } else {
+    const brRes = await ghFetch(`/repos/${owner}/${repo}/branches/${encodeURIComponent(requestedBranch)}`)
+    if (!brRes.ok) {
+      return JSON.stringify({
+        error: `No encontré la rama "${requestedBranch}": ${describeError(brRes.status, brRes.data)}`,
+      })
+    }
+    const b = brRes.data as { commit?: { sha?: string }; name?: string }
+    sha = b.commit?.sha ?? ''
+    if (!sha) return JSON.stringify({ error: 'GitHub no devolvió el commit de la rama.' })
+    branch = b.name ?? requestedBranch
+  }
+
+  // 2) Leer checks y estados del commit (en paralelo).
+  const [runsRes, statusRes] = await Promise.all([
+    ghFetch(
+      `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs` +
+        `?per_page=${GITHUB_LIMITS.checkRuns}&filter=latest`,
+    ),
+    ghFetch(`/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/status`),
+  ])
+  if (!runsRes.ok && !statusRes.ok) {
+    return JSON.stringify({ error: describeError(runsRes.status, runsRes.data) })
+  }
+
+  let runs: GhCheckRun[] = []
+  if (runsRes.ok) {
+    runs = ((runsRes.data as { check_runs?: GhCheckRun[] }).check_runs ?? []).slice(
+      0,
+      GITHUB_LIMITS.checkRuns,
+    )
+  } else if (runsRes.status === 403) {
+    warnings.push(
+      'No pude leer los check runs (¿falta el permiso "Checks: read" en el token, o saltó el rate limit?): ' +
+        describeError(runsRes.status, runsRes.data),
+    )
+  } else {
+    warnings.push(`No pude leer los check runs: ${describeError(runsRes.status, runsRes.data)}`)
+  }
+
+  let statusItems: GhStatusItem[] = []
+  if (statusRes.ok) {
+    const s = statusRes.data as { statuses?: GhStatusItem[] }
+    statusItems = Array.isArray(s.statuses) ? s.statuses : []
+  } else {
+    warnings.push(`No pude leer los estados del commit: ${describeError(statusRes.status, statusRes.data)}`)
+  }
+
+  // 3) Agregar el resultado.
+  let passed = 0
+  let failed = 0
+  let pending = 0
+  let neutral = 0
+  const failures: GhCheckRun[] = []
+  for (const run of runs) {
+    if (run.status !== 'completed') {
+      pending++
+      continue
+    }
+    const conclusion = run.conclusion ?? ''
+    if (conclusion === 'success') passed++
+    else if (conclusion === 'skipped' || conclusion === 'neutral') neutral++
+    else {
+      failed++
+      failures.push(run)
+    }
+  }
+
+  let statusFailure = 0
+  let statusPending = 0
+  for (const item of statusItems) {
+    if (item.state === 'failure' || item.state === 'error') statusFailure++
+    else if (item.state === 'pending') statusPending++
+  }
+
+  const total = runs.length + statusItems.length
+  let state: 'success' | 'failure' | 'pending' | 'none'
+  if (failed > 0 || statusFailure > 0) state = 'failure'
+  else if (pending > 0 || statusPending > 0) state = 'pending'
+  else if (total === 0) state = 'none'
+  else state = 'success'
+
+  // 4) Detalle de los fallos: salida del check + anotaciones (máx. 5 checks).
+  const MAX_DETAIL_RUNS = 5
+  const failedChecks: Record<string, unknown>[] = []
+  for (const run of failures.slice(0, MAX_DETAIL_RUNS)) {
+    const entry: Record<string, unknown> = {
+      name: run.name ?? '(sin nombre)',
+      conclusion: run.conclusion ?? null,
+      url: run.html_url ?? run.details_url ?? null,
+    }
+    const title = clip(run.output?.title, GITHUB_LIMITS.checkTextChars)
+    const summary = clip(run.output?.summary, GITHUB_LIMITS.checkTextChars)
+    if (title || summary) entry.detail = [title, summary].filter(Boolean).join(' — ')
+
+    if (typeof run.id === 'number') {
+      const annRes = await ghFetch(`/repos/${owner}/${repo}/check-runs/${run.id}/annotations`)
+      if (annRes.ok && Array.isArray(annRes.data)) {
+        const annotations = (annRes.data as GhAnnotation[])
+          .slice(0, GITHUB_LIMITS.checkAnnotations)
+          .map((a) => {
+            const where = a.path ? `${a.path}${a.start_line ? `:${a.start_line}` : ''}` : ''
+            const message = clip(a.message, GITHUB_LIMITS.checkTextChars)
+            return `${where ? `${where} ` : ''}${message}`.trim()
+          })
+          .filter(Boolean)
+        if (annotations.length > 0) entry.annotations = annotations
+      }
+    }
+    failedChecks.push(entry)
+  }
+  if (failures.length > MAX_DETAIL_RUNS) {
+    warnings.push(`Hay ${failures.length} checks fallidos; muestro el detalle de ${MAX_DETAIL_RUNS}.`)
+  }
+
+  if (failed > 0 || statusFailure > 0) {
+    const hasDetail = failedChecks.some((c) => c.detail || c.annotations)
+    warnings.push(
+      hasDetail
+        ? 'El detalle sale de la salida y las anotaciones del check; el log completo de Actions no es legible vía API (amplíalo en GitHub si hace falta).'
+        : 'No pude leer el detalle del fallo (sin anotaciones ni salida). Abrí el check en GitHub: el log completo no es legible vía API.',
+    )
+  }
+
+  // 5) Cuántas correcciones automáticas lleva la rama (para no pasar del tope).
+  const fixAttempts = branch ? await getFixAttempts(fullRepo, branch) : null
+
+  return JSON.stringify({
+    repo: fullRepo,
+    ...prMeta,
+    branch,
+    base,
+    sha,
+    auth: hasGithubToken() ? 'token' : 'anónimo (60 req/hora)',
+    state,
+    counts: { check_runs: runs.length, statuses: statusItems.length },
+    passed,
+    failed,
+    pending,
+    neutral,
+    failed_checks: failedChecks,
+    fix_attempts: fixAttempts,
+    fix_attempts_max: branch ? MAX_FIX_ATTEMPTS : null,
+    warnings: warnings.length > 0 ? warnings : undefined,
+    note:
+      state === 'success'
+        ? 'Todos los checks pasaron; recién ahora el cambio puede darse por listo.'
+        : state === 'pending'
+          ? 'Hay checks en cola o en curso: esperá y volvé a consultar; no lo des por bueno todavía.'
+          : state === 'failure'
+            ? 'Hay checks fallidos: leé el detalle y corregí en la misma rama, luego volvé a consultar.'
+            : 'Este commit no tiene checks ni estados configurados.',
+  })
+}
+
 /* --------------------------- operaciones de lectura ---------------------- */
 
 export async function repoOverview(input: string): Promise<string> {
@@ -479,11 +1203,25 @@ export async function listFiles(input: string, pathPrefix = '', ref?: string): P
   })
 }
 
+/**
+ * Lee un archivo. Dos modos de paginación:
+ *
+ * - Por caracteres (por defecto, compatible con lo anterior): `offset` +
+ *   `GITHUB_LIMITS.readFile`, con `next_offset` para continuar.
+ * - Por líneas: `start_line`/`end_line` (1-based, inclusivos). El contenido se
+ *   devuelve CON números de línea, que ayudan al modelo a ubicar el bloque a
+ *   parchear. Si falta `end_line`, se toma una ventana de `readFileLines`.
+ *
+ * Se devuelve el `sha` del blob: quien vaya a parchear el archivo puede
+ * reenviarlo como `baseSha` para detectar cambios concurrentes.
+ */
 export async function readFile(
   input: string,
   filePath: string,
   ref?: string,
   offset?: unknown,
+  startLine?: unknown,
+  endLine?: unknown,
 ): Promise<string> {
   const parsed = repoFrom(input)
   if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
@@ -495,7 +1233,7 @@ export async function readFile(
   const res = await ghFetch(`/repos/${owner}/${repo}/contents/${clean.split('/').map(encodeURIComponent).join('/')}${query}`)
   if (!res.ok) return JSON.stringify({ error: describeError(res.status, res.data) })
 
-  const d = res.data as { content?: string; encoding?: string; size?: number; type?: string; download_url?: string }
+  const d = res.data as { content?: string; encoding?: string; size?: number; type?: string; sha?: string; download_url?: string }
   if (d.type === 'dir') {
     return JSON.stringify({ error: `"${clean}" es un directorio; usa github_list_files.` })
   }
@@ -507,15 +1245,81 @@ export async function readFile(
   }
 
   const text = decodeBase64(d.content)
+  const sha = d.sha ?? null
+
+  // Modo por líneas: se pide explícitamente con start_line.
+  if (startLine !== undefined && startLine !== null && startLine !== '') {
+    return readFileByLines({ owner, repo, clean, text, sha, size: d.size, startLine, endLine })
+  }
+
   const window = sliceWindow(text, offset, GITHUB_LIMITS.readFile)
+  const before = text.slice(0, window.offset)
+  const windowStartLine = (before.match(/\n/g)?.length ?? 0) + 1
   return JSON.stringify({
     repo: `${owner}/${repo}`,
     path: clean,
     size: d.size ?? text.length,
+    sha,
+    mode: 'chars',
     offset: window.offset,
     truncated: window.truncated,
     next_offset: window.nextOffset,
+    start_line: window.content.length === 0 ? null : windowStartLine,
+    total_lines: text.length === 0 ? 0 : text.split('\n').length,
     content: window.content,
+    note:
+      'Para parchear, copiá el bloque exacto a cambiar y pasá además "baseSha" con el sha ' +
+      'de este archivo. Para leer por líneas usá start_line/end_line.',
+  })
+}
+
+/**
+ * Ventana por rango de líneas (1-based, inclusivo) con el contenido numerado.
+ * `end_line` ausente = `start_line + readFileLines - 1`, recortado al final.
+ */
+function readFileByLines(args: {
+  owner: string
+  repo: string
+  clean: string
+  text: string
+  sha: string | null
+  size?: number
+  startLine: unknown
+  endLine: unknown
+}): string {
+  const { owner, repo, clean, text, sha, size, startLine, endLine } = args
+  const lines = text.split('\n')
+  const total = lines.length
+
+  const first = Math.max(1, Math.floor(Number(startLine)) || 1)
+  const requestedEnd =
+    endLine === undefined || endLine === null || endLine === ''
+      ? first + GITHUB_LIMITS.readFileLines - 1
+      : Math.floor(Number(endLine)) || first
+  const last = Math.min(total, Math.max(first, requestedEnd))
+
+  const slice = lines.slice(first - 1, last)
+  const width = String(last).length
+  const content = slice
+    .map((line, i) => `${String(first + i).padStart(width, ' ')}| ${line}`)
+    .join('\n')
+
+  const truncated = last < total
+  return JSON.stringify({
+    repo: `${owner}/${repo}`,
+    path: clean,
+    size: size ?? text.length,
+    sha,
+    mode: 'lines',
+    start_line: first,
+    end_line: last,
+    total_lines: total,
+    truncated,
+    next_offset: truncated ? last + 1 : null,
+    content,
+    note: truncated
+      ? `Quedan líneas hasta ${total}; continuá con start_line=${last + 1}.`
+      : undefined,
   })
 }
 

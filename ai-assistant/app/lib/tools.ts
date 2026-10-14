@@ -388,6 +388,8 @@ export const TOOL_DEFINITIONS = [
           path: { type: 'string', description: 'File path inside the repo, e.g. "src/index.ts"' },
           ref: { type: 'string', description: 'Optional branch, tag or commit SHA' },
           offset: { type: 'integer', description: 'Optional character offset to continue a long file (use next_offset from the previous call)' },
+          start_line: { type: 'integer', description: 'Optional 1-based first line to read (returns numbered lines). Overrides offset.' },
+          end_line: { type: 'integer', description: 'Optional 1-based last line to read, inclusive. With start_line, read a line range.' },
         },
         required: ['repo', 'path'],
       },
@@ -443,6 +445,79 @@ export const TOOL_DEFINITIONS = [
           },
         },
         required: ['repo', 'title', 'changes'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_apply_patch',
+      description:
+        'Edit existing files in a GitHub repository with small, precise patches instead of ' +
+        'rewriting whole files. Each patch is {path, search, replace}: "search" must be the ' +
+        'EXACT literal block (copy it verbatim from github_read_file, including indentation) ' +
+        'and must appear exactly once in the file; "replace" is the new text. Provide "baseSha" ' +
+        'from the file you read so a concurrent change aborts the patch. By default it creates ' +
+        'a new aria/* branch and a pull request; pass "branch" (an existing aria/* branch) to ' +
+        'commit a fix onto an open pull request. It never writes to the default branch, never ' +
+        'merges, never deletes files, cannot edit .github/workflows, and rejects patches that ' +
+        'delete too much. Automatic fixes on the same branch are limited to 2; after that the ' +
+        'patch is refused and human review is required. Requires GITHUB_WRITE_ENABLED=true and a ' +
+        'fine-grained token with Contents: write and Pull requests: write. Use it (not ' +
+        'github_create_pull_request) for any change to an existing file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          title: { type: 'string', description: 'Short pull request title (used for a new branch/PR)' },
+          body: { type: 'string', description: 'Pull request explanation, tests and risks' },
+          branch: {
+            type: 'string',
+            description:
+              'Optional existing aria/* branch to commit the patch to (to fix an open PR). ' +
+              'Omit to create a new aria/* branch and pull request.',
+          },
+          patches: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            items: {
+              type: 'object',
+              properties: {
+                path: { type: 'string', description: 'Repository-relative path of an EXISTING file' },
+                search: { type: 'string', description: 'Exact literal block to find (must match exactly once)' },
+                replace: { type: 'string', description: 'Replacement text for the matched block' },
+                baseSha: { type: 'string', description: 'Optional blob sha from github_read_file; aborts if the file changed' },
+              },
+              required: ['path', 'search', 'replace'],
+            },
+          },
+        },
+        required: ['repo', 'title', 'patches'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_get_check_runs',
+      description:
+        'Read-only: check the CI status of a pull request or branch (GitHub Actions check runs ' +
+        'plus legacy commit statuses) for its latest commit. Returns an aggregate state ' +
+        '(success, failure, pending or none), per-check counts, the SHA checked, and for ' +
+        'failures the check output and annotations (file, line, message). It cannot read the ' +
+        'full Actions log (that is a ZIP behind the API), so when there is no detail it says ' +
+        'so instead of guessing. Call it after opening or patching a pull request, and never ' +
+        'tell the user a change is ready while the state is pending or failure. If it fails, ' +
+        'fix it on the same branch with github_apply_patch (at most two corrections per PR).',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          pr: { type: 'integer', description: 'Pull request number (preferred)' },
+          branch: { type: 'string', description: 'Branch name, e.g. the aria/* branch, if you do not have the PR number' },
+        },
+        required: ['repo'],
       },
     },
   },
@@ -538,11 +613,15 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
     case 'github_list_files':
       return githubListFiles(args.repo, args.path, args.ref)
     case 'github_read_file':
-      return githubReadFile(args.repo, args.path, args.ref, args.offset)
+      return githubReadFile(args.repo, args.path, args.ref, args.offset, args.start_line, args.end_line)
     case 'github_list_issues':
       return githubListIssues(args.repo, args.state)
     case 'github_create_pull_request':
       return githubCreatePullRequest(args)
+    case 'github_apply_patch':
+      return githubApplyPatch(args)
+    case 'github_get_check_runs':
+      return githubGetCheckRuns(args.repo, args.pr, args.branch)
     case 'save_cloud_note':
       return saveCloudNote(args.title, args.content, args.tags)
     case 'list_cloud_notes':
@@ -619,12 +698,21 @@ async function githubReadFile(
   filePath?: unknown,
   ref?: unknown,
   offset?: unknown,
+  startLine?: unknown,
+  endLine?: unknown,
 ): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim() || typeof filePath !== 'string') {
     return JSON.stringify({ error: 'Faltan el repositorio o la ruta del archivo' })
   }
   const gh = await import('@/app/lib/github')
-  return gh.readFile(repo, filePath, typeof ref === 'string' ? ref : undefined, offset)
+  return gh.readFile(
+    repo,
+    filePath,
+    typeof ref === 'string' ? ref : undefined,
+    offset,
+    startLine,
+    endLine,
+  )
 }
 
 async function githubListIssues(repo?: unknown, state?: unknown): Promise<string> {
@@ -649,6 +737,44 @@ async function githubCreatePullRequest(args: Record<string, unknown>): Promise<s
     body: typeof args.body === 'string' ? args.body : undefined,
     branch: typeof args.branch === 'string' ? args.branch : undefined,
     changes: args.changes as { path: string; content: string }[],
+  })
+}
+
+async function githubApplyPatch(args: Record<string, unknown>): Promise<string> {
+  if (typeof args.repo !== 'string' || !args.repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  if (typeof args.title !== 'string' || !args.title.trim() || !Array.isArray(args.patches)) {
+    return JSON.stringify({ error: 'Faltan el título o los parches' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.applyPatch({
+    repo: args.repo,
+    title: args.title,
+    body: typeof args.body === 'string' ? args.body : undefined,
+    branch: typeof args.branch === 'string' ? args.branch : undefined,
+    patches: args.patches as {
+      path: string
+      search: string
+      replace: string
+      baseSha?: string
+    }[],
+  })
+}
+
+async function githubGetCheckRuns(
+  repo?: unknown,
+  pr?: unknown,
+  branch?: unknown,
+): Promise<string> {
+  if (typeof repo !== 'string' || !repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.getCheckRuns({
+    repo,
+    pr,
+    branch: typeof branch === 'string' ? branch : undefined,
   })
 }
 
@@ -1168,12 +1294,13 @@ export async function callGroqWithTools(
    * Rondas máximas de herramientas.
    *
    * Con 3 una revisión de código no alcanzaba a leer los archivos relevantes.
-   * Se sube a 5, pero acompañado de una guarda anti-bucle (abajo): antes, con 5
-   * el modelo entraba en bucle de búsquedas casi idénticas (medido: 5
-   * `web_search` sobre lo mismo) y cada ronda gasta TPM del free tier,
-   * alargando la respuesta sin llegar a contenido final.
+   * Se subió a 5, y ahora a 8: un ciclo real de edición es leer (varios
+   * archivos) → parchear → confirmar, y en la Fase 2 se suma consultar los
+   * checks y corregir. Con 5 se cortaba justo al empezar lo útil. La guarda
+   * anti-bucle (abajo) sigue evitando el bucle medido de `web_search` idénticos,
+   * así que subir no lo reintroduce; el costo es cuota de TPM del free tier.
    */
-  const MAX_TOOL_ROUNDS = 5
+  const MAX_TOOL_ROUNDS = 8
   /**
    * Rondas cuyos resultados se conservan COMPLETOS en el contexto final. Antes
    * solo sobrevivía la última y las anteriores se borraban a una línea, así que

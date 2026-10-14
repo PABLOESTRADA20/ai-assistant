@@ -80,6 +80,35 @@ describe('selectTools', () => {
     expect(names('¿qué sabes de mí?').has('recall_memory')).toBe(true)
   })
 
+  it('activa github_apply_patch con frases de edición en español', () => {
+    for (const phrase of [
+      'parcheá el archivo de mi repo',
+      'aplicá el cambio en mi repo',
+      'modificá ese archivo de mi repo',
+      'corregí el bug en mi repo',
+    ]) {
+      expect(names(phrase, true).has('github_apply_patch'), phrase).toBe(true)
+    }
+    // Revisar (sin editar) NO activa la escritura.
+    expect(names('revisá mi código y decime qué mejorar', true).has('github_apply_patch')).toBe(false)
+    // Sin repos ni URL, no se ofrece nada de GitHub.
+    expect(names('parcheá el archivo de mi repo', false).has('github_apply_patch')).toBe(false)
+  })
+
+  it('activa github_get_check_runs con frases de CI/checks', () => {
+    for (const phrase of [
+      '¿cómo va el CI de mi PR?',
+      'revisá los checks de mi pull request',
+      'mirá el workflow de mi repo',
+    ]) {
+      expect(names(phrase, true).has('github_get_check_runs'), phrase).toBe(true)
+    }
+    // Sin repos ni URL no hay a qué apuntar.
+    expect(names('¿cómo va el CI?', false).has('github_get_check_runs')).toBe(false)
+    // Al ser de solo lectura, viaja con el grupo github (p. ej. al revisar código).
+    expect(names('revisá mi código y decime qué mejorar', true).has('github_get_check_runs')).toBe(true)
+  })
+
   it('todos los nombres ofrecidos existen en TOOL_DEFINITIONS', () => {
     const known = new Set(TOOL_DEFINITIONS.map((t) => t.function.name))
     // El set completo declarado en los grupos debe existir.

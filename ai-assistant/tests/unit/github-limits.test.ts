@@ -97,6 +97,25 @@ describe('topes de resultados de GitHub', () => {
     expect(second.next_offset).toBeNull()
   })
 
+  it('readFile puede leer por rango de líneas con numeración y expone el sha', async () => {
+    const text = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        json({ content: b64(text), encoding: 'base64', size: text.length, type: 'file', sha: 'blob-x' }),
+      ),
+    )
+    const out = JSON.parse(await readFile('owner/repo', 'src/a.ts', undefined, undefined, 10, 12))
+    expect(out.mode).toBe('lines')
+    expect(out.start_line).toBe(10)
+    expect(out.end_line).toBe(12)
+    expect(out.total_lines).toBe(50)
+    expect(out.sha).toBe('blob-x')
+    expect(out.content).toContain('10| line 10')
+    expect(out.content).toContain('12| line 12')
+    expect(out.content).not.toContain('13|')
+  })
+
   it('listFiles recorta a 150 entradas', async () => {
     stubGithub()
     const out = JSON.parse(await listFiles('owner/repo'))
