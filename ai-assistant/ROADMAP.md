@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-14 (Fases 0–3 implementadas y **desplegadas** al Worker; Fase 3 con migración aplicada en Neon y 1.ª indexación parcial; aceptación en vivo de 1–3 pendiente).
+> Última actualización: 2026-10-14 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); Fases 0–3 desplegadas al Worker; Fase 3 con migración aplicada en Neon y 1.ª indexación parcial; falta terminar el índice de Fase 3).
 
 ## Objetivo
 
@@ -26,8 +26,8 @@
 Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ Descartada
 
 > Nota (2026-10-14): las Fases 1 y 2 ya estaban implementadas cuando se creó este archivo (quedaron sin
-> commitear). Se marcan ✅ porque los ítems están hechos y los tests unitarios están en verde; su
-> **aceptación en vivo** (PR real + CI) sigue pendiente → ver "Pendiente de verificar".
+> commitear). Se marcan ✅ porque los ítems están hechos, los tests unitarios están en verde y su
+> **aceptación en vivo ya se hizo** (PR real + CI sobre `PABLOESTRADA20/web_anime`; ver Fases 1 y 2).
 
 ---
 
@@ -55,7 +55,7 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] Mantener protecciones: rama `aria/*`, sin merge, sin borrar, sin `.github/workflows`, rutas validadas, `GITHUB_WRITE_ENABLED=true`
 - [x] Tests: ambigua, cero coincidencias, archivo cambiado, ruta prohibida, límite de tamaño, borrado excesivo, selección de herramienta en español
 
-**Aceptación:** tests en verde ✅. **Falta** una edición real en rama `aria/*` con diff mínimo. El código ya está **desplegado** (2026-10-14, version `9a94bcf5-66a5-4bc1-bfc1-71f5b8308a05`) y el Worker tiene `GITHUB_TOKEN` + `GITHUB_WRITE_ENABLED`, así que la prueba en vivo puede hacerse desde la app desplegada (pendiente de ejecutar).
+**Aceptación:** tests en verde ✅ y **prueba en vivo hecha (2026-10-14)**. Sobre `PABLOESTRADA20/web_anime`, ARIA leyó `README.md` (`github_read_file`) y llamó `github_apply_patch` → creó la rama `aria/anadir-linea-de-prueba-...-mv8ecrab` y el **PR #1** (`pull_request:1`, `merged:false`), con diff mínimo (**+2/−0**, solo `README.md`); `main` quedó **intacta**. La prueba se hizo desde el **Worker local** (`npm run preview`, mismo código/runtime workerd que lo desplegado) con `GITHUB_TOKEN` (token de `gh`) y `GITHUB_WRITE_ENABLED=true`; `next dev` **no** sirve para esto (su engine WASM de Prisma no se resuelve fuera de workerd).
 
 ## Fase 2 — Verificar antes de dar por bueno ✅
 
@@ -64,7 +64,7 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] Parche de corrección en la misma rama, con límite de intentos (2 por PR, `MAX_FIX_ATTEMPTS = 2`)
 - [x] Tests: `success`, `failure`, `pending`, sin checks, límite de reintentos
 
-**Aceptación:** **Falta** la prueba en vivo (si el CI falla, ARIA reporta qué falló y puede corregir en la misma rama). Se puede hacer ya desde la app desplegada, igual que la Fase 1.
+**Aceptación:** **prueba en vivo hecha (2026-10-14)** en el mismo PR #1. `github_get_check_runs` devolvió `state:"failure"` con el check fallido y sus anotaciones (tests `useComments`/`useGamification`, aviso de Node 20), y ARIA **reportó qué falló** sin darlo por bueno y **explicó por qué no parcheaba** (fallo preexistente ajeno a su cambio de README). Un 2.º `github_apply_patch` **con `branch`** commiteó en la MISMA rama (`pull_request:null`, `fix_attempts` 1→2) y el 4.º intento fue **rechazado** por `MAX_FIX_ATTEMPTS=2` ("ya recibió 2 correcciones automáticas"). Hallazgo de temporización: consultado justo tras abrir el PR, los checks aún no existían y el resumen dijo "sin checks configurados" en vez de "pendiente" (ver Pendiente de verificar).
 
 ## Fase 3 — Índice de código + mapa del repo ✅
 
@@ -120,12 +120,15 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 | 2026-10-14 | Fase 3: índice léxico con configuración `simple` (sin stemming) | El código se busca por identificadores literales (`saveNote` debe casar con `saveNote`), no por raíces de español |
 | 2026-10-14 | Fase 3: `search_code` NO se gatea por repos configurados | El índice vive en la BD y lo llena un script local; no depende de GitHub |
 | 2026-10-14 | Fase 3: se recortó el system prompt (búsqueda web y GitHub) al añadir `search_code` | El prompt no puede crecer de 900 tokens; el detalle ya vive en las descripciones de las herramientas |
+| 2026-10-14 | Fases 1–2: aceptación en vivo desde el **Worker local** (`npm run preview`) con token de `gh`, no desde la app desplegada | Evita depender de `ARIA_ACCESS_TOKEN` y usa el mismo runtime (workerd) que producción; `next dev` no resuelve el engine WASM de Prisma |
 
 ## Pendiente de verificar
 
 - ~~**RAM real**: confirmar.~~ **Resuelto (2026-10-14)**: 16 GB (2×8 GB), 8C/12T; verificado con `Win32_PhysicalMemory`, `Win32_ComputerSystem` y `Win32_OperatingSystem`.
 - **`.wslconfig`**: sin distro WSL instalada no se pudo medir su efecto; requiere instalar/arrancar una distro tras `wsl --shutdown`.
-- **Fases 1 y 2**: falta la prueba en vivo (edición real en rama `aria/*` y PR con CI). Implementación, tests unitarios y **deploy** en verde/hecho (2026-10-14). La prueba puede hacerse desde la app desplegada (`https://ai-assistant.pablo-maximiliano-cocio-estrada.workers.dev`).
+- ~~**Fases 1 y 2**: falta la prueba en vivo (edición real en rama `aria/*` y PR con CI).~~ **Resuelto (2026-10-14)**: aceptación en vivo hecha sobre `PABLOESTRADA20/web_anime` (PR #1: rama `aria/*` + diff mínimo `+2/−0`; CI detectado como `failure` y reportado; parche de corrección en la misma rama; tope de 2 correcciones enforced). Ver Fases 1 y 2.
+- **Fase 2 — matiz de temporización** (mejora posible, no bloquea): al llamar `github_get_check_runs` **inmediatamente** tras abrir el PR, GitHub todavía no había creado el check (0 checks) y el resumen respondió `state:"none"` ("sin checks configurados"), cuando lo correcto sería "pendiente, reintenta". Opciones: que la herramienta distinga "sin checks configurados" de "checks aún no registrados", o que el prompt pida reintentar antes de concluir.
+- **CI de `web_anime` ya roto en `main`**: sus tests (`useComments`, `useGamification`) fallan desde antes de la prueba (y los `Deploy` de `main` también salen en rojo); por eso cualquier PR sale en rojo. No es un fallo de ARIA y no se tocó.
 - **Fase 3**: migración `20261014120000_code_index` **aplicada en Neon** ✅ y 1.ª pasada parcial hecha ✅ (48/185 ficheros, `REPO_MAP.md` creado). **Falta**: correr `npm run db:index-code` una vez al día hasta terminar los ~137 ficheros restantes y, al acabar, una pasada debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`. Sin esa 2.ª pasada sin cambios no se da por buena la aceptación. La consulta real de `search_code` contra Postgres **ya se validó** (`npm run db:smoke-code`: vía léxica y vectorial OK, `searchCode()` devuelve hits), así que el SQL y los índices GIN/HNSW quedan comprobados en real. Nota: hoy **nada lee `REPO_MAP.md`** todavía (el script lo genera y el comentario de cabecera dice que ARIA lo usa, pero no hay ningún consumidor en el código) → decidir si se integra o se corrige el texto.
 - **Versión de Next** (**confirmado 2026-10-14**): el árbol instalado es `next@15.5.25` (`node_modules/next/package.json` y `npm ls`), que es lo que usan `next dev`/`next build`; el `package-lock.json` fija **15.5.27**. Es un `node_modules` desincronizado del lockfile, misma serie 15.5.x y sin impacto funcional; `npm ci` lo alinearía a 15.5.27 cuando convenga.
 - **Compatibilidad de Next con `@opennextjs/cloudflare` 1.20.6**: la nota original decía Next 16.3, pero **no aplica**: la versión instalada es Next 15.5.x (no 16.x). Revisar solo si se planea subir a Next 16.
