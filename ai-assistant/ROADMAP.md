@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-14 (Fases 0, 1, 2 y 3 implementadas; aceptación en vivo de 1–3 pendiente).
+> Última actualización: 2026-10-14 (Fases 0–3 implementadas y **desplegadas** al Worker; Fase 3 con migración aplicada en Neon y 1.ª indexación parcial; aceptación en vivo de 1–3 pendiente).
 
 ## Objetivo
 
@@ -55,7 +55,7 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] Mantener protecciones: rama `aria/*`, sin merge, sin borrar, sin `.github/workflows`, rutas validadas, `GITHUB_WRITE_ENABLED=true`
 - [x] Tests: ambigua, cero coincidencias, archivo cambiado, ruta prohibida, límite de tamaño, borrado excesivo, selección de herramienta en español
 
-**Aceptación:** tests en verde ✅. **Falta** una edición real en rama `aria/*` con diff mínimo (pendiente).
+**Aceptación:** tests en verde ✅. **Falta** una edición real en rama `aria/*` con diff mínimo. El código ya está **desplegado** (2026-10-14, version `9a94bcf5-66a5-4bc1-bfc1-71f5b8308a05`) y el Worker tiene `GITHUB_TOKEN` + `GITHUB_WRITE_ENABLED`, así que la prueba en vivo puede hacerse desde la app desplegada (pendiente de ejecutar).
 
 ## Fase 2 — Verificar antes de dar por bueno ✅
 
@@ -64,7 +64,7 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] Parche de corrección en la misma rama, con límite de intentos (2 por PR, `MAX_FIX_ATTEMPTS = 2`)
 - [x] Tests: `success`, `failure`, `pending`, sin checks, límite de reintentos
 
-**Aceptación:** **Falta** la prueba en vivo (si el CI falla, ARIA reporta qué falló y puede corregir en la misma rama).
+**Aceptación:** **Falta** la prueba en vivo (si el CI falla, ARIA reporta qué falló y puede corregir en la misma rama). Se puede hacer ya desde la app desplegada, igual que la Fase 1.
 
 ## Fase 3 — Índice de código + mapa del repo ✅
 
@@ -73,9 +73,9 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] Búsqueda en `app/lib/code-index.ts` (`searchCode`: vectorial + léxica fundidas con `orFuse`) y herramienta `search_code` (registrada en `tools.ts`, en `selectTools` y en `TOOL_GROUPS.code`).
 - [x] `REPO_MAP.md` generado por el script, reescrito SOLO si cambia su contenido (sin timestamp, para que no cambie solo).
 - [x] Tests del troceado (`chunkCode`) y de la fusión (`fuseCodeScores`): 15 tests en `tests/unit/code-index.test.ts`; selección de la herramienta en español en `tests/unit/select-tools.test.ts`.
-- [ ] Medir neuronas de Workers AI del indexado inicial — **por medir**: el script ya informa `embeddings.api`, `embeddings.cache`, `estimatedNeurons` y el estado de la cuota en cada pasada; falta correrlo contra una BD real.
+- [x] Medir neuronas de Workers AI del indexado inicial — **1.ª pasada contra Neon (2026-10-14)**: 48/185 ficheros, 248 trozos, 248 embeddings por API (0 de caché), **≈7.999 neuronas estimadas**, 13,7 min. Se cortó sola al agotar el tope diario (8.000) y es reanudable por `fileHash`. Quedan ~137 ficheros para las próximas pasadas diarias.
 
-**Aceptación:** la segunda ejecución sin cambios no debe llamar a ningún embedding (el `fileHash` del fichero coincide → se salta antes de trocear/embeber). **Falta la prueba en vivo**: aplicar la migración y correr `db:index-code` dos veces sobre una BD real.
+**Aceptación:** la segunda ejecución sin cambios no debe llamar a ningún embedding (el `fileHash` del fichero coincide → se salta antes de trocear/embeber). La migración `20261014120000_code_index` **ya está aplicada** en Neon y la 1.ª pasada **ya creó `REPO_MAP.md`** ✅; **falta terminar el resto de ficheros** (varias pasadas, ≈3 días con la cuota diaria) y, entonces, una pasada sin cambios debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`.
 
 **Nota:** `REPO_MAP.md` no existe hasta la primera indexación; lo crea el script. El workflow de Actions para reindexar sigue sin crearse (solo si se pide). El troceo es heurístico (no un parser): puede partir un trozo de más, nunca perder código.
 
@@ -124,8 +124,8 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 
 - ~~**RAM real**: confirmar.~~ **Resuelto (2026-10-14)**: 16 GB (2×8 GB), 8C/12T; verificado con `Win32_PhysicalMemory`, `Win32_ComputerSystem` y `Win32_OperatingSystem`.
 - **`.wslconfig`**: sin distro WSL instalada no se pudo medir su efecto; requiere instalar/arrancar una distro tras `wsl --shutdown`.
-- **Fases 1 y 2**: falta la prueba en vivo (edición real en rama `aria/*` y PR con CI). Implementación y tests unitarios en verde.
-- **Fase 3**: aplicar la migración `20261014120000_code_index` y correr `npm run db:index-code` **dos veces**. La segunda pasada debe informar `embeddings.api: 0` y `repoMap: "sin cambios"` (y la primera, crear `REPO_MAP.md`). Requiere una BD (Docker/VPS) y `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` para los embeddings. Sin esa prueba no se dan por buenos el troceado real ni el conteo de neuronas.
+- **Fases 1 y 2**: falta la prueba en vivo (edición real en rama `aria/*` y PR con CI). Implementación, tests unitarios y **deploy** en verde/hecho (2026-10-14). La prueba puede hacerse desde la app desplegada (`https://ai-assistant.pablo-maximiliano-cocio-estrada.workers.dev`).
+- **Fase 3**: migración `20261014120000_code_index` **aplicada en Neon** ✅ y 1.ª pasada parcial hecha ✅ (48/185 ficheros, `REPO_MAP.md` creado). **Falta**: correr `npm run db:index-code` una vez al día hasta terminar los ~137 ficheros restantes y, al acabar, una pasada debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`. Sin esa 2.ª pasada sin cambios no se da por buena la aceptación. Nota: hoy **nada lee `REPO_MAP.md`** todavía (el script lo genera y el comentario de cabecera dice que ARIA lo usa, pero no hay ningún consumidor en el código) → decidir si se integra o se corrige el texto.
 - **Versión de Next**: la instalada reporta `15.5.25` en el banner de `next dev`, pero el lockfile dice `15.5.27`. Confirmar cuál está activa.
 - **Compatibilidad de Next con `@opennextjs/cloudflare` 1.20.6**: la nota original decía Next 16.3, pero **no aplica**: la versión instalada es Next 15.5.x (no 16.x). Revisar solo si se planea subir a Next 16.
 - ~~Datos del repo tomados del prompt original (líneas de código, migraciones, límites): confirmar al leer el repo (Fase 3).~~ **Resuelto (2026-10-14)**: leídos directamente del repo durante la Fase 3.
