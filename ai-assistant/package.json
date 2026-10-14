@@ -12,6 +12,7 @@
     "db:index-code": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/index-code.ts",
     "db:smoke": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-memory.ts",
     "db:brain": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-brain.ts",
+    "db:smoke-code": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-code-search.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:psql": "docker compose exec postgres psql -U postgres -d aria",
