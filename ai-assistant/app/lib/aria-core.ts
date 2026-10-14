@@ -169,6 +169,15 @@ export const TOOL_GROUPS = {
 const RX_GITHUB =
   /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request)\b/i
 const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
+/**
+ * Intención de REVISAR código. Las `github_*` son de solo lectura y no se
+ * ofrecen sin un repo al que apuntar, pero "revisá mi código" no contiene
+ * ninguna palabra de RX_GITHUB: sin esta señal el modelo no recibía
+ * `github_read_file` y respondía sin leer el código. Requiere además un repos
+ * configurado o una URL (misma condición que abajo).
+ */
+const RX_CODE_REVIEW =
+  /\b(revis\w*|analiz\w*|an[aá]lisis|audit\w*|mejor\w*|refactor\w*|depur\w*|debug\w*|optimiz\w*|corrig\w*|arregl\w*)\b[^.!?]{0,60}\b(c[oó]digo|proyecto|repositorio|repos?|archivos?|funciones?|clases?|m[oó]dulos?|app|aplicaci[oó]n|pull request|rama|branch)\b/i
 const RX_GITHUB_WRITE =
   /\b(modifica|modificar|edita|editar|cambia|cambiar|implementa|implementar|corrige|corregir|arregla|arreglar|crea(?:r)?|actualiza|actualizar|haz(?:me)? (?:el )?cambio)\b/i
 const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
@@ -212,7 +221,7 @@ export function selectTools(
   // Búsqueda web: reutiliza la heurística que ya forzaba la herramienta.
   if (wantsWebSearch([{ role: 'user', content: text }])) add(TOOL_GROUPS.web)
 
-  if (RX_GITHUB.test(text) && (hasRepos || RX_GITHUB_URL.test(text))) {
+  if ((RX_GITHUB.test(text) || RX_CODE_REVIEW.test(text)) && (hasRepos || RX_GITHUB_URL.test(text))) {
     add(TOOL_GROUPS.github)
     if (RX_GITHUB_WRITE.test(text)) add(TOOL_GROUPS.githubWrite)
   }

@@ -1,6 +1,6 @@
 import { GROQ, type Provider } from '@/app/lib/providers'
 import { markGroqQuota, nextMidnightUtc, parseResetWindow, untilFromError } from '@/app/lib/quota'
-import { oneLineStub, sliceWindow } from '@/app/lib/truncate'
+import { sliceWindow, stubToolResult } from '@/app/lib/truncate'
 
 const GROQ_API = GROQ.apiUrl!
 
@@ -1164,10 +1164,23 @@ export async function callGroqWithTools(
   const finalMessages: GroqMessage[] = [...messages]
   const toolCalls: ToolCallRecord[] = []
   let toolCallCount = 0
-  // 3 rondas: con 5 el modelo entra en bucle de busquedas casi identicas
-  // (medido: 5 web_search sobre lo mismo) y cada ronda gasta TPM del free
-  // tier, alargando la respuesta a 25-70s sin llegar a contenido final.
-  const MAX_TOOL_ROUNDS = 3
+  /**
+   * Rondas máximas de herramientas.
+   *
+   * Con 3 una revisión de código no alcanzaba a leer los archivos relevantes.
+   * Se sube a 5, pero acompañado de una guarda anti-bucle (abajo): antes, con 5
+   * el modelo entraba en bucle de búsquedas casi idénticas (medido: 5
+   * `web_search` sobre lo mismo) y cada ronda gasta TPM del free tier,
+   * alargando la respuesta sin llegar a contenido final.
+   */
+  const MAX_TOOL_ROUNDS = 5
+  /**
+   * Rondas cuyos resultados se conservan COMPLETOS en el contexto final. Antes
+   * solo sobrevivía la última y las anteriores se borraban a una línea, así que
+   * la respuesta se redactaba sin lo leído. Las más viejas se recortan a su
+   * cabecera (`stubToolResult`), no se borran.
+   */
+  const KEEP_FULL_ROUNDS = 2
 
   /**
    * `web_search` obligatorio en la primera ronda.
@@ -1191,11 +1204,12 @@ export async function callGroqWithTools(
    * paso siguiente.
    */
   let searched = !forceSearch || !canForceSearch
-  // Índices de los mensajes `tool` de la ronda anterior. Cuando el modelo pide
-  // OTRA ronda, esos resultados ya se usaron para decidir: se sustituyen por un
-  // stub de una línea para no reenviarlos enteros. Así solo la última ronda
-  // viaja completa al stream final.
-  let previousToolIndexes: number[] = []
+  // Índices de los mensajes `tool` de cada ronda ya ejecutada, en orden. Sirve
+  // para recortar (no borrar) los resultados viejos al empezar otra ronda.
+  const toolRounds: number[][] = []
+  // Firmas `nombre:argumentos` ya ejecutadas, para detectar rondas que no
+  // aportan nada nuevo (guarda anti-bucle).
+  const seenCalls = new Set<string>()
 
   while (toolCallCount < MAX_TOOL_ROUNDS) {
     const body = {
@@ -1231,21 +1245,45 @@ export async function callGroqWithTools(
 
     if (!msg) throw new Error('No response from Groq')
 
-    finalMessages.push(msg)
-
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       // No more tool calls — now stream the final response
+      finalMessages.push(msg)
       break
     }
 
-    // Hay una nueva ronda: los resultados anteriores ya cumplieron su funcion.
-    for (const index of previousToolIndexes) {
-      finalMessages[index].content = oneLineStub(finalMessages[index].content)
+    // Guarda anti-bucle: si la ronda solo repite llamadas ya hechas (mismo
+    // nombre y argumentos), no aporta nada nuevo. Se descarta (no se envía al
+    // modelo, que la respondería pidiendo más) y se pasa a redactar con lo ya
+    // reunido. Sin esto, subir las rondas reintroduce el bucle medido de
+    // `web_search` idénticos.
+    const isNovel = msg.tool_calls.some(
+      (tc: ToolCall) => !seenCalls.has(`${tc.function.name}:${tc.function.arguments}`),
+    )
+    if (!isNovel) {
+      console.warn('Ronda de herramientas sin llamadas nuevas; se corta para redactar')
+      break
+    }
+
+    finalMessages.push(msg)
+
+    // Hay una nueva ronda: se recortan a su cabecera los resultados de las
+    // rondas más viejas, conservando COMPLETAS las últimas KEEP_FULL_ROUNDS.
+    // Antes se borraban a una línea, con lo que la respuesta final perdía el
+    // README, el árbol y los archivos ya leídos.
+    const stubUntil = toolRounds.length - KEEP_FULL_ROUNDS
+    for (let r = 0; r < stubUntil; r++) {
+      for (const index of toolRounds[r]) {
+        const current = finalMessages[index].content
+        if (typeof current === 'string') {
+          finalMessages[index].content = stubToolResult(current)
+        }
+      }
     }
 
     // Execute tool calls
     const roundIndexes: number[] = []
     for (const toolCall of msg.tool_calls) {
+      seenCalls.add(`${toolCall.function.name}:${toolCall.function.arguments}`)
       let record: ToolCallRecord
       let result: string
       try {
@@ -1269,7 +1307,7 @@ export async function callGroqWithTools(
       })
       roundIndexes.push(finalMessages.length - 1)
     }
-    previousToolIndexes = roundIndexes
+    toolRounds.push(roundIndexes)
 
     toolCallCount++
 

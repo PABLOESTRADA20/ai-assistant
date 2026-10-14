@@ -12,6 +12,9 @@ import {
 
 const b64 = (text: string) => Buffer.from(text, 'utf-8').toString('base64')
 
+/** Tamaño del archivo falso: mayor que una ventana y menor que dos. */
+const FILE_SIZE = GITHUB_LIMITS.readFile + 500
+
 const json = (data: unknown) =>
   new Response(JSON.stringify(data), {
     status: 200,
@@ -48,7 +51,7 @@ function stubGithub() {
       )
     }
     if (url.includes('/contents/')) {
-      return json({ content: b64('A'.repeat(7000)), encoding: 'base64', size: 7000, type: 'file' })
+      return json({ content: b64('A'.repeat(FILE_SIZE)), encoding: 'base64', size: FILE_SIZE, type: 'file' })
     }
     // Información del repo (resto de URLs).
     return json({
@@ -78,7 +81,7 @@ describe('topes de resultados de GitHub', () => {
     expect(out.top_level.length).toBeLessThanOrEqual(100)
   })
 
-  it('readFile devuelve una ventana de 6000 y permite continuar con offset', async () => {
+  it('readFile devuelve una ventana y permite continuar con offset', async () => {
     stubGithub()
     const first = JSON.parse(await readFile('owner/repo', 'src/index.ts'))
     expect(first.content.length).toBe(GITHUB_LIMITS.readFile)
@@ -89,7 +92,7 @@ describe('topes de resultados de GitHub', () => {
       await readFile('owner/repo', 'src/index.ts', undefined, first.next_offset),
     )
     expect(second.offset).toBe(GITHUB_LIMITS.readFile)
-    expect(second.content.length).toBe(7000 - GITHUB_LIMITS.readFile)
+    expect(second.content.length).toBe(FILE_SIZE - GITHUB_LIMITS.readFile)
     expect(second.truncated).toBe(false)
     expect(second.next_offset).toBeNull()
   })

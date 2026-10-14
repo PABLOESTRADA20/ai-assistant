@@ -44,11 +44,24 @@ export function sliceWindow(text: string, offset: unknown, max: number): TextWin
   return { offset: start, content, truncated, nextOffset: truncated ? end : null }
 }
 
+/** Cabecera que se conserva de un resultado de ronda anterior al recortarlo. */
+export const STUB_HEAD_CHARS = 2000
+
+/** Marca que se añade al recortar; permite detectarlo en los tests y en logs. */
+export const STUB_MARKER = '[ronda anterior recortada]'
+
 /**
- * Resumen de una línea para resultados de herramientas de rondas anteriores:
- * el modelo ya los vio para decidir la siguiente ronda, así que no hace falta
- * reenviarlos completos. Nunca contiene saltos de línea.
+ * Recorta un resultado de herramienta de una ronda anterior conservando su
+ * CABECERA.
+ *
+ * Antes se reemplazaba por una sola línea ("resultado omitido"), con lo que la
+ * respuesta final perdía lo leído (README, árbol de archivos, código de los
+ * archivos previos) y "revisaba" sin el código delante. Conservar la cabecera
+ * mantiene las rutas, la estructura y el principio de cada archivo, y aun así
+ * acota los tokens que se reenvían en cada vuelta. Los resultados cortos se
+ * devuelven intactos.
  */
-export function oneLineStub(result: string): string {
-  return `[resultado de una ronda anterior omitido (${result.length} chars); ya se usó para decidir]`
+export function stubToolResult(result: string, max = STUB_HEAD_CHARS): string {
+  if (result.length <= max) return result
+  return `${result.slice(0, max)}\n${STUB_MARKER} (+${result.length - max} chars; vuelve a leer con offset si necesitas el resto)`
 }

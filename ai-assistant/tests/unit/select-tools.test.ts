@@ -59,6 +59,20 @@ describe('selectTools', () => {
     expect(reviewPr.has('github_create_pull_request')).toBe(false)
   })
 
+  it('enciende las github_* al pedir revisar/analizar código (con repos)', () => {
+    const review = names('revisá mi código y decime qué mejorar', true)
+    expect(review.has('github_read_file')).toBe(true)
+    expect(review.has('github_list_files')).toBe(true)
+    expect(review.has('github_repo_overview')).toBe(true)
+
+    expect(names('analiza mi proyecto', true).has('github_repo_overview')).toBe(true)
+    expect(names('auditá el código de la app', true).has('github_read_file')).toBe(true)
+  })
+
+  it('NO enciende github al revisar código sin repos ni URL configurados', () => {
+    expect(names('revisá mi código', false).size).toBe(0)
+  })
+
   it('detecta abrir apps, correo, clima y memoria', () => {
     expect(names('abre Spotify').has('open_app')).toBe(true)
     expect(names('envíame un correo a Juan').has('send_email')).toBe(true)

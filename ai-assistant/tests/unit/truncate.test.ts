@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeOffset, oneLineStub, sliceWindow } from '@/app/lib/truncate'
+import { STUB_HEAD_CHARS, STUB_MARKER, normalizeOffset, sliceWindow, stubToolResult } from '@/app/lib/truncate'
 
 describe('normalizeOffset', () => {
   it('normaliza a entero >= 0 y tolera basura', () => {
@@ -65,10 +65,20 @@ describe('sliceWindow', () => {
   })
 })
 
-describe('oneLineStub', () => {
-  it('es una sola línea e indica los chars omitidos', () => {
-    const stub = oneLineStub('x'.repeat(123))
-    expect(stub).not.toContain('\n')
-    expect(stub).toContain('123')
+describe('stubToolResult', () => {
+  it('conserva intacto un resultado corto', () => {
+    const short = 'resultado corto'
+    expect(stubToolResult(short)).toBe(short)
+    expect(stubToolResult(short)).not.toContain(STUB_MARKER)
+  })
+
+  it('conserva la cabecera y marca el resultado largo', () => {
+    const long = 'H'.repeat(STUB_HEAD_CHARS + 500)
+    const stub = stubToolResult(long)
+    expect(stub.startsWith('H'.repeat(STUB_HEAD_CHARS))).toBe(true)
+    expect(stub).toContain(STUB_MARKER)
+    // No se pierde todo: la cabecera con las rutas/estructura sigue ahí.
+    expect(stub.length).toBeGreaterThan(STUB_HEAD_CHARS)
+    expect(stub.length).toBeLessThan(long.length)
   })
 })

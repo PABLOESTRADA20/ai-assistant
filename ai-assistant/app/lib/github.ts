@@ -32,7 +32,7 @@ const GITHUB_API = 'https://api.github.com'
 export const GITHUB_LIMITS = {
   readme: 1500,
   listFiles: 150,
-  readFile: 6000,
+  readFile: 8000,
   issues: 10,
   issueBody: 200,
   writeFiles: 5,
