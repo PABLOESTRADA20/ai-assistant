@@ -125,6 +125,30 @@ describe('selectTools', () => {
     expect(names('revisá mi código y decime qué mejorar', true).has('github_get_check_runs')).toBe(true)
   })
 
+  it('ofrece update_* solo cuando se pide modificar (FASE 4)', () => {
+    // Editar una nota de la nube -> update_cloud_note, junto a las de lectura.
+    const note = names('actualizá mi nota de la nube con esto')
+    expect(note.has('update_cloud_note')).toBe(true)
+    expect(note.has('list_cloud_notes')).toBe(true)
+
+    // Leer notas NO ofrece la herramienta que modifica datos.
+    expect(names('¿qué hay en mis notas de la nube?').has('update_cloud_note')).toBe(false)
+    // Guardar no es editar: lo cubre save_cloud_note.
+    expect(names('guarda una nota en la nube').has('update_cloud_note')).toBe(false)
+
+    // Corregir una memoria -> update_memory + recall_memory (para hallar el id).
+    const mem = names('corregí esa memoria sobre mi stack')
+    expect(mem.has('update_memory')).toBe(true)
+    expect(mem.has('recall_memory')).toBe(true)
+
+    // Recordar algo NO ofrece la escritura.
+    expect(names('¿qué sabes de mí?').has('update_memory')).toBe(false)
+
+    // Deshacer un cambio -> revert_change; charla normal, no.
+    expect(names('deshacé el último cambio que hiciste').has('revert_change')).toBe(true)
+    expect(names('hola, ¿todo bien?').has('revert_change')).toBe(false)
+  })
+
   it('todos los nombres ofrecidos existen en TOOL_DEFINITIONS', () => {
     const known = new Set(TOOL_DEFINITIONS.map((t) => t.function.name))
     // El set completo declarado en los grupos debe existir.

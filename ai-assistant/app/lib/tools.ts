@@ -1,4 +1,5 @@
 import { GROQ, type Provider } from '@/app/lib/providers'
+import type { MemoryUpdate } from '@/app/lib/memory'
 import { markGroqQuota, nextMidnightUtc, parseResetWindow, untilFromError } from '@/app/lib/quota'
 import { sliceWindow, stubToolResult } from '@/app/lib/truncate'
 
@@ -610,6 +611,68 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'update_memory',
+      description:
+        'Edit an existing memory of the user, by id (get the id with recall_memory first). Use it only ' +
+        'when the user asks to correct, update or forget something you had memorized. Every change is ' +
+        'audited and can be undone with revert_change.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Memory id (uuid), obtained from recall_memory' },
+          content: { type: 'string', description: 'New memory text (max 2000 characters)' },
+          importance: { type: 'number', description: 'How important it is, 0..1' },
+          category: { type: 'string', description: 'New category' },
+          type: { type: 'string', description: 'New memory type' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Replacement tags' },
+        },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'update_cloud_note',
+      description:
+        "Edit an existing note in the user's cloud ARIA folder, by id (get the id with list_cloud_notes " +
+        'or read_cloud_note). Use it to fix or extend a saved note instead of saving it again. Every ' +
+        'change is audited and can be undone with revert_change.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Note id (uuid), obtained from list_cloud_notes or read_cloud_note' },
+          title: { type: 'string', description: 'New title (max 200 characters)' },
+          content: { type: 'string', description: 'New full note content in Markdown' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Replacement tags' },
+          pinned: { type: 'boolean', description: 'Pin or unpin the note' },
+        },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'revert_change',
+      description:
+        'Undo a previous data change made by ARIA on a memory or a cloud note, restoring its previous ' +
+        'value. Pass changeId (returned by update_memory / update_cloud_note), or entity + entityId to ' +
+        'undo the latest change on that item.',
+      parameters: {
+        type: 'object',
+        properties: {
+          changeId: { type: 'string', description: 'Change id returned by a previous update_* call' },
+          entity: { type: 'string', enum: ['memory', 'note'], description: 'Which kind of item to undo the latest change of' },
+          entityId: { type: 'string', description: 'Id of the memory or note (used with entity)' },
+        },
+        required: [],
+      },
+    },
+  },
 ]
 
 export async function executeToolCall(toolCall: ToolCall): Promise<string> {
@@ -661,6 +724,12 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return listCloudNotes(args.query)
     case 'read_cloud_note':
       return readCloudNote(args.title, args.offset)
+    case 'update_memory':
+      return updateMemoryTool(args)
+    case 'update_cloud_note':
+      return updateCloudNoteTool(args)
+    case 'revert_change':
+      return revertChangeTool(args)
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` })
   }
@@ -868,6 +937,266 @@ async function readCloudNote(title?: unknown, offset?: unknown): Promise<string>
     truncated: window.truncated,
     next_offset: window.nextOffset,
     content: window.content,
+  })
+}
+
+/* ------------------ modificación de memorias y notas (FASE 4) ------------- */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Tope de texto de una memoria (una memoria es una frase, no un documento). */
+const MEMORY_CONTENT_MAX = 2000
+/** Topes de una nota de la nube. */
+const NOTE_TITLE_MAX = 200
+const NOTE_CONTENT_MAX = 50000
+
+/** Copia solo los campos que se pueden modificar; es lo que se audita. */
+function memorySnapshot(m: {
+  type: string
+  category: string
+  content: string
+  importance: number
+  confidence: number
+  tags: string[]
+}) {
+  return {
+    type: m.type,
+    category: m.category,
+    content: m.content,
+    importance: m.importance,
+    confidence: m.confidence,
+    tags: m.tags,
+  }
+}
+
+function noteSnapshot(n: { title: string; content: string; tags: string[]; pinned: boolean }) {
+  return { title: n.title, content: n.content, tags: n.tags, pinned: n.pinned }
+}
+
+async function updateMemoryTool(args: Record<string, unknown>): Promise<string> {
+  const id = typeof args.id === 'string' ? args.id.trim() : ''
+  if (!UUID_RE.test(id)) {
+    return JSON.stringify({ error: 'Falta un id de memoria válido (uuid). Obtenlo con recall_memory.' })
+  }
+
+  const patch: MemoryUpdate = {}
+  if (args.content !== undefined) {
+    if (typeof args.content !== 'string' || !args.content.trim()) {
+      return JSON.stringify({ error: 'El contenido de la memoria no puede quedar vacío' })
+    }
+    if (args.content.length > MEMORY_CONTENT_MAX) {
+      return JSON.stringify({ error: `El contenido supera el máximo de ${MEMORY_CONTENT_MAX} caracteres` })
+    }
+    patch.content = args.content
+  }
+  if (args.importance !== undefined) {
+    const n = Number(args.importance)
+    if (!Number.isFinite(n) || n < 0 || n > 1) {
+      return JSON.stringify({ error: 'importance debe ser un número entre 0 y 1' })
+    }
+    patch.importance = n
+  }
+  if (typeof args.category === 'string' && args.category.trim()) patch.category = args.category.trim()
+  if (typeof args.type === 'string' && args.type.trim()) patch.type = args.type.trim()
+  if (Array.isArray(args.tags)) {
+    patch.tags = args.tags.filter((t): t is string => typeof t === 'string')
+  }
+  if (Object.keys(patch).length === 0) {
+    return JSON.stringify({ error: 'No indicaste ningún campo para cambiar' })
+  }
+
+  const [memory, changelog] = await Promise.all([
+    import('@/app/lib/memory'),
+    import('@/app/lib/changelog'),
+  ])
+
+  const before = await memory.findMemoryById(id)
+  if (!before) return JSON.stringify({ error: `No encontré una memoria con id ${id}` })
+
+  const recent = await changelog.countRecentChanges('memory', id)
+  if (recent >= changelog.MAX_CHANGES_PER_MINUTE) {
+    return JSON.stringify({
+      error: `Demasiados cambios seguidos en esta memoria (límite ${changelog.MAX_CHANGES_PER_MINUTE}/min). Esperá un momento.`,
+    })
+  }
+
+  let updated: Awaited<ReturnType<typeof memory.updateMemory>>
+  try {
+    updated = await memory.updateMemory(id, patch)
+  } catch {
+    // `updateMemory` aplica los campos y DESPUÉS recalcula el embedding; si eso
+    // falla (p. ej. cuota diaria de Workers AI agotada, `embed` lanza) la fila
+    // ya cambió. Releemos para no perder el cambio ni dejar la auditoría a medias.
+    const after = await memory.findMemoryById(id).catch(() => null)
+    if (!after) return JSON.stringify({ error: 'No se pudo actualizar la memoria' })
+    const change = await changelog.recordChange({
+      entity: 'memory',
+      entityId: id,
+      before: memorySnapshot(before),
+      after: memorySnapshot(after),
+    })
+    return JSON.stringify({
+      success: true,
+      warning:
+        'La memoria se actualizó, pero no se pudo recalcular su embedding (se corregirá al reindexar).',
+      id,
+      changeId: change.id,
+      memory: {
+        content: after.content,
+        importance: after.importance,
+        category: after.category,
+        tags: after.tags,
+      },
+    })
+  }
+
+  const change = await changelog.recordChange({
+    entity: 'memory',
+    entityId: id,
+    before: memorySnapshot(before),
+    after: memorySnapshot(updated),
+  })
+
+  return JSON.stringify({
+    success: true,
+    message: 'Memoria actualizada.',
+    id,
+    changeId: change.id,
+    memory: {
+      content: updated.content,
+      importance: updated.importance,
+      category: updated.category,
+      tags: updated.tags,
+    },
+  })
+}
+
+async function updateCloudNoteTool(args: Record<string, unknown>): Promise<string> {
+  const id = typeof args.id === 'string' ? args.id.trim() : ''
+  if (!UUID_RE.test(id)) {
+    return JSON.stringify({ error: 'Falta un id de nota válido (uuid). Obtenlo con list_cloud_notes.' })
+  }
+
+  const patch: { title?: string; content?: string; tags?: string[]; pinned?: boolean } = {}
+  if (args.title !== undefined) {
+    if (typeof args.title !== 'string' || !args.title.trim()) {
+      return JSON.stringify({ error: 'El título de la nota no puede quedar vacío' })
+    }
+    if (args.title.length > NOTE_TITLE_MAX) {
+      return JSON.stringify({ error: `El título supera el máximo de ${NOTE_TITLE_MAX} caracteres` })
+    }
+    patch.title = args.title
+  }
+  if (args.content !== undefined) {
+    if (typeof args.content !== 'string' || !args.content.trim()) {
+      return JSON.stringify({ error: 'El contenido de la nota no puede quedar vacío' })
+    }
+    if (args.content.length > NOTE_CONTENT_MAX) {
+      return JSON.stringify({ error: `El contenido supera el máximo de ${NOTE_CONTENT_MAX} caracteres` })
+    }
+    patch.content = args.content
+  }
+  if (Array.isArray(args.tags)) {
+    patch.tags = args.tags.filter((t): t is string => typeof t === 'string')
+  }
+  if (typeof args.pinned === 'boolean') patch.pinned = args.pinned
+  if (Object.keys(patch).length === 0) {
+    return JSON.stringify({ error: 'No indicaste ningún campo para cambiar' })
+  }
+
+  const [notes, changelog] = await Promise.all([
+    import('@/app/lib/notes'),
+    import('@/app/lib/changelog'),
+  ])
+
+  const before = await notes.getNote(id)
+  if (!before) return JSON.stringify({ error: `No encontré una nota con id ${id}` })
+
+  const recent = await changelog.countRecentChanges('note', id)
+  if (recent >= changelog.MAX_CHANGES_PER_MINUTE) {
+    return JSON.stringify({
+      error: `Demasiados cambios seguidos en esta nota (límite ${changelog.MAX_CHANGES_PER_MINUTE}/min). Esperá un momento.`,
+    })
+  }
+
+  const updated = await notes.updateNote(id, patch)
+  if (!updated) return JSON.stringify({ error: 'No se pudo actualizar la nota' })
+
+  const change = await changelog.recordChange({
+    entity: 'note',
+    entityId: id,
+    before: noteSnapshot(before),
+    after: noteSnapshot(updated),
+  })
+
+  return JSON.stringify({
+    success: true,
+    message: 'Nota actualizada.',
+    id,
+    changeId: change.id,
+    note: { id: updated.id, title: updated.title, updatedAt: updated.updatedAt },
+  })
+}
+
+/**
+ * Deshace un cambio auditado reaplicando su valor anterior (`before`). Se puede
+ * pedir por `changeId` (lo devuelven `update_memory` / `update_cloud_note`) o
+ * por `entity` + `entityId` (revierte el último cambio de ese registro).
+ */
+async function revertChangeTool(args: Record<string, unknown>): Promise<string> {
+  const changelog = await import('@/app/lib/changelog')
+
+  let change: import('@/app/lib/changelog').ChangeRecord | null = null
+  const changeId = typeof args.changeId === 'string' ? args.changeId.trim() : ''
+  if (changeId) {
+    change = await changelog.getChange(changeId)
+  } else {
+    const entity = args.entity === 'memory' || args.entity === 'note' ? args.entity : null
+    const entityId = typeof args.entityId === 'string' ? args.entityId.trim() : ''
+    if (!entity || !entityId) {
+      return JSON.stringify({ error: 'Indicá changeId, o bien entity + entityId' })
+    }
+    change = await changelog.latestChange(entity, entityId)
+  }
+
+  if (!change) return JSON.stringify({ error: 'No encontré ese cambio' })
+  if (change.revertedAt) return JSON.stringify({ error: 'Ese cambio ya estaba revertido' })
+
+  const before = change.before as Record<string, unknown> | null
+  if (!before || typeof before !== 'object') {
+    return JSON.stringify({ error: 'El cambio no guarda un valor anterior: no se puede revertir' })
+  }
+
+  if (change.entity === 'memory') {
+    const memory = await import('@/app/lib/memory')
+    const current = await memory.findMemoryById(change.entityId)
+    if (!current) return JSON.stringify({ error: 'La memoria ya no existe' })
+    try {
+      await memory.updateMemory(change.entityId, before as MemoryUpdate)
+    } catch {
+      // Mismo caso que en `update_memory`: los campos se reaplican antes de
+      // recalcular el embedding; si eso falla, el valor anterior ya volvió.
+      const after = await memory.findMemoryById(change.entityId).catch(() => null)
+      if (!after) return JSON.stringify({ error: 'No se pudo revertir la memoria' })
+    }
+  } else if (change.entity === 'note') {
+    const notes = await import('@/app/lib/notes')
+    const current = await notes.getNote(change.entityId)
+    if (!current) return JSON.stringify({ error: 'La nota ya no existe' })
+    await notes.updateNote(change.entityId, before as { title?: string; content?: string; tags?: unknown; pinned?: boolean })
+  } else {
+    return JSON.stringify({ error: `No sé revertir cambios de tipo "${change.entity}"` })
+  }
+
+  const marked = await changelog.markReverted(change.id)
+  if (!marked) return JSON.stringify({ error: 'Ese cambio ya estaba revertido' })
+
+  return JSON.stringify({
+    success: true,
+    message: 'Cambio revertido.',
+    changeId: change.id,
+    entity: change.entity,
+    entityId: change.entityId,
   })
 }
 

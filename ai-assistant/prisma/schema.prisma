@@ -146,3 +146,30 @@ model CodeChunk {
   @@index([fileHash])
   @@index([kind])
 }
+
+/// Auditoría de cambios de datos (FASE 4).
+///
+/// Registra cada modificación hecha por las herramientas `update_memory` /
+/// `update_cloud_note`: qué entidad y registro, el valor anterior completo
+/// (`before`) y el nuevo (`after`). Guardando `before`, un cambio es
+/// **reversible**: `revert_change` reaplica ese valor y marca `revertedAt`.
+///
+/// Se accede por SQL crudo (igual que `Note`): el cliente Prisma generado no
+/// incluye este modelo y regenerarlo arrastraría decenas de ficheros.
+model ChangeLog {
+  id         String    @id @default(uuid())
+  /// 'memory' | 'note'
+  entity     String
+  entityId   String
+  /// 'update' (por ahora, el único tipo de cambio auditado)
+  action     String
+  before     Json?
+  after      Json?
+  /// Quién lo cambió: 'aria' (herramienta) o 'user'.
+  actor      String    @default("aria")
+  revertedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([entity, entityId, createdAt])
+  @@index([createdAt])
+}

@@ -153,6 +153,11 @@ export const TOOL_GROUPS = {
   web: ['web_search'],
   vault: ['search_vault', 'semantic_search_vault', 'read_note', 'save_note'],
   cloudNotes: ['list_cloud_notes', 'read_cloud_note', 'save_cloud_note'],
+  /**
+   * Escritura sobre notas de la nube (FASE 4). Va aparte de `cloudNotes`: leer
+   * "¿qué notas tengo?" no debe ofrecer una herramienta que modifica datos.
+   */
+  cloudNotesWrite: ['update_cloud_note'],
   github: [
     'github_repo_overview',
     'github_list_files',
@@ -163,6 +168,10 @@ export const TOOL_GROUPS = {
   code: ['search_code'],
   githubWrite: ['github_create_pull_request', 'github_apply_patch'],
   memory: ['recall_memory'],
+  /** Escritura sobre memorias (FASE 4); aparte de `memory` por el mismo motivo. */
+  memoryWrite: ['update_memory'],
+  /** Deshacer un cambio auditado (FASE 4). */
+  revert: ['revert_change'],
   time: ['get_time'],
   math: ['calculate'],
   weather: ['get_weather'],
@@ -209,6 +218,17 @@ const RX_APPS =
   /\b([aá]bre|abrir|abr[ií]me|[aá]breme|ejecuta|lanza)\b[^.]{0,40}\b(app|aplicaci[oó]n|spotify|vscode|vs ?code|carpeta|navegador|programa)/i
 const RX_EMAIL =
   /\b(env[ií]a(?:me|le|les)?|mand[aá](?:me|le|les)?|escr[ií]b)\b[^.]{0,40}\b(correo|mail|e-?mail)\b/i
+/**
+ * Verbos de cambio (FASE 4). Se combinan con el tema (memoria/nota) para no
+ * ofrecer herramientas que modifican datos cuando el mensaje solo pregunta o
+ * lee. Ojo: `edita`/`actualiza` también están en RX_GITHUB_WRITE, pero esa solo
+ * se activa con un repo de por medio, así que no chocan.
+ */
+const RX_WRITE_VERB =
+  /\b(actualiz|corrig|correg|edit|modific|cambi|borr|elimin|olvid|renombr|agreg|a[nñ]ad|quit)\w*\b/i
+const RX_MEMORY_WRITE =
+  /\b(actualiz|corrig|correg|edit|modific|cambi|borr|elimin|olvid|renombr|agreg|a[nñ]ad|quit)\w*\b[^.!?]{0,40}\b(memorias?|recuerdos?)\b/i
+const RX_REVERT = /\b(deshac\w*|deshace|revert\w*|revierte|undo)\b/i
 
 /**
  * Decide QUÉ herramientas se ofrecen en un turno, por palabras clave locales.
@@ -242,8 +262,13 @@ export function selectTools(
   // El índice de código NO depende de GitHub: se ofrece aunque no haya repos.
   if (RX_CODE_REVIEW.test(text) || RX_CODE_SEARCH.test(text)) add(TOOL_GROUPS.code)
   if (RX_VAULT.test(text)) add(TOOL_GROUPS.vault)
-  if (RX_CLOUD_NOTES.test(text)) add(TOOL_GROUPS.cloudNotes)
-  if (RX_MEMORY.test(text)) add(TOOL_GROUPS.memory)
+  if (RX_CLOUD_NOTES.test(text)) {
+    add(TOOL_GROUPS.cloudNotes)
+    if (RX_WRITE_VERB.test(text)) add(TOOL_GROUPS.cloudNotesWrite)
+  }
+  if (RX_MEMORY.test(text) || RX_MEMORY_WRITE.test(text)) add(TOOL_GROUPS.memory)
+  if (RX_MEMORY_WRITE.test(text)) add(TOOL_GROUPS.memoryWrite)
+  if (RX_REVERT.test(text)) add(TOOL_GROUPS.revert)
   if (RX_TIME.test(text)) add(TOOL_GROUPS.time)
   if (RX_MATH.test(text)) add(TOOL_GROUPS.math)
   if (RX_WEATHER.test(text)) add(TOOL_GROUPS.weather)

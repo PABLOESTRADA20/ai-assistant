@@ -89,6 +89,16 @@ async function getMemoryById(id: string): Promise<StoredMemory> {
   return toStored(row)
 }
 
+/**
+ * Igual que `getMemoryById` pero devuelve `null` en vez de lanzar. Lo usan las
+ * herramientas de modificación (`update_memory`) para comprobar que la memoria
+ * existe antes de tocar nada y para guardar el valor anterior.
+ */
+export async function findMemoryById(id: string): Promise<StoredMemory | null> {
+  const row = await prisma.memory.findUnique({ where: { id } })
+  return row ? toStored(row) : null
+}
+
 export async function createMemory(input: MemoryInput): Promise<StoredMemory> {
   const content = input.content.trim()
   if (!content) throw new Error('Contenido vacío')

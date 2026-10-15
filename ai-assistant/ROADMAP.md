@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-14 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); Fases 0–3 desplegadas al Worker; Fase 3 con migración aplicada en Neon y 1.ª indexación parcial; falta terminar el índice de Fase 3).
+> Última actualización: 2026-10-15 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** contra Neon; Fase 3 con migración aplicada y el índice en **92/187 ficheros** — falta terminar las pasadas diarias).
 
 ## Objetivo
 
@@ -18,8 +18,8 @@
 | 0 | Ajustes del PC (WSL, Next, Vitest) | ✅ Hecha | Alta |
 | 1 | Edición precisa por parches | ✅ Hecha | Máxima |
 | 2 | Verificar antes de dar por bueno (CI) | ✅ Hecha | Alta |
-| 3 | Índice de código + mapa del repo | ✅ Hecha | Media |
-| 4 | Modificar memorias y notas por id | ⬜ Pendiente | Media |
+| 3 | Índice de código + mapa del repo | 🟦 En curso (92/187 ficheros) | Media |
+| 4 | Modificar memorias y notas por id | ✅ Hecha | Media |
 | 5 | Clasificador de herramientas (opcional) | ⬜ Pendiente | Baja |
 | 6 | LoRA de estilo/código (opcional) | ⬜ Pendiente | Baja |
 
@@ -74,20 +74,27 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] `REPO_MAP.md` generado por el script, reescrito SOLO si cambia su contenido (sin timestamp, para que no cambie solo).
 - [x] Tests del troceado (`chunkCode`) y de la fusión (`fuseCodeScores`): 15 tests en `tests/unit/code-index.test.ts`; selección de la herramienta en español en `tests/unit/select-tools.test.ts`.
 - [x] Medir neuronas de Workers AI del indexado inicial — **1.ª pasada contra Neon (2026-10-14)**: 48/185 ficheros, 248 trozos, 248 embeddings por API (0 de caché), **≈7.999 neuronas estimadas**, 13,7 min. Se cortó sola al agotar el tope diario (8.000) y es reanudable por `fileHash`. Quedan ~137 ficheros para las próximas pasadas diarias.
+
+  **2.ª pasada (2026-10-15 UTC)**: +4 ficheros → **92/187**, 574 trozos, `repoMap: "actualizado"`. Esa noche una primera ejecución se cayó a mitad por un `P1001` transitorio de Neon ("Database not reachable") después de sumar ~40 ficheros (48→88), y la segunda ya encontró la cuota del día casi agotada (`8032/8000`), así que volvió a cortarse sola por cuota. Sin daño: el índice es reanudable por `fileHash`.
 - [x] Validar la consulta real de `search_code` contra Postgres (nunca se había ejecutado): nuevo `scripts/smoke-code-search.ts` + `npm run db:smoke-code`. Contra Neon: la vía léxica (GIN + `websearch_to_tsquery('simple')`) devuelve filas, la vectorial (HNSW `<=>` + cast `::vector`) responde, y `searchCode()` devuelve hits reales (`0.857 app/api/notes/route.ts:1-20 GET`).
 
-**Aceptación:** la segunda ejecución sin cambios no debe llamar a ningún embedding (el `fileHash` del fichero coincide → se salta antes de trocear/embeber). La migración `20261014120000_code_index` **ya está aplicada** en Neon y la 1.ª pasada **ya creó `REPO_MAP.md`** ✅; **falta terminar el resto de ficheros** (varias pasadas, ≈3 días con la cuota diaria) y, entonces, una pasada sin cambios debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`.
+**Aceptación:** la ejecución sin cambios no debe llamar a ningún embedding (el `fileHash` del fichero coincide → se salta antes de trocear/embeber). La migración `20261014120000_code_index` **ya está aplicada** en Neon y el índice va por **92/187 ficheros (574 trozos)** ✅; **falta terminar los ~95 restantes** (≈48 ficheros/pasada diaria, ≈2 días) y, entonces, una pasada sin cambios debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`.
 
 **Nota:** `REPO_MAP.md` no existe hasta la primera indexación; lo crea el script. El workflow de Actions para reindexar sigue sin crearse (solo si se pide). El troceo es heurístico (no un parser): puede partir un trozo de más, nunca perder código.
 
-## Fase 4 — Modificar memorias y notas
+## Fase 4 — Modificar memorias y notas ✅
 
-- [ ] `update_memory` y `update_cloud_note` por id, con campos acotados
-- [ ] Registro de cambios (quién, cuándo, valor anterior)
-- [ ] Límites contra borrado o edición masiva
-- [ ] Tests
+- [x] `update_memory` y `update_cloud_note` por id, con campos acotados. **Id obligatorio (uuid)**, validado con una regex: sin él no se toca nada (evita ediciones accidentales). `update_memory`: `content` (≤2000), `importance` (0..1), `category`, `type`, `tags`. `update_cloud_note`: `title` (≤200), `content` (≤50000), `tags`, `pinned`. Lista blanca: lo que no esté ahí se ignora. Si no se indica ningún campo, la herramienta avisa en vez de escribir.
+- [x] Registro de cambios (quién, cuándo, valor anterior): tabla **`ChangeLog`** (migración `20261015120000_add_change_log`, **aplicada en Neon**) + `app/lib/changelog.ts` (SQL crudo, como `Note`): `entity`, `entityId`, `action`, `before`/`after` (jsonb), `actor`, `revertedAt`, `createdAt`. Los snapshots guardan solo los campos mutables.
+- [x] Límites contra borrado o edición masiva: **12 cambios/min por registro** (`MAX_CHANGES_PER_MINUTE`, contados desde `ChangeLog` en la última ventana) y **un único id por llamada**; el borrado (`deleteMemory`/`deleteNote`) **no** se expone como herramienta.
+- [x] Tests: `tests/unit/data-change.test.ts` (**17 tests**: id, campos, topes, límite, auditoría, reversión y el caso de embedding fallido) + casos nuevos en `tests/unit/select-tools.test.ts`. Total: **291 unitarios en verde**, `typecheck` y `lint` limpios.
+- [x] Reversible: **`revert_change`** reaplica `before` y marca `revertedAt`; la segunda reversión del mismo cambio se rechaza. Se puede pedir por `changeId` o por `entity` + `entityId` (último cambio de ese registro).
 
-**Aceptación:** cada cambio queda auditado y es reversible.
+**Aceptación:** **prueba en vivo hecha (2026-10-15)** con el nuevo `npm run db:smoke-changelog` contra **Neon** y las herramientas reales: crea una memoria de prueba → `update_memory` → la fila de `ChangeLog` guarda antes/después (`importance 0.5→0.9`) → la memoria refleja el cambio → `revert_change` restaura el valor anterior → la 2.ª reversión se bloquea ("ya estaba revertido"). Limpieza total al terminar (no queda nada de prueba en la base). Cubre lo que los unitarios no pueden: el **SQL crudo** de `changelog.ts` contra Postgres.
+
+**Nota:** el `SYSTEM_PROMPT` está en **897/900 tokens**, así que **no** se le añadió texto (el test `aria-core.test.ts` lo vigila): la guía vive en las descripciones de las herramientas, que solo viajan cuando `selectTools` las ofrece. Señales nuevas: `RX_MEMORY_WRITE` (verbo de cambio + "memoria/recuerdo"), `RX_WRITE_VERB` (verbo de cambio, junto a `RX_CLOUD_NOTES`) y `RX_REVERT`. La escritura va en grupos **aparte** (`memoryWrite`, `cloudNotesWrite`) para que una simple lectura no ofrezca una herramienta que modifica datos.
+
+**Pendiente de verificar (Fase 4):** ver "Pendiente de verificar" (prueba desde el Worker local, cuota de embeddings agotada, test de integración).
 
 ## Fase 5 (opcional) — Clasificador de herramientas
 
@@ -121,6 +128,11 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 | 2026-10-14 | Fase 3: `search_code` NO se gatea por repos configurados | El índice vive en la BD y lo llena un script local; no depende de GitHub |
 | 2026-10-14 | Fase 3: se recortó el system prompt (búsqueda web y GitHub) al añadir `search_code` | El prompt no puede crecer de 900 tokens; el detalle ya vive en las descripciones de las herramientas |
 | 2026-10-14 | Fases 1–2: aceptación en vivo desde el **Worker local** (`npm run preview`) con token de `gh`, no desde la app desplegada | Evita depender de `ARIA_ACCESS_TOKEN` y usa el mismo runtime (workerd) que producción; `next dev` no resuelve el engine WASM de Prisma |
+| 2026-10-15 | Fase 4: auditoría en tabla nueva `ChangeLog` con acceso por **SQL crudo** (no se regenera el cliente Prisma) | Mismo patrón que `Note`: el cliente generado (workerd) ya quedó sin `CodeChunk`; regenerarlo tocaría 43 ficheros versionados y arriesga el build |
+| 2026-10-15 | Fase 4: la escritura va en grupos aparte (`memoryWrite`, `cloudNotesWrite`), no dentro de `memory`/`cloudNotes` | Leer no debe ofrecer una herramienta que modifica datos; cada schema de más cuesta tokens y empuja al modelo a usarlo |
+| 2026-10-15 | Fase 4: no se añadió texto al `SYSTEM_PROMPT` (está en 897/900 tokens) | El detalle vive en las descripciones de las herramientas, que solo viajan cuando `selectTools` las ofrece |
+| 2026-10-15 | Fase 4: se arrancó **en paralelo** a la Fase 3 (que solo espera cuota diaria) | El índice es I/O y reanudable; el código de Fase 4 no depende de él. Excepción puntual a "una fase por sesión", autorizada por el usuario |
+| 2026-10-15 | Fase 4: `update_memory` audita el cambio aunque falle el recálculo del embedding | `updateMemory` escribe los campos antes de embeber; si `embed` lanza (cuota agotada) la fila ya cambió: mejor auditarla con un `warning` que dejarla sin registro |
 
 ## Pendiente de verificar
 
@@ -129,7 +141,11 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - ~~**Fases 1 y 2**: falta la prueba en vivo (edición real en rama `aria/*` y PR con CI).~~ **Resuelto (2026-10-14)**: aceptación en vivo hecha sobre `PABLOESTRADA20/web_anime` (PR #1: rama `aria/*` + diff mínimo `+2/−0`; CI detectado como `failure` y reportado; parche de corrección en la misma rama; tope de 2 correcciones enforced). Ver Fases 1 y 2.
 - **Fase 2 — matiz de temporización** (mejora posible, no bloquea): al llamar `github_get_check_runs` **inmediatamente** tras abrir el PR, GitHub todavía no había creado el check (0 checks) y el resumen respondió `state:"none"` ("sin checks configurados"), cuando lo correcto sería "pendiente, reintenta". Opciones: que la herramienta distinga "sin checks configurados" de "checks aún no registrados", o que el prompt pida reintentar antes de concluir.
 - **CI de `web_anime` ya roto en `main`**: sus tests (`useComments`, `useGamification`) fallan desde antes de la prueba (y los `Deploy` de `main` también salen en rojo); por eso cualquier PR sale en rojo. No es un fallo de ARIA y no se tocó.
-- **Fase 3**: migración `20261014120000_code_index` **aplicada en Neon** ✅ y 1.ª pasada parcial hecha ✅ (48/185 ficheros, `REPO_MAP.md` creado). **Falta**: correr `npm run db:index-code` una vez al día hasta terminar los ~137 ficheros restantes y, al acabar, una pasada debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`. Sin esa 2.ª pasada sin cambios no se da por buena la aceptación. La consulta real de `search_code` contra Postgres **ya se validó** (`npm run db:smoke-code`: vía léxica y vectorial OK, `searchCode()` devuelve hits), así que el SQL y los índices GIN/HNSW quedan comprobados en real. Nota: hoy **nada lee `REPO_MAP.md`** todavía (el script lo genera y el comentario de cabecera dice que ARIA lo usa, pero no hay ningún consumidor en el código) → decidir si se integra o se corrige el texto.
+- **Fase 3**: migración `20261014120000_code_index` **aplicada en Neon** ✅; el índice va por **92/187 ficheros (574 trozos)** tras la pasada del 2026-10-15. **Falta**: correr `npm run db:index-code` una vez al día (≈48 ficheros/pasada) hasta terminar los ~95 restantes y, al acabar, una pasada debe dar `embeddings.api: 0` + `repoMap: "sin cambios"`. La consulta real de `search_code` contra Postgres **ya se validó** (`npm run db:smoke-code`). Nota: hoy **nada lee `REPO_MAP.md`**; la cabecera del fichero **ya se corrigió** (`scripts/index-code.ts`) para decir que es un índice de orientación y que **ningún** código de la app lo lee (la app usa `search_code`) → decidir si se integra de verdad (versión compacta o herramienta nueva; el prompt no puede crecer de 900 tokens) o se deja solo como documento.
+- **Neon — `P1001` transitorio (2026-10-15)**: una pasada del índice se cayó a mitad con "Database not reachable" y volvió a responder segundos después (posible cold start del pooler). El indexado es reanudable; si reaparece, reintentar.
+- **Fase 4 — prueba desde el Worker local**: la aceptación se hizo con `npm run db:smoke-changelog` (herramientas reales contra Neon) + 291 tests unitarios, pero **no** desde `npm run preview` chateando con ARIA. Falta validar el bundling de `changelog.ts` en workerd y el flujo real (que `selectTools` ofrezca `update_*`/`revert_change` y el tool-call se ejecute).
+- **Fase 4 — cuota de Workers AI agotada**: si `update_memory` cambia el `content` con la cuota del día agotada, `updateMemory` escribe los campos y **después** falla al recalcular el embedding (`embed` lanza). El tool relee y **audita igual** el cambio, devolviendo un `warning` (hay test unitario; no probado en vivo con la cuota agotada). Decidir si conviene reencolar el embedding para la pasada siguiente.
+- **Fase 4 — test de integración**: falta un test en `tests/integration` que valide el SQL crudo de `changelog.ts` contra Postgres; hoy es imposible en esta PC (sin Docker ni `TEST_DATABASE_URL`). El smoke `db:smoke-changelog` lo cubre a mano.
 - **Versión de Next** (**confirmado 2026-10-14**): el árbol instalado es `next@15.5.25` (`node_modules/next/package.json` y `npm ls`), que es lo que usan `next dev`/`next build`; el `package-lock.json` fija **15.5.27**. Es un `node_modules` desincronizado del lockfile, misma serie 15.5.x y sin impacto funcional; `npm ci` lo alinearía a 15.5.27 cuando convenga.
 - **Compatibilidad de Next con `@opennextjs/cloudflare` 1.20.6**: la nota original decía Next 16.3, pero **no aplica**: la versión instalada es Next 15.5.x (no 16.x). Revisar solo si se planea subir a Next 16.
 - ~~Datos del repo tomados del prompt original (líneas de código, migraciones, límites): confirmar al leer el repo (Fase 3).~~ **Resuelto (2026-10-14)**: leídos directamente del repo durante la Fase 3.
