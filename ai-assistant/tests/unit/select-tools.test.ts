@@ -135,6 +135,9 @@ describe('selectTools', () => {
     expect(names('¿qué hay en mis notas de la nube?').has('update_cloud_note')).toBe(false)
     // Guardar no es editar: lo cubre save_cloud_note.
     expect(names('guarda una nota en la nube').has('update_cloud_note')).toBe(false)
+    // Frase natural SIN la palabra "nube" (hueco que destapó la prueba en vivo).
+    expect(names('editá mi nota titulada "Ideas"').has('update_cloud_note')).toBe(true)
+    expect(names('editá mi nota titulada "Ideas"').has('list_cloud_notes')).toBe(true)
 
     // Corregir una memoria -> update_memory + recall_memory (para hallar el id).
     const mem = names('corregí esa memoria sobre mi stack')
@@ -143,6 +146,9 @@ describe('selectTools', () => {
 
     // Recordar algo NO ofrece la escritura.
     expect(names('¿qué sabes de mí?').has('update_memory')).toBe(false)
+    // "recordás" (voseo) también debe encender recall_memory (hueco de la prueba en vivo).
+    expect(names('¿recordás qué le gusta tomar?').has('recall_memory')).toBe(true)
+    expect(names('¿recordás qué le gusta tomar?').has('update_memory')).toBe(false)
 
     // Deshacer un cambio -> revert_change; charla normal, no.
     expect(names('deshacé el último cambio que hiciste').has('revert_change')).toBe(true)

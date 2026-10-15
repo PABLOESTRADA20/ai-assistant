@@ -1323,6 +1323,8 @@ async function recallMemory(query: string): Promise<string> {
     }
     return JSON.stringify({
       memories: memories.map((m) => ({
+        // El `id` es imprescindible: `update_memory` trabaja por id (FASE 4).
+        id: m.id,
         type: m.type,
         category: m.category,
         content: m.content,

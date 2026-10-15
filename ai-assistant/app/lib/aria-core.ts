@@ -207,7 +207,7 @@ const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
 const RX_CLOUD_NOTES =
   /\b(nube|cloud|notas? de (?:aria|la nube)|guarda(?:me)? (?:una )?nota|mis notas)\b/i
 const RX_MEMORY =
-  /\b(recuerd[ao]s?|te acord[aá]s|qu[eé] sabes de m[ií]|mis? preferencias?|preferencia sobre|acordate de)/i
+  /\b(recuerd[ao]s?|record[aá]s|recordar|te acord[aá]s|acordate|qu[eé] sabes de m[ií]|mis? preferencias?|preferencia sobre)/i
 const RX_TIME =
   /\b(qu[eé] hora|hora es|la hora|fecha de hoy|qu[eé] d[ií]a|d[ií]a es hoy|zona horaria|horario)\b/i
 const RX_MATH =
@@ -229,6 +229,17 @@ const RX_WRITE_VERB =
 const RX_MEMORY_WRITE =
   /\b(actualiz|corrig|correg|edit|modific|cambi|borr|elimin|olvid|renombr|agreg|a[nñ]ad|quit)\w*\b[^.!?]{0,40}\b(memorias?|recuerdos?)\b/i
 const RX_REVERT = /\b(deshac\w*|deshace|revert\w*|revierte|undo)\b/i
+/**
+ * ¿Se habla de una nota? (FASE 4, notas de la nube.)
+ *
+ * La prueba en vivo (2026-10-15) mostró que exigir "nube" o "mis notas" dejaba
+ * `update_cloud_note` **inalcanzable** para frases naturales ("editá mi nota
+ * titulada X"): el modelo no puede llamar una herramienta que no se le ofrece.
+ * Basta con que aparezca "nota(s)" y un verbo de cambio. Si el mensaje también
+ * menciona vault/Obsidian, el modelo ve las dos familias y elige por las
+ * descripciones (leer del vault vs. editar en la nube).
+ */
+const RX_NOTE_MENTION = /\bnotas?\b/i
 
 /**
  * Decide QUÉ herramientas se ofrecen en un turno, por palabras clave locales.
@@ -262,10 +273,13 @@ export function selectTools(
   // El índice de código NO depende de GitHub: se ofrece aunque no haya repos.
   if (RX_CODE_REVIEW.test(text) || RX_CODE_SEARCH.test(text)) add(TOOL_GROUPS.code)
   if (RX_VAULT.test(text)) add(TOOL_GROUPS.vault)
-  if (RX_CLOUD_NOTES.test(text)) {
-    add(TOOL_GROUPS.cloudNotes)
-    if (RX_WRITE_VERB.test(text)) add(TOOL_GROUPS.cloudNotesWrite)
-  }
+  const notasEnLaNube = RX_CLOUD_NOTES.test(text)
+  const verboDeCambio = RX_WRITE_VERB.test(text)
+  const escribeNota = RX_NOTE_MENTION.test(text) && verboDeCambio
+  // Leer/guardar notas: con la señal clásica (nube) o con una escritura sobre
+  // "nota(s)". Escribir: además, verbo de cambio sobre algo que está en la nube.
+  if (notasEnLaNube || escribeNota) add(TOOL_GROUPS.cloudNotes)
+  if (escribeNota || (notasEnLaNube && verboDeCambio)) add(TOOL_GROUPS.cloudNotesWrite)
   if (RX_MEMORY.test(text) || RX_MEMORY_WRITE.test(text)) add(TOOL_GROUPS.memory)
   if (RX_MEMORY_WRITE.test(text)) add(TOOL_GROUPS.memoryWrite)
   if (RX_REVERT.test(text)) add(TOOL_GROUPS.revert)
