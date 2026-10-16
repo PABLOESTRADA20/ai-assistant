@@ -15,6 +15,7 @@
     "db:smoke-code": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-code-search.ts",
     "db:smoke-changelog": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/smoke-changelog.ts",
     "db:dataset": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/build-lora-dataset.ts",
+    "docs:vault": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/docs-to-vault.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:psql": "docker compose exec postgres psql -U postgres -d aria",

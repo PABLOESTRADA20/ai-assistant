@@ -65,6 +65,8 @@ npm run dev
 
 Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con `db:reindex`, así la búsqueda semántica del vault funciona también en el Worker desplegado.
 
+Además, `npm run docs:vault` copia `README.md`, `ROADMAP.md` y `REPO_MAP.md` a `ARIA/Repositorio ai-assistant/` dentro del vault y los indexa en `VaultNote` (el Worker no ve el disco, por eso hay que indexarlos): así el cerebro dispone de la documentación del propio proyecto. Si la cuota de embeddings está agotada, quedan sin vector; vuelve a ejecutarlo cuando se reponga para añadírselo.
+
 ## Scripts
 
 | Comando | Descripción |
@@ -84,6 +86,8 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 | `npm run db:migrate` | Ejecutar migraciones Prisma |
 | `npm run db:studio` | Abrir Prisma Studio |
 | `npm run db:reindex` | Regenerar embeddings del vault en pgvector |
+| `npm run db:dataset` | Genera el conjunto de datos de entrenamiento (JSONL anonimizado) en `data/lora/`; `-- --fake` autoprueba sin base |
+| `npm run docs:vault` | Copia la documentación del proyecto al vault de Obsidian y la indexa para el cerebro; `-- --no-index` solo copia |
 | `npm run db:smoke` | Smoke test del sistema de memoria |
 | `npm run db:brain` | Smoke test del cerebro: memoria de trabajo, refuerzo, edición y consolidación |
 | `npm run agent` | Arranca el agente local que abre apps en tu PC (`local-agent/`) |

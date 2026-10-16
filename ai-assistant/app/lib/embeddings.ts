@@ -10,7 +10,7 @@ const MAX_EMBED_CHARS = 900
 const MAX_CONTENT_CHARS = 8000
 const DEFAULT_LIMIT = 500
 
-function cleanText(text: string): string {
+export function cleanText(text: string): string {
   return text
     .replace(/^```[a-z]*\s*$/gm, '')
     .replace(/[`*_~|>]/g, ' ')

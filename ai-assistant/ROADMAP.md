@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia** (alternativa regex+tests aplicada); Fase 6 **reabierta**: la verificación se corrigió (hay 9 bases LoRA, incl. Qwen2.5-Coder-32B), el **dataset de entrenamiento ya se genera local y anonimizado** (`npm run db:dataset`) y falta resolver la inferencia con LoRA (500) y el coste de entrenar 32B; Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
+> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia** (alternativa regex+tests aplicada); Fase 6 **reabierta**: la verificación se corrigió (hay 9 bases LoRA, incl. Qwen2.5-Coder-32B), el **dataset de entrenamiento ya se genera local y anonimizado** (`npm run db:dataset`), la **documentación del proyecto se copia al vault para el cerebro** (`npm run docs:vault`) y falta resolver la inferencia con LoRA (500) y el coste de entrenar 32B; Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
 
 ## Objetivo
 
@@ -120,6 +120,9 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 - [x] Dataset sin secretos ni datos personales; nunca en repos públicos de Hugging Face.
   - **Hecho (2026-10-16):** `scripts/build-lora-dataset.ts` (`npm run db:dataset`) exporta las conversaciones a JSONL de chat, pasándolas por `app/lib/scrub.ts`, que tapa claves, correos, IPs, rutas con nombre de usuario, teléfonos, DNI, tarjetas y hashes. Escribe en `data/lora/` (en `.gitignore`) e imprime un informe de cuánto borró. Autoprueba sin base de datos: `npm run db:dataset -- --fake`. Tests: `tests/unit/scrub.test.ts` (14).
   - **Pendiente (v2):** incluir las llamadas a herramientas (`tools`); hoy no se exportan (solo estilo y conversación).
+- [x] Puente documentación → Obsidian (cerebro).
+  - **Hecho (2026-10-16):** `scripts/docs-to-vault.ts` (`npm run docs:vault`) copia `README.md`, `ROADMAP.md` y `REPO_MAP.md` a `ARIA/Repositorio ai-assistant/` del vault de Obsidian y los indexa en `VaultNote` (en el Worker no hay disco: la tabla es la única vía para el cerebro). Tests: `tests/unit/vault-docs.test.ts` (5).
+  - **Ojo:** quedaron **sin vector** (cuota de embeddings agotada); con solo texto el cerebro **no** los inyecta (0,17 < umbral 0,4). Re-ejecutar `npm run docs:vault` cuando se reponga la cuota para añadir el vector.
 - [ ] Entrenamiento en Colab/Kaggle, nunca en la PC. **Ojo:** un QLoRA de 32B (Qwen-Coder/QwQ) pide ≳24 GB de VRAM → **no cabe en GPU gratuita**; lo entrenable gratis es 3B–11B.
   - **Opciones sin gastar la PC (2026-10-16):** (a) **Kaggle gratis**: ~30 h/semana de GPU (P100/T4 de 16 GB) → QLoRA de 7B; (b) **Colab gratis**: T4 de 16 GB; (c) **LocalAI con backend TRL en CPU**: entrena sin GPU, pero lentísimo (solo ~1B); (d) **Ollama local**: no entrena, pero *usa* un 3B cuantizado en ~2–3 GB de RAM, sin GPU, para tareas simples.
 - [ ] Comparación lado a lado en 20 o más casos reales.
@@ -156,6 +159,7 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 | 2026-10-16 | Fase 6: se **corrige** la verificación y la fase **se reabre** (no se descarta) | El primer veredicto "solo 5 bases 2B–7B" salió de mirar los nombres `-lora` y era **falso**: el facet `?capabilities=LoRA` del catálogo lista **9** bases, incluidas `@cf/qwen/qwen2.5-coder-32b-instruct` (32B, de código) y `@cf/qwen/qwq-32b` (32B). Probado en vivo: la base Qwen-Coder-32B → 200; el LoRA público (Mistral) → **500**. Bloqueo real: inferencia LoRA rota (beta) + entrenar un 32B no cabe en GPU gratis |
 | 2026-10-16 | Fase 6: el artefacto de despliegue es un adaptador **LoRA estándar** (también si se entrena con QLoRA) | Unsloth/PEFT ya exportan `adapter_config.json` + `adapter_model.safetensors` con `target_modules` (p. ej. `q_proj`/`v_proj`); basta cumplir rank ≤8, <300 MB y el `model_type`. Entrenar con QLoRA no cambia el formato aceptado |
 | 2026-10-16 | Fase 6: el **conjunto de datos** se genera local y anonimizado (`npm run db:dataset`); el **entrenamiento** irá a GPU gratuita en la nube | Datos personales y secretos fuera (y nunca en repos públicos de Hugging Face); la PC no tiene GPU, así que un QLoRA de 7B se hace en Kaggle/Colab |
+| 2026-10-16 | Fase 6: la documentación del proyecto se copia al vault de Obsidian (`npm run docs:vault`) y se indexa en `VaultNote` | El Worker no ve el disco del PC: copiar el `.md` solo lo muestra en Obsidian; para que el cerebro lo use hay que indexarlo en la tabla |
 
 ## Pendiente de verificar
 
