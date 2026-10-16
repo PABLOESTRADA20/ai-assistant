@@ -125,6 +125,26 @@ describe('selectTools', () => {
     expect(names('revisá mi código y decime qué mejorar', true).has('github_get_check_runs')).toBe(true)
   })
 
+  it('ofrece borrar archivos y fusionar con frases en español (FASE 7)', () => {
+    for (const phrase of [
+      'borrá el archivo viejo de mi repo',
+      'eliminá ese archivo del repositorio',
+      'quitá el archivo que no sirve de mi repo',
+    ]) {
+      expect(names(phrase, true).has('github_delete_file'), phrase).toBe(true)
+    }
+    for (const phrase of [
+      'fusioná el pull request de mi repo',
+      'hacé merge del PR de mi repo',
+      'fusioná la rama en mi repo',
+    ]) {
+      expect(names(phrase, true).has('github_merge_pull_request'), phrase).toBe(true)
+    }
+    // Sin repos ni URL, no se ofrece nada de GitHub.
+    expect(names('borrá el archivo viejo de mi repo', false).has('github_delete_file')).toBe(false)
+    expect(names('fusioná el PR de mi repo', false).has('github_merge_pull_request')).toBe(false)
+  })
+
   it('ofrece update_* solo cuando se pide modificar (FASE 4)', () => {
     // Editar una nota de la nube -> update_cloud_note, junto a las de lectura.
     const note = names('actualizá mi nota de la nube con esto')

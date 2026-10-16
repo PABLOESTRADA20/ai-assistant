@@ -40,7 +40,7 @@ Respond in the same language the user writes in (Spanish, English, etc.).
 If the user asks you to search, look something up or find recent information, you MUST call web_search before answering, even if you think you know it: your memory of versions, commands and APIs goes stale. Base the answer on what the sources say; if they lack the detail, say so — never invent release notes, versions or syntax.
 
 ## GitHub
-You can read repos, files and issues; ground every suggestion in what you read, never guess. To modify code, read the files first, then use github_apply_patch ({path, search, replace}): search must match exactly once and baseSha aborts if the file changed. Use github_create_pull_request only to create or rewrite a file. Both open an isolated aria/* branch and a PR: never claim a merge, use them only when asked, never bypass their protections. After opening or fixing a PR call github_get_check_runs; never call it ready while checks fail or are pending, and patch again at most twice per branch. Keep edits minimal. Use configured repos for "my repo"; confirm if ambiguous.
+You can read repos, files and issues; ground every suggestion in what you read, never guess. To change code, read the files first: github_apply_patch edits an existing block (search must match exactly once; baseSha aborts if the file changed), github_create_pull_request creates or rewrites files, github_delete_file removes them. They always open a branch and a PR, never the default branch. To land a change, use github_merge_pull_request only after github_get_check_runs says success and only when the user asked; never merge while checks fail or are pending, and patch again at most twice per branch. Keep edits minimal. Use configured repos for "my repo"; confirm if ambiguous.
 
 ## Code index
 search_code searches an index of the user's own project and returns path, lines and code: use it to locate where something lives before opening files. If it returns nothing, the local index may be missing or stale.
@@ -166,7 +166,12 @@ export const TOOL_GROUPS = {
     'github_get_check_runs',
   ],
   code: ['search_code'],
-  githubWrite: ['github_create_pull_request', 'github_apply_patch'],
+  githubWrite: [
+    'github_create_pull_request',
+    'github_apply_patch',
+    'github_delete_file',
+    'github_merge_pull_request',
+  ],
   memory: ['recall_memory'],
   /** Escritura sobre memorias (FASE 4); aparte de `memory` por el mismo motivo. */
   memoryWrite: ['update_memory'],
@@ -180,7 +185,7 @@ export const TOOL_GROUPS = {
 } as const
 
 const RX_GITHUB =
-  /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request|\bci\b|\bchecks?\b|workflow)\b/i
+  /\b(github|repositorio|\brepos?\b|\brama\b|\bbranch\b|\bissues?\b|c[oó]digo fuente|pull request|\bpr\b|\bmerge\b|fusion\w*|\bci\b|\bchecks?\b|workflow)\b/i
 const RX_GITHUB_URL = /github\.com\/[\w.-]+\/[\w.-]+/i
 /**
  * Intención de REVISAR código. Las `github_*` son de solo lectura y no se
@@ -202,7 +207,7 @@ const RX_CODE_REVIEW =
 const RX_CODE_SEARCH =
   /\b(d[oó]nde (?:est[aá]n?|se (?:usa|usan|define|definen|encuentra|encuentran|declara|declaran|guarda|guardan))|busc[aá]r? en (?:el|mi) c[oó]digo|definici[oó]n de|implementaci[oó]n de|c[oó]mo (?:funcionan?|est[aá]n? (?:implement\w*|hecho))|qu[eé] (?:archivos?|ficheros?|funci[oó]n(?:es)?|clases?) (?:definen?|contienen?|usan?|hacen?))(?!\w)/i
 const RX_GITHUB_WRITE =
-  /\b(modifica|modificar|modific[aá]|edita|editar|edit[aá]|cambia|cambiar|cambi[aá]|implementa|implementar|implement[aá]|corrige|corregir|correg[ií]|arregla|arreglar|arregl[aá]|crea(?:r)?|actualiza|actualizar|actualiz[aá]|haz(?:me)? (?:el )?cambio|parche\w*|aplica|aplicar|aplic[aá])(?!\w)/i
+  /\b(modifica|modificar|modific[aá]|edita|editar|edit[aá]|cambia|cambiar|cambi[aá]|implementa|implementar|implement[aá]|corrige|corregir|correg[ií]|arregla|arreglar|arregl[aá]|crea(?:r)?|actualiza|actualizar|actualiz[aá]|haz(?:me)? (?:el )?cambio|parche\w*|aplica|aplicar|aplic[aá]|borra|borrar|borr[aá]|elimina|eliminar|elimin[aá]|quita|quitar|quit[aá]|fusiona|fusionar|fusion[aá]|merge)(?!\w)/i
 const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
 const RX_CLOUD_NOTES =
   /\b(nube|cloud|notas? de (?:aria|la nube)|guard[aá](?:me)? (?:una )?nota|mis notas)\b/i

@@ -183,7 +183,8 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
 | `EMAIL_ALLOWED_TO` | Lista blanca de destinatarios separada por comas | no |
 | `GITHUB_TOKEN` | Token fine-grained de GitHub. Para lectura: `Metadata/Contents/Issues: read`; para crear PRs: también `Contents: write` y `Pull requests: write`. En CI se guarda como `ARIA_GITHUB_TOKEN` | para GitHub privado/PRs |
-| `GITHUB_WRITE_ENABLED` | Interruptor de seguridad. Solo `true` habilita ramas `aria/*` y PRs; por defecto la integración es de solo lectura | no |
+| `GITHUB_WRITE_ENABLED` | Interruptor de seguridad. Solo `true` habilita ramas y PRs (el nombre de rama es libre desde la FASE 7, salvo la rama principal); por defecto la integración es de solo lectura | no |
+| `GITHUB_AUTO_MERGE` | Interruptor **aparte** (FASE 7). Solo `true` permite que ARIA **fusione** un PR, y únicamente si las pruebas (CI) pasaron. Sin él, el PR queda abierto para que lo fusiones tú | no |
 
 > **Búsqueda web sin API key**: `web_search` usa **Firecrawl keyless** (SERP real
 > y noticias) más APIs gratuitas y sin clave (Wikipedia, Stack Exchange, Hacker
@@ -215,7 +216,11 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 > **«Ver mis repositorios»** para elegirlos de una lista (públicos y privados) y
 > el límite sube de 60 a 5.000 peticiones/hora. ARIA sigue siendo de solo lectura
 > mientras `GITHUB_WRITE_ENABLED` no sea `true`. Para proponer cambios mediante
-> ramas y PRs, agrega `Contents: Write` y `Pull requests: Write`; ARIA nunca hace merge.
+> ramas y PRs, agrega `Contents: Write` y `Pull requests: Write`. Desde la FASE 7
+> las ramas pueden tener **nombre libre** (no solo `aria/*`), pero ARIA **nunca**
+> escribe directamente en la rama principal: todo pasa por un PR. Si además
+> defines `GITHUB_AUTO_MERGE=true`, ARIA puede **fusionar** el PR ella misma, pero
+> solo después de que las pruebas (CI) pasan.
 
 ## Características
 
@@ -243,7 +248,7 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 - **WhatsApp (API oficial de Meta)** — ARIA recibe y responde mensajes por el webhook `/api/whatsapp/webhook`. Cada número tiene su propia conversación (visible en el sidebar) y comparte el mismo cerebro (memoria, herramientas). Firma `X-Hub-Signature-256` verificada.
 - **Correo saliente (Resend)** — la herramienta `send_email` permite a ARIA enviar correos. Funciona sin dominio propio usando el remitente de pruebas de Resend; con dominio verificado solo cambia `EMAIL_FROM`.
 - **Abrir aplicaciones en tu PC** — la herramienta `open_app` delega en un agente local que corre en tu máquina (`local-agent/`). Desde el chat puedes pedir "abre Spotify", "abre VS Code", "abre la carpeta Descargas", etc. El agente escucha solo en `127.0.0.1` y exige token. Un indicador en el header muestra si está conectado.
-- **GitHub seguro** — el panel agrega repos y ARIA los analiza con herramientas de lectura. Opcionalmente, `github_create_pull_request` prepara hasta 5 archivos en una rama nueva `aria/*` y abre un PR. Nunca escribe en la rama principal, nunca fusiona, no elimina archivos y bloquea `.github/workflows`; requiere `GITHUB_WRITE_ENABLED=true`.
+- **GitHub seguro** — el panel agrega repos y ARIA los analiza con herramientas de lectura. Opcionalmente, `github_create_pull_request` (crear/reescribir), `github_apply_patch` (editar) y `github_delete_file` (borrar) preparan cambios en una rama nueva y abren un PR. Las ramas admiten **nombre libre** (no solo `aria/*`), pero nunca se escribe en la rama principal. Con `GITHUB_WRITE_ENABLED=true`; y si además activas `GITHUB_AUTO_MERGE=true`, ARIA puede **fusionar** el PR sola **solo si el CI pasó**. Bloquea `.github/workflows`.
 - **Almacenamiento acotado** — la caché gratuita de embeddings vence por último uso a los 30 días y conserva como máximo 5.000 vectores. Índices GIN aceleran la búsqueda del cerebro al crecer mensajes, notas y memorias.
 - **Auto-cambio de modelo** — si el modelo elegido agota su cuota (Groq: tokens/día; Workers AI: neuronas/día), ARIA reintenta la misma pregunta con el siguiente modelo disponible y te avisa con un banner. Así una respuesta no se queda sin salir porque un modelo se quedó sin cupo. Además, si el modelo elegido **no ejecuta herramientas** (DeepSeek) y le pedís algo que sí las necesita (leer un repo de GitHub, buscar en la web, abrir una app), ARIA responde con un modelo de Groq que sí las tiene y te avisa del cambio.
 - **Carpeta ARIA (notas + Obsidian)** — botón **Notas** en el header. ARIA puede guardar, listar, leer y editar por id notas (`save_cloud_note`, `list_cloud_notes`, `read_cloud_note`, `update_cloud_note`) y tú las editas en el panel. Cada edición queda **auditada** (tabla `ChangeLog`, con valor anterior y nuevo) y se puede **deshacer** con `revert_change`. Viven en la base de datos (tabla `Note`) a propósito: el Worker **no puede** escribir en el disco del PC, así que así funcionan desde el celular sin tener el ordenador encendido. El botón **Exportar a Obsidian (.zip)** descarga un `.md` por nota (con frontmatter) listo para descomprimir dentro del vault.

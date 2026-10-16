@@ -9,9 +9,11 @@ import { decodeBase64 } from '@/app/lib/base64'
  * Por qué existe
  * --------------
  * El usuario quiere poder "agregar repositorios" y que ARIA los lea para
- * proponer ideas de arreglo (bugs, issues, deuda técnica). Los cambios nunca se
- * aplican a la rama principal: cuando el usuario lo pide de forma explícita se
- * crea una rama `aria/*`, se escriben allí los archivos y se abre un PR.
+ * proponer ideas de arreglo (bugs, issues, deuda técnica). Los cambios se
+ * preparan SIEMPRE en una rama aparte (por defecto `aria/*`) y se abren como PR;
+ * nunca se escribe directamente en la rama principal. Desde la FASE 7 el usuario
+ * puede permitir que ARIA fusione el PR ella misma (`GITHUB_AUTO_MERGE=true`),
+ * pero solo después de que las pruebas pasan.
  *
  * Token
  * -----
@@ -93,6 +95,17 @@ export function hasGithubToken(): boolean {
 
 export function githubWriteEnabled(): boolean {
   return process.env.GITHUB_WRITE_ENABLED?.trim().toLowerCase() === 'true'
+}
+
+/**
+ * Interruptor de la auto-fusión (FASE 7).
+ *
+ * Es DISTINTO de `GITHUB_WRITE_ENABLED`: poder escribir en una rama no implica
+ * poder meter cambios en la rama principal. Se enciende aparte y solo con
+ * `true` explícito, para que activar la escritura no arrastre la fusión.
+ */
+export function githubAutoMergeEnabled(): boolean {
+  return process.env.GITHUB_AUTO_MERGE?.trim().toLowerCase() === 'true'
 }
 
 /** Acepta `owner/repo`, URLs de GitHub y remotos SSH. Devuelve null si no es válido. */
@@ -242,7 +255,7 @@ interface GhResult {
 
 async function ghFetch(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown } = {},
+  options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown } = {},
 ): Promise<GhResult> {
   const token = process.env.GITHUB_TOKEN?.trim()
   let res: Response
@@ -324,6 +337,59 @@ function branchSlug(value: string): string {
     .slice(0, 60)
 }
 
+/**
+ * Nombre de rama válido según una versión corta de `git check-ref-format`.
+ *
+ * Deliberadamente conservador: se rechaza cualquier cosa rara (espacios,
+ * controles, `~ ^ : ? * [ \`, `..`, `@{`, barras dobles o en los extremos,
+ * terminar en `.lock`, empezar con `.` o `-`, o superar 200 caracteres). No
+ * hacerlo bien permite inyección de referencias en la API de GitHub.
+ */
+export function isValidBranchName(name: string): boolean {
+  if (!name || name.length > 200) return false
+  if (/[\s\u0000-\u001f\u007f]/.test(name)) return false
+  if (/[~^:?*[\]\\]/.test(name)) return false
+  if (name.includes('..') || name.includes('@{') || name.includes('//')) return false
+  if (name.startsWith('/') || name.endsWith('/')) return false
+  if (name.startsWith('-') || name.startsWith('.')) return false
+  if (name.endsWith('.') || name.endsWith('.lock')) return false
+  if (name === '@') return false
+  return true
+}
+
+/**
+ * Valida la rama sobre la que ARIA puede escribir (FASE 7).
+ *
+ * Cambio respecto a la versión anterior: ya NO hace falta el prefijo `aria/`
+ * (el usuario pidió ramas con nombre libre). La protección que importa sigue en
+ * pie: **nunca** se escribe directamente en la rama por defecto (`base`), así
+ * que un nombre libre no puede saltarse la revisión.
+ */
+export function validateBranch(
+  name: string,
+  base: string,
+): { ok: true; branch: string } | { ok: false; error: string } {
+  const branch = name.trim()
+  if (!branch) return { ok: false, error: 'La rama no puede estar vacía.' }
+  if (branch === base) {
+    return {
+      ok: false,
+      error:
+        `No escribo directamente en la rama principal ("${base}"). ` +
+        'Usá una rama nueva y dejá que el cambio pase por el pull request.',
+    }
+  }
+  if (!isValidBranchName(branch)) {
+    return {
+      ok: false,
+      error:
+        `Nombre de rama inválido: "${name}". Evitá espacios, ".." y los caracteres ` +
+        '~ ^ : ? * [ \\ , y no empieces con "." ni con "-".',
+    }
+  }
+  return { ok: true, branch }
+}
+
 function encodeBase64(value: string): string {
   const bytes = new TextEncoder().encode(value)
   let binary = ''
@@ -391,8 +457,18 @@ export async function createPullRequest(input: GithubPullRequestInput): Promise<
   const baseSha = (baseRef.data as { object?: { sha?: string } }).object?.sha
   if (!baseSha) return JSON.stringify({ error: 'GitHub no devolvió el SHA de la rama principal.' })
 
-  const requested = branchSlug(input.branch ?? title) || 'cambio'
-  const branch = `aria/${requested}-${Date.now().toString(36)}`
+  const requested = input.branch?.trim()
+  let branch: string
+  if (requested && requested.includes('/')) {
+    // Nombre de rama EXACTO (FASE 7): se usa tal cual si es válido y no es la
+    // rama principal. Así el usuario puede pedir ramas con nombre libre.
+    const valid = validateBranch(requested, base)
+    if (!valid.ok) return JSON.stringify({ error: valid.error })
+    branch = valid.branch
+  } else {
+    const slug = branchSlug(requested ?? title) || 'cambio'
+    branch = `aria/${slug}-${Date.now().toString(36)}`
+  }
   const createRef = await ghFetch(`/repos/${owner}/${repo}/git/refs`, {
     method: 'POST',
     body: { ref: `refs/heads/${branch}`, sha: baseSha },
@@ -488,7 +564,7 @@ export interface GithubApplyPatchInput {
   repo: string
   title: string
   body?: string
-  /** Rama `aria/*` existente. Si se omite, se crea una rama nueva y un PR. */
+  /** Rama existente donde commitear. Si se omite, se crea una rama nueva y un PR. */
   branch?: string
   patches: GithubPatchOp[]
 }
@@ -582,12 +658,12 @@ export function applyTextPatches(
  * Aplica parches {path, search, replace} y los commitea. Reutiliza TODAS las
  * protecciones de `createPullRequest`: requiere token y `GITHUB_WRITE_ENABLED`,
  * valida rutas (bloquea `.github/workflows/` y `..`), nunca toca la rama por
- * defecto, nunca fusiona y nunca borra archivos.
+ * defecto y nunca fusiona.
  *
  * - Sin `branch`: crea una rama `aria/*` nueva desde la rama por defecto y abre
  *   un PR (igual que createPullRequest, pero editando, no reescribiendo).
- * - Con `branch` (debe empezar por `aria/`): commitea ahí, pensado para
- *   corregir un PR ya abierto en la misma rama.
+ * - Con `branch` (nombre libre desde la FASE 7, salvo la rama por defecto):
+ *   commitea ahí, pensado para corregir un PR ya abierto en la misma rama.
  */
 export async function applyPatch(input: GithubApplyPatchInput): Promise<string> {
   const parsed = repoFrom(input.repo)
@@ -657,19 +733,17 @@ export async function applyPatch(input: GithubApplyPatchInput): Promise<string> 
   let createdBranch = false
   const requestedBranch = input.branch?.trim()
   if (requestedBranch) {
-    const valid = /^aria\/[A-Za-z0-9._/-]+$/.test(requestedBranch) && !requestedBranch.includes('..')
-    if (!valid) {
-      return JSON.stringify({ error: 'Solo puedo aplicar parches sobre una rama "aria/*".' })
-    }
+    const valid = validateBranch(requestedBranch, base)
+    if (!valid.ok) return JSON.stringify({ error: valid.error })
     const refRes = await ghFetch(
-      `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(requestedBranch)}`,
+      `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(valid.branch)}`,
     )
     if (!refRes.ok) {
       return JSON.stringify({
-        error: `No encontré la rama "${requestedBranch}": ${describeError(refRes.status, refRes.data)}`,
+        error: `No encontré la rama "${valid.branch}": ${describeError(refRes.status, refRes.data)}`,
       })
     }
-    branch = requestedBranch
+    branch = valid.branch
     // Tope de correcciones por PR: evita el bucle "CI falla → parcheo → CI
     // falla" cuando la causa se le escapa al modelo. Al superarlo se para y se
     // pide revisión humana.
@@ -842,6 +916,361 @@ export async function applyPatch(input: GithubApplyPatchInput): Promise<string> 
       ? 'No se modificó la rama principal. El cambio requiere revisión y merge manual.'
       : `Parche agregado a la rama existente (corrección ${fixAttempts} de ${MAX_FIX_ATTEMPTS}). ` +
         'Consultá los checks con github_get_check_runs antes de darlo por bueno.',
+  })
+}
+
+/* --------------------------- borrado de archivos ------------------------- */
+
+export interface GithubDeleteInput {
+  repo: string
+  title: string
+  body?: string
+  /** Rama existente donde commitear. Si se omite, se crea una rama nueva y un PR. */
+  branch?: string
+  /** Rutas de archivos a eliminar. */
+  paths: string[]
+}
+
+/**
+ * Elimina archivos en una rama y abre un pull request (FASE 7).
+ *
+ * Reutiliza las protecciones de `createPullRequest`/`applyPatch`: requiere
+ * token y `GITHUB_WRITE_ENABLED`, valida rutas (bloquea `.github/workflows/` y
+ * `..`), nunca toca la rama por defecto y nunca fusiona. El borrado llega a la
+ * rama principal solo si el usuario aprueba el PR (o si la auto-fusión está
+ * encendida y las pruebas pasan).
+ */
+export async function deleteFiles(input: GithubDeleteInput): Promise<string> {
+  const parsed = repoFrom(input.repo)
+  if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
+  if (!hasGithubToken()) return JSON.stringify({ error: 'Falta GITHUB_TOKEN para borrar archivos.' })
+  if (!githubWriteEnabled()) {
+    return JSON.stringify({
+      error:
+        'La escritura segura está desactivada. Define GITHUB_WRITE_ENABLED=true y usa un token ' +
+        'fine-grained con Contents: write y Pull requests: write.',
+    })
+  }
+
+  const title = input.title?.trim().slice(0, 200)
+  if (!title) return JSON.stringify({ error: 'Falta el título del pull request.' })
+  if (!Array.isArray(input.paths) || input.paths.length === 0) {
+    return JSON.stringify({ error: 'Indicá al menos un archivo para borrar.' })
+  }
+  if (input.paths.length > GITHUB_LIMITS.writeFiles) {
+    return JSON.stringify({ error: `Máximo ${GITHUB_LIMITS.writeFiles} archivos por vez.` })
+  }
+
+  const paths: string[] = []
+  const seen = new Set<string>()
+  for (const raw of input.paths) {
+    if (typeof raw !== 'string') return JSON.stringify({ error: 'Cada ruta debe ser texto.' })
+    const path = cleanRepoPath(raw)
+    if (!path) {
+      return JSON.stringify({
+        error: `Ruta no permitida: "${raw}". No se aceptan rutas relativas ni workflows.`,
+      })
+    }
+    const key = path.toLowerCase()
+    if (seen.has(key)) return JSON.stringify({ error: `Archivo repetido: "${path}".` })
+    seen.add(key)
+    paths.push(path)
+  }
+
+  const { owner, repo } = parsed
+  const repoInfo = await ghFetch(`/repos/${owner}/${repo}`)
+  if (!repoInfo.ok) return JSON.stringify({ error: describeError(repoInfo.status, repoInfo.data) })
+  const base = (repoInfo.data as { default_branch?: string }).default_branch || 'main'
+
+  let branch: string
+  let createdBranch = false
+  const requestedBranch = input.branch?.trim()
+  if (requestedBranch) {
+    const valid = validateBranch(requestedBranch, base)
+    if (!valid.ok) return JSON.stringify({ error: valid.error })
+    const refRes = await ghFetch(
+      `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(valid.branch)}`,
+    )
+    if (!refRes.ok) {
+      return JSON.stringify({
+        error: `No encontré la rama "${valid.branch}": ${describeError(refRes.status, refRes.data)}`,
+      })
+    }
+    branch = valid.branch
+  } else {
+    const baseRef = await ghFetch(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(base)}`)
+    if (!baseRef.ok) return JSON.stringify({ error: describeError(baseRef.status, baseRef.data) })
+    const baseSha = (baseRef.data as { object?: { sha?: string } }).object?.sha
+    if (!baseSha) return JSON.stringify({ error: 'GitHub no devolvió el SHA de la rama principal.' })
+    const requested = branchSlug(title) || 'borrado'
+    branch = `aria/${requested}-${Date.now().toString(36)}`
+    const createRef = await ghFetch(`/repos/${owner}/${repo}/git/refs`, {
+      method: 'POST',
+      body: { ref: `refs/heads/${branch}`, sha: baseSha },
+    })
+    if (!createRef.ok) return JSON.stringify({ error: describeError(createRef.status, createRef.data) })
+    createdBranch = true
+  }
+
+  const partialNote = createdBranch
+    ? { note: 'La rama quedó creada para poder revisar o recuperar el trabajo parcial.' }
+    : { note: 'La rama existente conserva los commits ya aplicados.' }
+
+  const deleted: string[] = []
+  for (const path of paths) {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+    const current = await ghFetch(
+      `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`,
+    )
+    if (current.status === 404) {
+      return JSON.stringify({
+        error: `El archivo "${path}" no existe en la rama.`,
+        branch,
+        deleted,
+        ...partialNote,
+      })
+    }
+    if (!current.ok) {
+      return JSON.stringify({ error: describeError(current.status, current.data), branch, deleted, ...partialNote })
+    }
+    const d = current.data as { sha?: string; type?: string }
+    if (d.type === 'dir') {
+      return JSON.stringify({
+        error: `"${path}" es un directorio: no borro carpetas enteras, eliminá sus archivos uno por uno.`,
+        branch,
+        deleted,
+        ...partialNote,
+      })
+    }
+    const del = await ghFetch(`/repos/${owner}/${repo}/contents/${encodedPath}`, {
+      method: 'DELETE',
+      body: { message: `${title}: borra ${path}`.slice(0, 250), sha: d.sha, branch },
+    })
+    if (!del.ok) {
+      return JSON.stringify({ error: describeError(del.status, del.data), branch, deleted, ...partialNote })
+    }
+    deleted.push(path)
+  }
+
+  let pullNumber: number | null = null
+  let pullUrl: string | null = null
+  if (createdBranch) {
+    const pull = await ghFetch(`/repos/${owner}/${repo}/pulls`, {
+      method: 'POST',
+      body: {
+        title,
+        head: branch,
+        base,
+        body:
+          input.body?.trim().slice(0, 20_000) ||
+          'Archivos eliminados por ARIA en una rama aislada. Revisa el diff antes de fusionar.',
+      },
+    })
+    if (!pull.ok) {
+      return JSON.stringify({
+        error: describeError(pull.status, pull.data),
+        branch,
+        deleted,
+        note: 'Los commits están en la rama; solo falló la creación del pull request.',
+      })
+    }
+    const data = pull.data as { number?: number; html_url?: string }
+    pullNumber = data.number ?? null
+    pullUrl = data.html_url ?? null
+  }
+
+  return JSON.stringify({
+    success: true,
+    repo: `${owner}/${repo}`,
+    base,
+    branch,
+    files_deleted: deleted,
+    pull_request: pullNumber,
+    url: pullUrl,
+    merged: false,
+    note: 'No se modificó la rama principal. El cambio requiere revisión y merge.',
+  })
+}
+
+/* ------------------------- auto-fusión de un pull request ---------------- */
+
+export interface GithubMergeInput {
+  repo: string
+  /** Número de pull request (preferido). */
+  pr?: unknown
+  /** Rama del pull request, si no se tiene el número. */
+  branch?: unknown
+  /** merge (por defecto es squash): squash | merge | rebase. */
+  method?: unknown
+}
+
+const MERGE_METHODS = ['squash', 'merge', 'rebase'] as const
+
+/**
+ * Fusiona un pull request en la rama principal, pero SOLO si las pruebas
+ * pasaron (FASE 7; pedido explícito del usuario).
+ *
+ * Reglas de seguridad:
+ * - Requiere `GITHUB_WRITE_ENABLED=true` **y** `GITHUB_AUTO_MERGE=true`: activar
+ *   la escritura no arrastra la fusión.
+ * - Antes de fusionar vuelve a consultar el CI del último commit; si falla o
+ *   está en cola, NO fusiona y explica por qué.
+ * - Si no hay ningún check configurado (`state: "none"`) sí permite fusionar,
+ *   porque no hay pruebas que pasar; lo avisa en el resultado.
+ * - Nunca fuerza: si hay conflictos, se detiene.
+ */
+export async function mergePullRequest(input: GithubMergeInput): Promise<string> {
+  const parsed = repoFrom(input.repo)
+  if (!parsed) return JSON.stringify({ error: 'Repositorio inválido. Usa "owner/repo".' })
+  if (!hasGithubToken()) return JSON.stringify({ error: 'Falta GITHUB_TOKEN para fusionar.' })
+  if (!githubWriteEnabled()) {
+    return JSON.stringify({
+      error:
+        'La escritura segura está desactivada. Define GITHUB_WRITE_ENABLED=true y usa un token ' +
+        'fine-grained con Contents: write y Pull requests: write.',
+    })
+  }
+  if (!githubAutoMergeEnabled()) {
+    return JSON.stringify({
+      error:
+        'La auto-fusión está desactivada. Definí GITHUB_AUTO_MERGE=true para que ARIA pueda ' +
+        'fusionar un pull request cuando las pruebas pasan.',
+      hint: 'Sin ese interruptor el pull request queda abierto para que lo fusiones vos.',
+    })
+  }
+
+  const { owner, repo } = parsed
+  const fullRepo = `${owner}/${repo}`
+  const prNumber = asPositiveInt(input.pr)
+  const requestedBranch = typeof input.branch === 'string' ? input.branch.trim() : ''
+  if (!prNumber && !requestedBranch) {
+    return JSON.stringify({ error: 'Indicá "pr" (número de pull request) o "branch".' })
+  }
+
+  // 1) Resolver el número de pull request.
+  let pullNumber = prNumber
+  if (!pullNumber) {
+    const listRes = await ghFetch(
+      `/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(`${owner}:${requestedBranch}`)}`,
+    )
+    if (!listRes.ok) return JSON.stringify({ error: describeError(listRes.status, listRes.data) })
+    const list = Array.isArray(listRes.data) ? (listRes.data as { number?: number }[]) : []
+    const found = list.find((item) => typeof item.number === 'number')
+    if (!found?.number) {
+      return JSON.stringify({ error: `No hay un pull request abierto para la rama "${requestedBranch}".` })
+    }
+    pullNumber = found.number
+  }
+
+  // 2) Metadatos y estado de fusión del PR.
+  const prRes = await ghFetch(`/repos/${owner}/${repo}/pulls/${pullNumber}`)
+  if (!prRes.ok) return JSON.stringify({ error: describeError(prRes.status, prRes.data) })
+  const p = prRes.data as {
+    number?: number
+    state?: string
+    merged?: boolean
+    mergeable?: boolean | null
+    mergeable_state?: string
+    head?: { ref?: string; sha?: string }
+    base?: { ref?: string }
+    html_url?: string
+  }
+  const branch = p.head?.ref ?? (requestedBranch || null)
+
+  if (p.merged === true) {
+    return JSON.stringify({
+      success: true,
+      merged: true,
+      already_merged: true,
+      repo: fullRepo,
+      pr: pullNumber,
+      branch,
+      url: p.html_url ?? null,
+      note: 'El pull request ya estaba fusionado.',
+    })
+  }
+  if (p.state !== 'open') {
+    return JSON.stringify({
+      error: `El pull request #${pullNumber} no está abierto (estado: ${p.state ?? 'desconocido'}).`,
+    })
+  }
+
+  // 3) Verificar las pruebas ANTES de fusionar (nunca fusionar a ciegas).
+  const checks = JSON.parse(await getCheckRuns({ repo: fullRepo, pr: pullNumber })) as {
+    state?: string
+    failed?: number
+    pending?: number
+  }
+  if (checks.state !== 'success' && checks.state !== 'none') {
+    return JSON.stringify({
+      error: 'No fusiono: las pruebas no pasaron todavía.',
+      state: checks.state ?? null,
+      failed: checks.failed ?? 0,
+      pending: checks.pending ?? 0,
+      pr: pullNumber,
+      branch,
+      note:
+        checks.state === 'pending'
+          ? 'Hay checks en cola: esperá y volvé a intentar.'
+          : 'Corregí los checks fallidos en la misma rama y volvé a intentar.',
+    })
+  }
+
+  // 4) Conflictos: GitHub calcula `mergeable` de forma asíncrona (puede ser null).
+  if (p.mergeable === false) {
+    return JSON.stringify({
+      error: 'El pull request tiene conflictos y no se puede fusionar automáticamente.',
+      mergeable_state: p.mergeable_state ?? null,
+      pr: pullNumber,
+      branch,
+    })
+  }
+  if (p.mergeable === null) {
+    return JSON.stringify({
+      error:
+        'GitHub todavía está calculando si el pull request se puede fusionar. Volvé a intentar en unos segundos.',
+      pr: pullNumber,
+      branch,
+    })
+  }
+
+  // 5) Fusionar. Algunos repositorios desactivan métodos; probamos los permitidos.
+  const requestedMethod = typeof input.method === 'string' ? input.method.trim().toLowerCase() : ''
+  const order: string[] = MERGE_METHODS.includes(requestedMethod as (typeof MERGE_METHODS)[number])
+    ? [requestedMethod, ...MERGE_METHODS.filter((m) => m !== requestedMethod)]
+    : [...MERGE_METHODS]
+
+  let lastError: string | null = null
+  for (const method of order) {
+    const mergeRes = await ghFetch(`/repos/${owner}/${repo}/pulls/${pullNumber}/merge`, {
+      method: 'PUT',
+      body: { merge_method: method },
+    })
+    if (mergeRes.ok) {
+      const data = mergeRes.data as { sha?: string; merged?: boolean }
+      return JSON.stringify({
+        success: true,
+        merged: true,
+        repo: fullRepo,
+        pr: pullNumber,
+        branch,
+        base: p.base?.ref ?? null,
+        method,
+        merge_sha: data.sha ?? null,
+        checks: checks.state ?? null,
+        url: p.html_url ?? null,
+        note: 'Pull request fusionado en su rama base.',
+      })
+    }
+    lastError = describeError(mergeRes.status, mergeRes.data)
+    // 405 = el repositorio no permite ese método de fusión; probamos el siguiente.
+    if (mergeRes.status !== 405) break
+  }
+
+  return JSON.stringify({
+    error: lastError ?? 'No pude fusionar el pull request.',
+    pr: pullNumber,
+    branch,
   })
 }
 

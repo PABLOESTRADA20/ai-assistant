@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia** (alternativa regex+tests aplicada); Fase 6 **reabierta**: la verificación se corrigió (hay 9 bases LoRA, incl. Qwen2.5-Coder-32B), el **dataset de entrenamiento ya se genera local y anonimizado** (`npm run db:dataset`), la **documentación del proyecto se copia al vault para el cerebro** (`npm run docs:vault`), el **conjunto de datos real ya se exportó** (6 ejemplos) con el **cuaderno de Kaggle listo** (`training/`) y el **reindexado del vault ahora es incremental** (ahorra cuota), y falta resolver la inferencia con LoRA (500) y el coste de entrenar 32B; Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
+> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia** (alternativa regex+tests aplicada); Fase 6 **reabierta**: la verificación se corrigió (hay 9 bases LoRA, incl. Qwen2.5-Coder-32B), el **dataset de entrenamiento ya se genera local y anonimizado** (`npm run db:dataset`), la **documentación del proyecto se copia al vault para el cerebro** (`npm run docs:vault`), el **conjunto de datos real ya se exportó** (6 ejemplos) con el **cuaderno de Kaggle listo** (`training/`) y el **reindexado del vault ahora es incremental** (ahorra cuota), y falta resolver la inferencia con LoRA (500) y el coste de entrenar 32B; **Fase 7 abierta** pidiendo escritura avanzada: **borrar archivos**, **ramas con nombre libre** y **auto-fusión solo con CI en verde** (Parte A hecha con tests; la Parte B de plataformas/login queda pendiente); Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
 
 ## Objetivo
 
@@ -22,6 +22,7 @@
 | 4 | Modificar memorias y notas por id | ✅ Hecha | Media |
 | 5 | Clasificador de herramientas (opcional) | ❌ Descartada (2026-10-16) | Baja |
 | 6 | LoRA de estilo/código (opcional) | 🟦 Reabierta (verificación corregida) | Baja |
+| 7 | Escritura avanzada: borrar, ramas libres y auto-fusión | 🟦 En curso (Parte A hecha; falta prueba en vivo) | Alta |
 
 Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ Descartada
 
@@ -52,7 +53,7 @@ Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ De
 - [x] Subir `writeFiles` a un valor razonable (`10`) y paginar `readFile` por rango de líneas
 - [x] Evaluar si `MAX_TOOL_ROUNDS = 5` alcanza — se subió a `8`
 - [x] Actualizar prompt de sistema, `RX_GITHUB_WRITE` y `TOOL_GROUPS`
-- [x] Mantener protecciones: rama `aria/*`, sin merge, sin borrar, sin `.github/workflows`, rutas validadas, `GITHUB_WRITE_ENABLED=true`
+- [x] Mantener protecciones: rama `aria/*`, sin merge, sin borrar, sin `.github/workflows`, rutas validadas, `GITHUB_WRITE_ENABLED=true` *(revisado en la Fase 7: nombre de rama libre, borrar y auto-fusión tras CI; la rama principal sigue intacta)*
 - [x] Tests: ambigua, cero coincidencias, archivo cambiado, ruta prohibida, límite de tamaño, borrado excesivo, selección de herramienta en español
 
 **Aceptación:** tests en verde ✅ y **prueba en vivo hecha (2026-10-14)**. Sobre `PABLOESTRADA20/web_anime`, ARIA leyó `README.md` (`github_read_file`) y llamó `github_apply_patch` → creó la rama `aria/anadir-linea-de-prueba-...-mv8ecrab` y el **PR #1** (`pull_request:1`, `merged:false`), con diff mínimo (**+2/−0**, solo `README.md`); `main` quedó **intacta**. La prueba se hizo desde el **Worker local** (`npm run preview`, mismo código/runtime workerd que lo desplegado) con `GITHUB_TOKEN` (token de `gh`) y `GITHUB_WRITE_ENABLED=true`; `next dev` **no** sirve para esto (su engine WASM de Prisma no se resuelve fuera de workerd).
@@ -132,6 +133,32 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 
 **Aceptación:** mejora medible o se recomienda no integrarlo. **Nota:** la primera evaluación (2026-10-16, "❌ Descartada") partía de un dato falso ("solo bases 2B–7B"); se corrige y la fase queda abierta. El bloqueo real ya **no** es la calidad de la base, sino **(a)** que la inferencia con LoRA dé 500 y **(b)** el coste de entrenar un 32B.
 
+## Fase 7 — Escritura avanzada: borrar, ramas libres y auto-fusión 🟦 En curso (2026-10-16)
+
+**Petición del usuario:** que ARIA pueda **agregar, borrar y modificar** archivos, **conectarse con varias plataformas** e **iniciar sesión**, y crear ramas. Decisiones tomadas con el usuario (preguntas del 2026-10-16):
+- Llegar a la rama principal: **fusionar sola, SOLO si las pruebas pasan** (no escritura directa).
+- Capacidades nuevas: **borrar archivos**, **ramas con nombre libre**, **modificar** archivos.
+- Plataformas/login: **solo GitHub por ahora** + **tokens por plataforma** + **OAuth** — aclaró que es **solo para él** (una sola persona), no multiusuario.
+
+Se partió en dos: **Parte A** (esta fase) y **Parte B** (plataformas/login, más abajo, sin empezar).
+
+### Parte A — hecho en esta sesión
+
+- [x] `github_delete_file`: borra archivos abriendo un PR (una rama nueva o una existente). Nunca borra carpetas enteras ni `.github/workflows`; respeta el tope de 10 archivos. (`deleteFiles` en `app/lib/github.ts`)
+- [x] **Ramas con nombre libre**: `applyPatch`, `createPullRequest` y `deleteFiles` aceptan cualquier nombre válido (`isValidBranchName`), **salvo la rama principal** (`validateBranch`). Se quitó el requisito del prefijo `aria/*`.
+- [x] `github_merge_pull_request`: fusiona el PR **solo si el CI pasó**; vuelve a consultar los checks antes de fusionar, rechaza si están en cola o fallidos, avisa si el repo no tiene checks, y no fuerza si hay conflictos. Interruptor **aparte** `GITHUB_AUTO_MERGE=true` (activar la escritura no arrastra la fusión).
+- [x] Prompt de sistema, `RX_GITHUB`/`RX_GITHUB_WRITE` y `TOOL_GROUPS.githubWrite` actualizados (el prompt sigue ≤900 tokens, recortado al añadir dos herramientas).
+- [x] Docs: `README.md` (GitHub seguro + tabla de variables) y `.dev.vars.example` (`GITHUB_AUTO_MERGE=false`).
+- [x] Tests: `tests/unit/github-write.test.ts` (15) — borrado, rechazo de la rama principal, rutas prohibidas, fusión con CI en verde/en cola/fallido/ausente/conflicto, y validación de nombres de rama; `github-patch.test.ts` y `select-tools.test.ts` actualizados.
+
+**Aceptación:** tests en verde ✅ (pendiente: **prueba en vivo** y `npm run lint`/`typecheck`). Garantía central que **no** se relaja: ARIA **nunca** escribe directo en la rama principal; todo pasa por un PR, y la fusión (si se habilita) exige CI en verde.
+
+### Parte B — pendiente (plataformas y login)
+
+- [ ] **Capa de proveedores**: extraer una interfaz (listar/leer/crear rama/commit/PR/checks) con implementaciones GitHub/GitLab/Bitbucket. Hoy todo está soldado a `https://api.github.com`.
+- [ ] **Tokens por plataforma**: guardar una credencial por plataforma (simple; el usuario es una sola persona, no multiusuario).
+- [ ] **OAuth** (opcional): botón "Entrar con GitHub/Google", **solo para el propio usuario**.
+
 ---
 
 ## Registro de decisiones
@@ -165,6 +192,11 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 | 2026-10-16 | Fase 6: la documentación del proyecto se copia al vault de Obsidian (`npm run docs:vault`) y se indexa en `VaultNote` | El Worker no ve el disco del PC: copiar el `.md` solo lo muestra en Obsidian; para que el cerebro lo use hay que indexarlo en la tabla |
 | 2026-10-16 | Fase 6: el reindexado del vault es **incremental** (`needsReindex`) | Reembeber todo el vault en cada pasada quema la cuota de Workers AI; omitir las notas cuyo contenido limpio no cambió (y las que ya tienen vector) la reserva para lo nuevo. `force` queda para forzar |
 | 2026-10-16 | Fase 6: el cuaderno de entrenamiento se versiona en `training/` (`.ipynb` + README), con los datos **fuera** del repo | El cuaderno no contiene datos personales (el JSONL vive en `data/lora/`, ignorado por git); versionarlo deja el procedimiento listo para repetirlo en Kaggle/Colab |
+| 2026-10-16 | Fase 7: "llegar a la rama principal" se hace **fusionando el PR tras CI en verde**, no escribiendo directo | Lo pidió así el usuario ("fusionar sola tras pasar las pruebas"). Escribir directo en `main` no tiene revisión ni red de seguridad; la fusión condicionada al CI mantiene el flujo actual y añade la garantía de que no entra nada roto |
+| 2026-10-16 | Fase 7: la auto-fusión usa un interruptor **aparte** (`GITHUB_AUTO_MERGE`) | Poder escribir en una rama no debe implicar poder meter cambios en la principal; sumar una capacidad destructiva exige una activación explícita distinta |
+| 2026-10-16 | Fase 7: ramas con **nombre libre**, validado y **nunca la rama principal** (`isValidBranchName`/`validateBranch`) | El usuario pidió nombres libres; se quita el prefijo `aria/*` sin perder la única garantía que importa: no escribir directo en `main`. El validador evita inyección de referencias en la API de GitHub |
+| 2026-10-16 | Fase 7: si el repositorio **no tiene checks**, la auto-fusión permite fusionar (avisando) | "Fusionar tras pasar las pruebas" no aplica cuando no hay pruebas configuradas; exigir `success` bloquearía para siempre a los repos sin CI. Se distingue `none` (sin checks) de `pending` (en cola), que sí bloquea |
+| 2026-10-16 | Fase 7: plataformas/login (GitLab, OAuth) van a una **Parte B** separada, sin empezar | El usuario aclaró que es **solo para él** (no multiusuario); montar la abstracción de proveedores + OAuth es un trabajo grande y de otro tipo, que no debe bloquear las tres capacidades concretas que pidió (borrar, ramas libres, auto-fusión) |
 
 ## Pendiente de verificar
 
@@ -185,6 +217,7 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 - **Fase 6 — bases `-lora` caídas (2026-10-16)**: probado en vivo por la API REST. Las **4 bases `-lora`** (`mistral-7b-instruct-v0.2-lora`, `gemma-2b/7b-it-lora`, `llama-2-7b-chat-hf-lora`) devuelven **500 / code 8008 incluso SIN adaptador**; con adaptador público (`cf-public-magicoder`) también 500, en todas las formas de petición (chat/completion, con/sin `max_tokens`), de forma reproducible. La base sin sufijo `-lora` da `400 No route`; el sistema **sí** valida la base+LoRA (con base Gemma da `Finetune model mismatch`). Los controles sin LoRA (`llama-3.2-3b` y `qwen2.5-coder-32b`) responden **200** y la status page está **operativa** → no es el token, el adaptador ni una incidencia: es la familia `-lora` la que está caída. Reintentar más tarde (beta) y, si sigue, reportar; sin esto no se puede evaluar ningún adaptador propio.
 - **Fase 6 — `model_type` para Qwen**: la guía de fine-tunes (abr-2026) solo menciona `mistral`/`gemma`/`llama`, pero el catálogo marca Qwen como base LoRA. Verificar si un adaptador Qwen (`model_type: qwen2`) se acepta al subirlo.
 - **Cifras de Unsloth/Colab (Fase 6): son de terceros** (no verificadas).
+- **Fase 7 — falta la prueba en vivo**: las funciones nuevas (`github_delete_file`, `github_merge_pull_request` y las ramas libres) están cubiertas por tests unitarios con la API simulada, pero **no** se probaron contra GitHub real. Falta: (a) correr `npm run lint` y `typecheck`; (b) una prueba en vivo desde el Worker local que borre un archivo de prueba y fusiona un PR con el CI en verde. `GITHUB_AUTO_MERGE` debe quedar en `false` en el `.dev.vars` real salvo durante esa prueba.
 
 ## Cómo se mantiene este archivo
 

@@ -430,7 +430,7 @@ export const TOOL_DEFINITIONS = [
           repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
           title: { type: 'string', description: 'Short pull request title' },
           body: { type: 'string', description: 'Pull request explanation, tests and risks' },
-          branch: { type: 'string', description: 'Optional short branch description; aria/ is added automatically' },
+          branch: { type: 'string', description: 'Optional branch name: with "/" it is used verbatim (validated); otherwise a short label and aria/<label>-<id> is created' },
           changes: {
             type: 'array',
             minItems: 1,
@@ -459,9 +459,10 @@ export const TOOL_DEFINITIONS = [
         'EXACT literal block (copy it verbatim from github_read_file, including indentation) ' +
         'and must appear exactly once in the file; "replace" is the new text. Provide "baseSha" ' +
         'from the file you read so a concurrent change aborts the patch. By default it creates ' +
-        'a new aria/* branch and a pull request; pass "branch" (an existing aria/* branch) to ' +
-        'commit a fix onto an open pull request. It never writes to the default branch, never ' +
-        'merges, never deletes files, cannot edit .github/workflows, and rejects patches that ' +
+        'a new aria/* branch and a pull request; pass "branch" (an existing branch; any safe ' +
+        'name, never the default branch) to commit a fix onto an open pull request. It never ' +
+        'writes to the default branch, never merges, never deletes files, cannot edit ' +
+        '.github/workflows, and rejects patches that ' +
         'delete too much. Automatic fixes on the same branch are limited to 2; after that the ' +
         'patch is refused and human review is required. Requires GITHUB_WRITE_ENABLED=true and a ' +
         'fine-grained token with Contents: write and Pull requests: write. Use it (not ' +
@@ -475,8 +476,8 @@ export const TOOL_DEFINITIONS = [
           branch: {
             type: 'string',
             description:
-              'Optional existing aria/* branch to commit the patch to (to fix an open PR). ' +
-              'Omit to create a new aria/* branch and pull request.',
+              'Optional existing branch to commit the patch to (to fix an open PR; any safe ' +
+              'name, never the default branch). Omit to create a new aria/* branch and pull request.',
           },
           patches: {
             type: 'array',
@@ -517,6 +518,66 @@ export const TOOL_DEFINITIONS = [
           repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
           pr: { type: 'integer', description: 'Pull request number (preferred)' },
           branch: { type: 'string', description: 'Branch name, e.g. the aria/* branch, if you do not have the PR number' },
+        },
+        required: ['repo'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_delete_file',
+      description:
+        'Delete files in a GitHub repository through a SAFE change: it creates a branch ' +
+        '(default aria/*) or uses an existing one, removes the given files there, and opens a ' +
+        'pull request for review. It never writes to the default branch, never merges, and ' +
+        'cannot delete folders or .github/workflows. Use ONLY when the user explicitly asks to ' +
+        'delete files, and only after listing/reading them. Requires GITHUB_WRITE_ENABLED=true ' +
+        'and a fine-grained token with Contents: write and Pull requests: write.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          title: { type: 'string', description: 'Short pull request title (used for a new branch/PR)' },
+          body: { type: 'string', description: 'Pull request explanation of why the files are removed' },
+          branch: {
+            type: 'string',
+            description:
+              'Optional existing branch to commit the deletion to. Omit to create a new branch ' +
+              'and pull request.',
+          },
+          paths: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 10,
+            items: { type: 'string', description: 'Repository-relative path of an EXISTING file' },
+          },
+        },
+        required: ['repo', 'title', 'paths'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'github_merge_pull_request',
+      description:
+        'Merge (fuse) an open pull request into the base branch, but ONLY if its CI checks ' +
+        'passed. It re-reads the checks first and refuses while they fail or are pending; when ' +
+        'the repository has no checks configured it merges and says so. Requires ' +
+        'GITHUB_WRITE_ENABLED=true AND GITHUB_AUTO_MERGE=true. Call it only when the user asks ' +
+        'to merge or land the change, and only after github_get_check_runs reports success.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository as "owner/repo" or its GitHub URL' },
+          pr: { type: 'integer', description: 'Pull request number (preferred)' },
+          branch: { type: 'string', description: 'Pull request head branch, if you do not have the PR number' },
+          method: {
+            type: 'string',
+            enum: ['squash', 'merge', 'rebase'],
+            description: 'Merge method (default squash; falls back to an allowed one)',
+          },
         },
         required: ['repo'],
       },
@@ -716,6 +777,10 @@ export async function executeToolCall(toolCall: ToolCall): Promise<string> {
       return githubApplyPatch(args)
     case 'github_get_check_runs':
       return githubGetCheckRuns(args.repo, args.pr, args.branch)
+    case 'github_delete_file':
+      return githubDeleteFile(args)
+    case 'github_merge_pull_request':
+      return githubMergePullRequest(args)
     case 'search_code':
       return searchCodeTool(args)
     case 'save_cloud_note':
@@ -877,6 +942,50 @@ async function githubGetCheckRuns(
     repo,
     pr,
     branch: typeof branch === 'string' ? branch : undefined,
+  })
+}
+
+async function githubDeleteFile(args: {
+  repo?: unknown
+  title?: unknown
+  body?: unknown
+  branch?: unknown
+  paths?: unknown
+}): Promise<string> {
+  if (typeof args.repo !== 'string' || !args.repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  if (typeof args.title !== 'string' || !args.title.trim()) {
+    return JSON.stringify({ error: 'Falta el título' })
+  }
+  if (!Array.isArray(args.paths) || args.paths.length === 0) {
+    return JSON.stringify({ error: 'Faltan las rutas de los archivos a borrar' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.deleteFiles({
+    repo: args.repo,
+    title: args.title,
+    body: typeof args.body === 'string' ? args.body : undefined,
+    branch: typeof args.branch === 'string' ? args.branch : undefined,
+    paths: args.paths.filter((p): p is string => typeof p === 'string'),
+  })
+}
+
+async function githubMergePullRequest(args: {
+  repo?: unknown
+  pr?: unknown
+  branch?: unknown
+  method?: unknown
+}): Promise<string> {
+  if (typeof args.repo !== 'string' || !args.repo.trim()) {
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+  }
+  const gh = await import('@/app/lib/github')
+  return gh.mergePullRequest({
+    repo: args.repo,
+    pr: args.pr,
+    branch: args.branch,
+    method: typeof args.method === 'string' ? args.method : undefined,
   })
 }
 

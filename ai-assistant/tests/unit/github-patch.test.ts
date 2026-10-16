@@ -124,8 +124,7 @@ describe('applyPatch', () => {
         calls.push({ url, method, body })
 
         if (url.endsWith('/repos/owner/repo')) return json({ default_branch: 'main' })
-        if (url.includes('/git/ref/heads/main')) return json({ object: { sha: 'base-sha' } })
-        if (url.includes('/git/ref/heads/aria')) return json({ ref: 'refs/heads/aria/existing' })
+        if (url.includes('/git/ref/heads/')) return json({ ref: 'refs/heads/branch', object: { sha: 'base-sha' } })
         if (url.endsWith('/git/refs') && method === 'POST') return json({ ref: 'refs/heads/aria/new' })
         if (url.includes('/contents/') && method === 'GET') {
           return json({
@@ -284,7 +283,7 @@ describe('applyPatch', () => {
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/pulls'))).toBe(false)
   })
 
-  it('rechaza ramas que no son aria/*', async () => {
+  it('nunca escribe en la rama principal', async () => {
     enableWrite()
     stubFetch({ content: 'const a = 1\n' })
 
@@ -296,7 +295,40 @@ describe('applyPatch', () => {
         patches: [{ path: 'src/index.ts', search: 'const a = 1', replace: 'const a = 2' }],
       }),
     )
-    expect(out.error).toMatch(/aria/i)
+    expect(out.error).toMatch(/principal/i)
+  })
+
+  it('permite ramas con nombre libre (sin el prefijo aria/)', async () => {
+    enableWrite()
+    const calls = stubFetch({ content: 'const a = 1\n' })
+
+    const out = JSON.parse(
+      await applyPatch({
+        repo: 'owner/repo',
+        title: 'Rama libre',
+        branch: 'feature/nueva-funcion',
+        patches: [{ path: 'src/index.ts', search: 'const a = 1', replace: 'const a = 2' }],
+      }),
+    )
+    expect(out.success).toBe(true)
+    expect(out.branch).toBe('feature/nueva-funcion')
+    expect(calls.some((c) => c.method === 'PUT' && c.body?.branch === 'feature/nueva-funcion')).toBe(true)
+  })
+
+  it('rechaza nombres de rama inválidos sin escribir nada', async () => {
+    enableWrite()
+    const calls = stubFetch({ content: 'const a = 1\n' })
+
+    const out = JSON.parse(
+      await applyPatch({
+        repo: 'owner/repo',
+        title: 'Rama rota',
+        branch: 'mala rama..',
+        patches: [{ path: 'src/index.ts', search: 'const a = 1', replace: 'const a = 2' }],
+      }),
+    )
+    expect(out.error).toMatch(/inválido/i)
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false)
   })
 
   it('informa cuando el archivo no existe en la rama', async () => {
