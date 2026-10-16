@@ -89,6 +89,7 @@ function buildRepoMap(
   label: string,
   files: Map<string, string[]>,
   totalChunks: number,
+  totalFiles: number,
 ): string {
   const dirs = new Map<string, { path: string; symbols: string[] }[]>()
   for (const [file, symbols] of files) {
@@ -106,7 +107,8 @@ function buildRepoMap(
     '> y símbolos) pensado para personas y para futuras herramientas: hoy NINGÚN',
     '> código de la app lo lee — la app consulta `search_code`.',
     '',
-    `- Ficheros indexados: ${files.size}`,
+    `- Ficheros indexados: ${totalFiles}`,
+    `- De ellos, con símbolos: ${files.size}`,
     `- Trozos: ${totalChunks}`,
     `- Embeddings: \`@cf/baai/bge-m3\` (1024 dims)`,
     '',
@@ -293,7 +295,11 @@ async function main(): Promise<void> {
   }
   const label = repo === 'local' ? path.basename(root) : repo
   const mapPath = path.join(root, 'REPO_MAP.md')
-  const map = buildRepoMap(label, symbolsByPath, symbolRows.length)
+  // `symbolRows` trae TODAS las filas del repo (incluidas las de símbolo NULL),
+  // así que el total real de ficheros indexados sale de sus rutas únicas; el
+  // mapa solo LISTA las que tienen símbolos (markdown/JSON/config no los tienen).
+  const totalFiles = new Set(symbolRows.map((row) => row.path)).size
+  const map = buildRepoMap(label, symbolsByPath, symbolRows.length, totalFiles)
   let mapWritten = false
   try {
     const current = fs.readFileSync(mapPath, 'utf-8')
