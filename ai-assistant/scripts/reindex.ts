@@ -5,7 +5,9 @@ async function main() {
   const { reindexVaultEmbeddings, semanticSearchDb } = await import('../app/lib/embeddings')
 
   console.log('Reindexando embeddings...')
-  const res = await reindexVaultEmbeddings()
+  const force = process.argv.includes('--force')
+  if (force) console.log('Modo forzado: se reindexa todo el vault.')
+  const res = await reindexVaultEmbeddings({ force })
   console.log('Reindex:', JSON.stringify(res))
 
   console.log('\nProbando búsqueda semántica:')

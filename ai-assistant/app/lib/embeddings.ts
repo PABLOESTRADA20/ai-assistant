@@ -37,27 +37,87 @@ async function upsertNote(
 
 export interface ReindexResult {
   ok: boolean
+  /** Notas embebidas (nuevas o cambiadas) en esta pasada. */
   indexed: number
   failed: number
+  /** Entradas que no son un fichero legible o que superan el tamaño máximo. */
   skipped: number
+  /** Notas sin cambios desde la última indexación: NO gastaron cuota. */
+  unchanged: number
   model: string
   error?: string
 }
 
-export async function reindexVaultEmbeddings(limit = DEFAULT_LIMIT): Promise<ReindexResult> {
+export interface ReindexOptions {
+  /** Máximo de vectores nuevos por pasada (por defecto `DEFAULT_LIMIT`). */
+  limit?: number
+  /** Reindexa aunque el contenido no haya cambiado (por defecto `false`). */
+  force?: boolean
+}
+
+/**
+ * Decide si una nota guardada necesita que se le recalcule el vector.
+ *
+ * Es pura y se prueba aparte. Regla: solo se reindexa si no existe, si todavía
+ * no tiene vector (p. ej. cuando se agotó la cuota) o si su contenido limpio
+ * cambió. Así una pasada sobre el vault entero casi no gasta cuota.
+ */
+export function needsReindex(
+  existing: { content: string; hasEmbedding: boolean } | undefined,
+  nextContent: string,
+  force = false,
+): boolean {
+  if (force) return true
+  if (!existing) return true
+  if (!existing.hasEmbedding) return true
+  return existing.content !== nextContent
+}
+
+/**
+ * Indexa (o actualiza) los vectores del vault en `VaultNote`.
+ *
+ * Es **incremental**: si el contenido limpio de una nota no cambió y ya tenía
+ * vector, se omite sin gastar cuota. `limit` cuenta VECTORES nuevos, no
+ * entradas examinadas, de modo que una pasada corta alcanza para las notas
+ * cambiadas aunque estén al final del índice.
+ */
+export async function reindexVaultEmbeddings(
+  options: ReindexOptions = {},
+): Promise<ReindexResult> {
   const vp = process.env.VAULT_PATH
   if (!vp) throw new Error('VAULT_PATH no configurada')
 
   const index = getVaultIndex(true)
   if (!index) throw new Error('VAULT_PATH no indexado')
 
-  const entries = index.entries.slice(0, limit)
+  const limit =
+    Number.isFinite(options.limit) && (options.limit as number) > 0
+      ? (options.limit as number)
+      : DEFAULT_LIMIT
+  const force = options.force === true
+
+  // Mapa de lo ya guardado (contenido limpio + si tiene vector). Si la tabla no
+  // responde, se reindexa todo, como antes.
+  const existing = new Map<string, { content: string; hasEmbedding: boolean }>()
+  try {
+    const rows = await prisma.$queryRaw<
+      { path: string; content: string; hasEmbedding: boolean }[]
+    >`SELECT "path", "content", (embedding IS NOT NULL) AS "hasEmbedding" FROM "VaultNote"`
+    for (const row of rows) {
+      existing.set(row.path, { content: row.content, hasEmbedding: row.hasEmbedding })
+    }
+  } catch {
+    /* sin mapa: todo cuenta como nuevo */
+  }
+
   let indexed = 0
   let failed = 0
   let skipped = 0
+  let unchanged = 0
 
   try {
-    for (const entry of entries) {
+    for (const entry of index.entries) {
+      if (indexed >= limit) break
       try {
         const full = path.join(vp, entry.path)
         const stat = fs.statSync(full)
@@ -67,17 +127,22 @@ export async function reindexVaultEmbeddings(limit = DEFAULT_LIMIT): Promise<Rei
         }
         const raw = fs.readFileSync(full, 'utf-8')
         const content = cleanText(raw).slice(0, MAX_CONTENT_CHARS)
+        if (!needsReindex(existing.get(entry.path), content, force)) {
+          unchanged++
+          continue
+        }
         const embedText = `passage: ${entry.title || entry.name}\n${raw.slice(0, MAX_EMBED_CHARS)}`
         const vec = await embed(embedText)
         await upsertNote(entry, content, vec)
+        existing.set(entry.path, { content, hasEmbedding: true })
         indexed++
       } catch {
         failed++
       }
     }
-    return { ok: true, indexed, failed, skipped, model: MODEL }
+    return { ok: true, indexed, failed, skipped, unchanged, model: MODEL }
   } catch (err) {
-    return { ok: false, indexed, failed, skipped, model: MODEL, error: String(err) }
+    return { ok: false, indexed, failed, skipped, unchanged, model: MODEL, error: String(err) }
   }
 }
 

@@ -67,6 +67,10 @@ Ojo: el vault físico (`.md`) se queda local; sus embeddings se suben a Neon con
 
 Además, `npm run docs:vault` copia `README.md`, `ROADMAP.md` y `REPO_MAP.md` a `ARIA/Repositorio ai-assistant/` dentro del vault y los indexa en `VaultNote` (el Worker no ve el disco, por eso hay que indexarlos): así el cerebro dispone de la documentación del propio proyecto. Si la cuota de embeddings está agotada, quedan sin vector; vuelve a ejecutarlo cuando se reponga para añadírselo.
 
+El reindexado de vectores es **incremental**: `npm run db:reindex` omite las notas cuyo contenido no cambió (y las que ya tienen vector), así no gasta cuota de más; `npm run db:reindex -- --force` rehace todo a propósito.
+
+Para **entrenar un adaptador LoRA** sin usar tu PC, en `training/` está el cuaderno `aria-lora-kaggle.ipynb` y su `README.md` (requiere el conjunto de datos de `npm run db:dataset`).
+
 ## Scripts
 
 | Comando | Descripción |
@@ -85,7 +89,7 @@ Además, `npm run docs:vault` copia `README.md`, `ROADMAP.md` y `REPO_MAP.md` a 
 | `npm run db:psql` | Consola `psql` en la BD `aria` |
 | `npm run db:migrate` | Ejecutar migraciones Prisma |
 | `npm run db:studio` | Abrir Prisma Studio |
-| `npm run db:reindex` | Regenerar embeddings del vault en pgvector |
+| `npm run db:reindex` | Regenerar embeddings del vault en pgvector (incremental; `-- --force` rehace todo) |
 | `npm run db:dataset` | Genera el conjunto de datos de entrenamiento (JSONL anonimizado) en `data/lora/`; `-- --fake` autoprueba sin base |
 | `npm run docs:vault` | Copia la documentación del proyecto al vault de Obsidian y la indexa para el cerebro; `-- --no-index` solo copia |
 | `npm run db:smoke` | Smoke test del sistema de memoria |
