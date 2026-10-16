@@ -50,3 +50,6 @@ next-env.d.ts
 
 # agente local: token generado y archivo de entorno (secretos, no van al repo)
 /local-agent/.aria-local-token
+
+# conjunto de datos de entrenamiento (FASE 6): datos personales, NUNCA al repo
+/data/lora/
