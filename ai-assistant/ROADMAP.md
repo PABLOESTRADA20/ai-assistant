@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fases 5 y 6 **descartadas con evidencia** (la 5 aplicó su alternativa regex+tests; la 6 no integra el LoRA por bases demasiado pequeñas); Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
+> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia** (alternativa regex+tests aplicada); Fase 6 **reabierta**: la verificación se corrigió (hay 9 bases LoRA, incl. Qwen2.5-Coder-32B) y falta resolver la inferencia con LoRA (500) y el coste de entrenar 32B; Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
 
 ## Objetivo
 
@@ -21,7 +21,7 @@
 | 3 | Índice de código + mapa del repo | 🟦 En curso (130/191 ficheros) | Media |
 | 4 | Modificar memorias y notas por id | ✅ Hecha | Media |
 | 5 | Clasificador de herramientas (opcional) | ❌ Descartada (2026-10-16) | Baja |
-| 6 | LoRA de estilo/código (opcional) | ❌ Descartada (2026-10-16) | Baja |
+| 6 | LoRA de estilo/código (opcional) | 🟦 Reabierta (verificación corregida) | Baja |
 
 Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ Descartada
 
@@ -110,12 +110,18 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 
 **Aceptación:** ~~iguala o supera a las regex~~ **No se integra** (decisión con evidencia): un clasificador solo se justifica con muchas más herramientas y presupuesto; los fallos medidos eran morfológicos (la regex los cubre) y el fallback a regex habría que mantenerlo igualmente. Revisable si el catálogo de herramientas crece mucho.
 
-## Fase 6 (opcional) — LoRA de estilo/código ❌ Descartada (2026-10-16)
+## Fase 6 (opcional) — LoRA de estilo/código 🟦 Reabierta (verificación corregida, 2026-10-16)
 
-- [x] Verificar antes de entrenar: modelos base compatibles con LoRA en Workers AI y si acepta adaptadores QLoRA → **acepta ambos**: LoRA (open beta, gratis; se suben con `wrangler ai finetune create` o REST y se sirven con `env.AI.run(modelo, {…, lora})`) y QLoRA como método de entrenamiento (el artefacto es un LoRA estándar). **Pero** el catálogo solo ofrece **5 bases, todas de 2B–7B y antiguas**: `gemma-2b-it-lora`, `gemma-7b-it-lora`, `llama-2-7b-chat-hf-lora`, `mistral-7b-instruct-v0.1-lora`, `mistral-7b-instruct-v0.2-lora`. ARIA corre sobre 70B–120B y **ninguno de sus modelos** es compatible con LoRA. Límites: rank `r ≤ 8` (hasta 32), adaptador < 300 MB, `model_type` ∈ {`mistral`,`gemma`,`llama`}, ≤100 adaptadores/cuenta, no editable tras subir.
-- [x] ~~Dataset sin secretos ni datos personales~~ · ~~Entrenamiento en Colab/Kaggle~~ · ~~Comparación lado a lado en 20+ casos~~ **No aplica**: no se construye el LoRA.
+- [x] Verificar antes de entrenar: modelos base compatibles con LoRA en Workers AI y si acepta adaptadores QLoRA.
+  - **LoRA y QLoRA: sí.** Open beta y gratis; se suben con `wrangler ai finetune create` o REST (permiso *Workers AI: Edit*) y se sirven con `env.AI.run(modelo, {…, lora})`. Límites: rank `r ≤ 8` (hasta 32), adaptador < 300 MB, ficheros `adapter_config.json` + `adapter_model.safetensors`, ≤100 adaptadores/cuenta, no editable tras subir.
+  - **Bases con LoRA: 9** (no 4). La primera lectura miró solo los nombres con sufijo `-lora` y **se equivocó**; la fuente correcta es el facet `?capabilities=LoRA` del catálogo: **`@cf/qwen/qwen2.5-coder-32b-instruct` (32B, de código)**, `@cf/qwen/qwq-32b` (32B, razonamiento), `@cf/meta/llama-3.2-11b-vision-instruct`, `@cf/meta/llama-3.2-3b-instruct`, `@cf/meta/llama-guard-3-8b`, `@cf/google/gemma-2b/7b-it-lora`, `@cf/meta-llama/llama-2-7b-chat-hf-lora`, `@cf/mistral/mistral-7b-instruct-v0.2-lora`.
+  - **Prueba en vivo (2026-10-16, API REST):** token y endpoint OK (`@cf/meta/llama-3.2-3b-instruct` → 200; **`@cf/qwen/qwen2.5-coder-32b-instruct` → 200**, 8,1 neuronas). Con LoRA: el único adaptador público (`cf-public-magicoder`, base `@cf/mistral/mistral-7b-instruct-v0.2-lora`) **da 500** al invocarlo con su base correcta (el sistema sí valida: con base Gemma responde `Finetune model mismatch`). → **la inferencia con LoRA no funciona hoy en esta cuenta** (beta); a investigar/reintentar.
+  - **Contradicción de doc sin resolver:** la guía de fine-tunes (abr-2026) dice `model_type` ∈ {`mistral`,`gemma`,`llama`}, pero el catálogo marca **Qwen** como base LoRA → aún no se sabe si un adaptador Qwen se acepta.
+- [ ] Dataset sin secretos ni datos personales; nunca en repos públicos de Hugging Face.
+- [ ] Entrenamiento en Colab/Kaggle, nunca en la PC. **Ojo:** un QLoRA de 32B (Qwen-Coder/QwQ) pide ≳24 GB de VRAM → **no cabe en GPU gratuita**; lo entrenable gratis es 3B–11B.
+- [ ] Comparación lado a lado en 20 o más casos reales.
 
-**Aceptación:** ~~mejora medible~~ **No se integra** (decisión con evidencia): un LoRA afina **estilo, no capacidad**, y las bases compatibles son 10–17× menores que los modelos actuales de ARIA → sería una regresión en razonamiento y, sobre todo, en *tool calling* (bucle de 25 herramientas), o bien un modelo extra peor compitiendo contra los grandes. Revisable si Workers AI amplía el catálogo LoRA con bases mayores.
+**Aceptación:** mejora medible o se recomienda no integrarlo. **Nota:** la primera evaluación (2026-10-16, "❌ Descartada") partía de un dato falso ("solo bases 2B–7B"); se corrige y la fase queda abierta. El bloqueo real ya **no** es la calidad de la base, sino **(a)** que la inferencia con LoRA dé 500 y **(b)** el coste de entrenar un 32B.
 
 ---
 
@@ -144,7 +150,8 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 | 2026-10-16 | Fase 3: `REPO_MAP.md` se deja **solo como documento** (ni herramienta ni inyección en el contexto) | Pesa ≈2.282 tokens (144 líneas) y el prompt no puede crecer de 900; `search_code` ya encuentra símbolos por significado. El fichero se sigue generando y versionando, así que la opción queda abierta sin coste |
 | 2026-10-16 | Fase 5: **no se construye el clasificador**; se amplían las regex + tests | Sonda local sobre 34 frases: 4 fallos de cobertura y 0 falsos positivos, todos **morfológicos** (voseo `abrí`/`buscá`/`sabés`, plural `se guardan`) y arreglables por regex. Los 25 schemas cuestan 4.777 tok, así que la selección importa, pero un clasificador añadiría latencia/cuota y exigiría fallback a regex igualmente. Evidencia temporal (no commiteada) |
 | 2026-10-16 | Fase 5: se usa `(?!\w)` en vez de `\b` al final de un grupo que puede terminar en vocal acentuada | En JS `\w` = `[A-Za-z0-9_]`: `\b` NO ve el final de palabra tras `á`/`í`/`é`, así que `abrí\b` o `buscá\b` fallaban. Afectaba a `LOOKS_LIKE_ORDER`, `RX_APPS` y `RX_CODE_SEARCH`; `RX_GITHUB_WRITE` ya usaba `(?!\w)` |
-| 2026-10-16 | Fase 6: **no se construye el LoRA** | Verificado en la doc de Cloudflare (2026-04-21): Workers AI **sí** acepta adaptadores LoRA (open beta, gratis; sirve también para QLoRA) pero **solo sobre 5 bases de 2B–7B y antiguas** (`gemma-2b/7b-it-lora`, `llama-2-7b-chat-hf-lora`, `mistral-7b-instruct-v0.1/0.2-lora`). **Ninguno** es modelo de ARIA (70B–120B). Un LoRA afina estilo, no capacidad: sobre una base tan débil sería una regresión en razonamiento y *tool calling*. La doc dice que ampliarán el catálogo LoRA → revisable |
+| 2026-10-16 | Fase 6: se **corrige** la verificación y la fase **se reabre** (no se descarta) | El primer veredicto "solo 5 bases 2B–7B" salió de mirar los nombres `-lora` y era **falso**: el facet `?capabilities=LoRA` del catálogo lista **9** bases, incluidas `@cf/qwen/qwen2.5-coder-32b-instruct` (32B, de código) y `@cf/qwen/qwq-32b` (32B). Probado en vivo: la base Qwen-Coder-32B → 200; el LoRA público (Mistral) → **500**. Bloqueo real: inferencia LoRA rota (beta) + entrenar un 32B no cabe en GPU gratis |
+| 2026-10-16 | Fase 6: el artefacto de despliegue es un adaptador **LoRA estándar** (también si se entrena con QLoRA) | Unsloth/PEFT ya exportan `adapter_config.json` + `adapter_model.safetensors` con `target_modules` (p. ej. `q_proj`/`v_proj`); basta cumplir rank ≤8, <300 MB y el `model_type`. Entrenar con QLoRA no cambia el formato aceptado |
 
 ## Pendiente de verificar
 
@@ -162,7 +169,9 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 - **Versión de Next** (**confirmado 2026-10-14**): el árbol instalado es `next@15.5.25` (`node_modules/next/package.json` y `npm ls`), que es lo que usan `next dev`/`next build`; el `package-lock.json` fija **15.5.27**. Es un `node_modules` desincronizado del lockfile, misma serie 15.5.x y sin impacto funcional; `npm ci` lo alinearía a 15.5.27 cuando convenga.
 - **Compatibilidad de Next con `@opennextjs/cloudflare` 1.20.6**: la nota original decía Next 16.3, pero **no aplica**: la versión instalada es Next 15.5.x (no 16.x). Revisar solo si se planea subir a Next 16.
 - ~~Datos del repo tomados del prompt original (líneas de código, migraciones, límites): confirmar al leer el repo (Fase 3).~~ **Resuelto (2026-10-14)**: leídos directamente del repo durante la Fase 3.
-- ~~Cifras de Unsloth/Colab (Fases 5 y 6): son de terceros.~~ **No aplica (2026-10-16)**: ninguna de las dos fases construye nada (la 5 se resolvió con regex+tests; la 6 se descartó por bases LoRA demasiado pequeñas), así que no se depende de esas cifras.
+- **Fase 6 — inferencia con LoRA rota (2026-10-16)**: probado en vivo por la API REST; el único LoRA público (`cf-public-magicoder`) devuelve **500 / code 8008** sobre su base correcta (`@cf/mistral/mistral-7b-instruct-v0.2-lora`), aunque el sistema valida (con base Gemma da `Finetune model mismatch`). La base Qwen2.5-Coder-32B **sin** LoRA responde 200. Reintentar más tarde (beta) y, si sigue, reportar; sin esto no se puede evaluar ningún adaptador propio.
+- **Fase 6 — `model_type` para Qwen**: la guía de fine-tunes (abr-2026) solo menciona `mistral`/`gemma`/`llama`, pero el catálogo marca Qwen como base LoRA. Verificar si un adaptador Qwen (`model_type: qwen2`) se acepta al subirlo.
+- **Cifras de Unsloth/Colab (Fase 6): son de terceros** (no verificadas).
 
 ## Cómo se mantiene este archivo
 
