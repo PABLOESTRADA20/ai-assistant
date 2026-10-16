@@ -18,7 +18,7 @@
 | 0 | Ajustes del PC (WSL, Next, Vitest) | ✅ Hecha | Alta |
 | 1 | Edición precisa por parches | ✅ Hecha | Máxima |
 | 2 | Verificar antes de dar por bueno (CI) | ✅ Hecha | Alta |
-| 3 | Índice de código + mapa del repo | 🟦 En curso (92/187 ficheros) | Media |
+| 3 | Índice de código + mapa del repo | 🟦 En curso (130/191 ficheros) | Media |
 | 4 | Modificar memorias y notas por id | ✅ Hecha | Media |
 | 5 | Clasificador de herramientas (opcional) | ⬜ Pendiente | Baja |
 | 6 | LoRA de estilo/código (opcional) | ⬜ Pendiente | Baja |
