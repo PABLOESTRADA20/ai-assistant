@@ -107,7 +107,7 @@ export interface ChatMessage {
  * ------------------------------------------------------------------ */
 
 const LOOKS_LIKE_ORDER =
-  /\b(busca|buscar|buscame|busqueda|investiga|investigar|googlea|googlear|search (?:the )?(?:web|internet)|look ?up|look for|find (?:me )?(?:online|on the web|information)|check online|verifica online)\b/i
+  /\b(busc[aá]|buscar|busc[aá]me|b[uú]squeda|investig[aá]|investigar|google[aá]|googlear|search (?:the )?(?:web|internet)|look ?up|look for|find (?:me )?(?:online|on the web|information)|check online|verifica online)(?!\w)/i
 
 const WANTS_CURRENT =
   /\b(noticias|news|actualidad|ultima vers[ió]n|ultimo lanzamiento|lo (?:ultimo|m[áa]s reciente)|novedades|qu[eé] hay de nuevo|que trae|release notes?|changelog|how (?:is|are) .{1,20} (?:today|now these days)|estado actual|currently (?:is|are) (?:supported|available|maintained)|still (?:supported|maintained|available))\b/i
@@ -200,22 +200,22 @@ const RX_CODE_REVIEW =
  * pueden resolverse sin tocar GitHub.
  */
 const RX_CODE_SEARCH =
-  /\b(d[oó]nde (?:est[aá]|se (?:usa|define|encuentra|declara|guarda))|busca\w* en (?:el|mi) c[oó]digo|definici[oó]n de|implementaci[oó]n de|c[oó]mo (?:funciona|est[aá] (?:implement\w*|hecho))|qu[eé] (?:archivo|fichero|funci[oó]n|clase) (?:define|contiene|usa|hace))\b/i
+  /\b(d[oó]nde (?:est[aá]n?|se (?:usa|usan|define|definen|encuentra|encuentran|declara|declaran|guarda|guardan))|busc[aá]r? en (?:el|mi) c[oó]digo|definici[oó]n de|implementaci[oó]n de|c[oó]mo (?:funcionan?|est[aá]n? (?:implement\w*|hecho))|qu[eé] (?:archivos?|ficheros?|funci[oó]n(?:es)?|clases?) (?:definen?|contienen?|usan?|hacen?))(?!\w)/i
 const RX_GITHUB_WRITE =
   /\b(modifica|modificar|modific[aá]|edita|editar|edit[aá]|cambia|cambiar|cambi[aá]|implementa|implementar|implement[aá]|corrige|corregir|correg[ií]|arregla|arreglar|arregl[aá]|crea(?:r)?|actualiza|actualizar|actualiz[aá]|haz(?:me)? (?:el )?cambio|parche\w*|aplica|aplicar|aplic[aá])(?!\w)/i
 const RX_VAULT = /\b(vault|obsidian|\bnotas?\b|\bapuntes?\b|biblioteca)\b/i
 const RX_CLOUD_NOTES =
-  /\b(nube|cloud|notas? de (?:aria|la nube)|guarda(?:me)? (?:una )?nota|mis notas)\b/i
+  /\b(nube|cloud|notas? de (?:aria|la nube)|guard[aá](?:me)? (?:una )?nota|mis notas)\b/i
 const RX_MEMORY =
-  /\b(recuerd[ao]s?|record[aá]s|recordar|te acord[aá]s|acordate|qu[eé] sabes de m[ií]|mis? preferencias?|preferencia sobre)/i
+  /\b(recuerd[ao]s?|record[aá]s|recordar|te acord[aá]s|acordate|qu[eé] sab[eé]s de m[ií]|mis? preferencias?|preferencia sobre)/i
 const RX_TIME =
   /\b(qu[eé] hora|hora es|la hora|fecha de hoy|qu[eé] d[ií]a|d[ií]a es hoy|zona horaria|horario)\b/i
 const RX_MATH =
-  /\b(c[aá]lcul[oa]|calculadora|cu[aá]nto (?:es|son|da|vale|queda)|resultado de|suma(?:r|me)?|resta(?:r|me)?|multiplica(?:r|me)?|divide|dividir|porcentaje|promedio|ra[ií]z cuadrada)\b|\d\s*[+\-*/^]\s*\d|\d+\s*%\s*de\b/i
+  /\b(c[aá]lcul\w*|cu[aá]nto (?:es|son|da|vale|queda)|resultado de|suma(?:r|me)?|resta(?:r|me)?|multiplica(?:r|me)?|divide|dividir|porcentaje|promedio|ra[ií]z cuadrada)\b|\d\s*[+\-*/^]\s*\d|\d+\s*%\s*de\b/i
 const RX_WEATHER =
   /\b(clima|tiempo atmosf[eé]rico|temperatura|llueve|va a llover|pron[oó]stico|nieve|soleado|nublado|hace fr[ií]o|hace calor)\b/i
 const RX_APPS =
-  /\b([aá]bre|abrir|abr[ií]me|[aá]breme|ejecuta|lanza)\b[^.]{0,40}\b(app|aplicaci[oó]n|spotify|vscode|vs ?code|carpeta|navegador|programa)/i
+  /\b([aá]bre|abrir|abr[ií]me|[aá]breme|abr[ií]|ejecuta|lanza)(?!\w)[^.]{0,40}\b(app|aplicaci[oó]n|spotify|vscode|vs ?code|carpeta|navegador|programa)/i
 const RX_EMAIL =
   /\b(env[ií]a(?:me|le|les)?|mand[aá](?:me|le|les)?|escr[ií]b)\b[^.]{0,40}\b(correo|mail|e-?mail)\b/i
 /**

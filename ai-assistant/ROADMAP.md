@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
+> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia**, aplicada su alternativa regex+tests; Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
 
 ## Objetivo
 
@@ -20,7 +20,7 @@
 | 2 | Verificar antes de dar por bueno (CI) | ✅ Hecha | Alta |
 | 3 | Índice de código + mapa del repo | 🟦 En curso (130/191 ficheros) | Media |
 | 4 | Modificar memorias y notas por id | ✅ Hecha | Media |
-| 5 | Clasificador de herramientas (opcional) | ⬜ Pendiente | Baja |
+| 5 | Clasificador de herramientas (opcional) | ❌ Descartada (2026-10-16) | Baja |
 | 6 | LoRA de estilo/código (opcional) | ⬜ Pendiente | Baja |
 
 Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ Descartada
@@ -102,12 +102,13 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 
 **Pendiente de verificar (Fase 4):** ver "Pendiente de verificar" (ruta de embedding con la cuota agotada, test de integración y el solapamiento "nota" con el vault de Obsidian).
 
-## Fase 5 (opcional) — Clasificador de herramientas
+## Fase 5 (opcional) — Clasificador de herramientas ❌ Descartada (2026-10-16)
 
-- [ ] Decidir primero si vale la pena (alternativas: mejorar descripciones de herramientas o ampliar las regex y sus tests)
-- [ ] Si seguimos: `scripts/build-tool-dataset.ts` (limpiando secretos y datos personales), notebook en Colab/Kaggle, evaluación contra regex, degradación segura a regex
+- [x] Decidir primero si vale la pena → **no vale**. Medido con una sonda local (0 API) sobre 34 frases reales: la selección por regex daba **4 fallos de cobertura y 0 ofertas indebidas**, y los 4 eran **morfológicos** (voseo `abrí`/`buscá`/`sabés`, plural `se guardan`), no semánticos. Coste de los 25 schemas: **4.777 tok** (solo `github`: 1.027), frente a los 897 del system prompt.
+- [x] Alternativa aplicada (la que este punto ya nombraba): **ampliar las regex + tests** en vez de construir el clasificador. Se cerraron los 4 huecos, se corrigió la causa raíz (**`\b` no cierra palabra tras vocal acentuada** → `(?!\w)`, como ya hacía `RX_GITHUB_WRITE`) y se añadió un test de regresión en `select-tools.test.ts`. $0, 0 latencia, determinista; 292 tests verdes.
+- [ ] ~~Si seguimos: `scripts/build-tool-dataset.ts` (limpiando secretos y datos personales), notebook en Colab/Kaggle, evaluación contra regex, degradación segura a regex~~ **No aplica**: no se construye el clasificador.
 
-**Aceptación:** iguala o supera a las regex, con latencia medida; si no, no se integra.
+**Aceptación:** ~~iguala o supera a las regex~~ **No se integra** (decisión con evidencia): un clasificador solo se justifica con muchas más herramientas y presupuesto; los fallos medidos eran morfológicos (la regex los cubre) y el fallback a regex habría que mantenerlo igualmente. Revisable si el catálogo de herramientas crece mucho.
 
 ## Fase 6 (opcional) — LoRA de estilo/código
 
@@ -143,6 +144,8 @@ La prueba **destapó dos huecos reales** (ninguno detectable con smoke ni unitar
 | 2026-10-15 | Fase 4: `update_cloud_note` se ofrece con solo mencionar "nota(s)" + un verbo de cambio (`RX_NOTE_MENTION`), sin exigir "nube" | La prueba en vivo mostró que "editá mi nota titulada X" **no** ofrecía la herramienta (inalcanzable en lenguaje natural). Si el mensaje también habla del vault, el modelo ve las dos familias y elige por las descripciones |
 | 2026-10-15 | Fase 4: se amplió `RX_MEMORY` a "recordás/recordar/acordate" (voseo) | La prueba en vivo mostró que "¿Recordás ...?" no ofrecía `recall_memory` (la regex solo cubría "recuerd-"): una orden en voseo caía en el olvido |
 | 2026-10-16 | Fase 3: `REPO_MAP.md` se deja **solo como documento** (ni herramienta ni inyección en el contexto) | Pesa ≈2.282 tokens (144 líneas) y el prompt no puede crecer de 900; `search_code` ya encuentra símbolos por significado. El fichero se sigue generando y versionando, así que la opción queda abierta sin coste |
+| 2026-10-16 | Fase 5: **no se construye el clasificador**; se amplían las regex + tests | Sonda local sobre 34 frases: 4 fallos de cobertura y 0 falsos positivos, todos **morfológicos** (voseo `abrí`/`buscá`/`sabés`, plural `se guardan`) y arreglables por regex. Los 25 schemas cuestan 4.777 tok, así que la selección importa, pero un clasificador añadiría latencia/cuota y exigiría fallback a regex igualmente. Evidencia temporal (no commiteada) |
+| 2026-10-16 | Fase 5: se usa `(?!\w)` en vez de `\b` al final de un grupo que puede terminar en vocal acentuada | En JS `\w` = `[A-Za-z0-9_]`: `\b` NO ve el final de palabra tras `á`/`í`/`é`, así que `abrí\b` o `buscá\b` fallaban. Afectaba a `LOOKS_LIKE_ORDER`, `RX_APPS` y `RX_CODE_SEARCH`; `RX_GITHUB_WRITE` ya usaba `(?!\w)` |
 
 ## Pendiente de verificar
 

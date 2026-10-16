@@ -155,6 +155,27 @@ describe('selectTools', () => {
     expect(names('hola, ¿todo bien?').has('revert_change')).toBe(false)
   })
 
+  it('voseo y plurales (FASE 5): no se pierden por morfología', () => {
+    // Causa raíz: en JS `\w` = [A-Za-z0-9_], así que una vocal acentuada final
+    // ("abrí", "buscá") NO cierra palabra para `\b`. Se usa `(?!\w)`.
+    expect(names('abrí Spotify').has('open_app')).toBe(true)
+    expect(names('abrime el navegador').has('open_app')).toBe(true)
+    expect(names('buscá en la web la última versión de Node').has('web_search')).toBe(true)
+    expect(names('¿qué sabés de mí?').has('recall_memory')).toBe(true)
+    expect(names('calculá el promedio de 3, 7 y 11').has('calculate')).toBe(true)
+    expect(names('guardá una nota con esto').has('save_cloud_note')).toBe(true)
+
+    // Plural: el `\b` final bloqueaba "se guardan" (el singular sí casaba).
+    expect(names('buscá en mi código dónde se guardan las notas').has('search_code')).toBe(true)
+    // Match que termina en vocal acentuada ("está").
+    expect(names('¿dónde está la función saveNote?').has('search_code')).toBe(true)
+
+    // Guardas: el verbo suelto no basta si no hay destino conocido.
+    expect(names('abrí el archivo README').has('open_app')).toBe(false)
+    // Guardar una nota NO ofrece la herramienta que modifica datos.
+    expect(names('guardá una nota con esto').has('update_cloud_note')).toBe(false)
+  })
+
   it('todos los nombres ofrecidos existen en TOOL_DEFINITIONS', () => {
     const known = new Set(TOOL_DEFINITIONS.map((t) => t.function.name))
     // El set completo declarado en los grupos debe existir.
