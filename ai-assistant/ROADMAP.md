@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-10-16 (Fases 1–2 **aceptadas en vivo** contra un repo real (PR #1 + CI); **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia** (alternativa regex+tests aplicada); Fase 6 **reabierta**: la verificación se corrigió (hay 9 bases LoRA, incl. Qwen2.5-Coder-32B), el **dataset de entrenamiento ya se genera local y anonimizado** (`npm run db:dataset`), la **documentación del proyecto se copia al vault para el cerebro** (`npm run docs:vault`), el **conjunto de datos real ya se exportó** (6 ejemplos) con el **cuaderno de Kaggle listo** (`training/`) y el **reindexado del vault ahora es incremental** (ahorra cuota), y falta resolver la inferencia con LoRA (500) y el coste de entrenar 32B; **Fase 7 abierta** pidiendo escritura avanzada: **borrar archivos**, **ramas con nombre libre** y **auto-fusión solo con CI en verde** (Parte A hecha con tests; la Parte B de plataformas/login queda pendiente); Fase 3 con migración aplicada y el índice en **130/191 ficheros (829 trozos)** — falta terminar las pasadas diarias).
+> Última actualización: 2026-10-20 (Fases 1–2 **aceptadas en vivo**; **Fase 4 hecha y probada en vivo** desde el Worker local (`npm run preview`) contra Neon; Fase 5 **descartada con evidencia**; Fase 6 **reabierta** pero **bloqueada por inferencia LoRA (500)**; **Fase 7 Parte A hecha**; **Parte B en curso** (GitHub+GitLab, tokens por entorno, distribuidor). Falta OAuth real y prueba en vivo de GitLab. Fase 3 en **130/191 ficheros (829 trozos)** — falta terminar el indexado diario).
 
 ## Objetivo
 
@@ -22,7 +22,7 @@
 | 4 | Modificar memorias y notas por id | ✅ Hecha | Media |
 | 5 | Clasificador de herramientas (opcional) | ❌ Descartada (2026-10-16) | Baja |
 | 6 | LoRA de estilo/código (opcional) | 🟦 Reabierta (verificación corregida) | Baja |
-| 7 | Escritura avanzada: borrar, ramas libres y auto-fusión | 🟦 En curso (Parte A hecha; falta prueba en vivo) | Alta |
+| 7 | Escritura avanzada: borrar, ramas libres y auto-fusión | 🟦 En curso (Parte A hecha; Parte B GitHub+GitLab) | Alta |
 
 Estados: ⬜ Pendiente · 🟦 En curso · ✅ Hecha · ⏸️ Pausada · ❌ Descartada
 
@@ -153,11 +153,16 @@ Se partió en dos: **Parte A** (esta fase) y **Parte B** (plataformas/login, má
 
 **Aceptación:** tests en verde ✅ (pendiente: **prueba en vivo** y `npm run lint`/`typecheck`). Garantía central que **no** se relaja: ARIA **nunca** escribe directo en la rama principal; todo pasa por un PR, y la fusión (si se habilita) exige CI en verde.
 
-### Parte B — pendiente (plataformas y login)
+### Parte B — en curso (plataformas y login)
 
-- [ ] **Capa de proveedores**: extraer una interfaz (listar/leer/crear rama/commit/PR/checks) con implementaciones GitHub/GitLab/Bitbucket. Hoy todo está soldado a `https://api.github.com`.
-- [ ] **Tokens por plataforma**: guardar una credencial por plataforma (simple; el usuario es una sola persona, no multiusuario).
-- [ ] **OAuth** (opcional): botón "Entrar con GitHub/Google", **solo para el propio usuario**.
+- [x] **Capa de proveedores**: interfaz compartida en `app/lib/git-hosts.ts` + `app/lib/git-common.ts`, distribuidor `app/lib/git.ts`. Implementados **GitHub** y **GitLab** (v4). **Bitbucket** registrado como "reconocida pero no implementada".
+- [x] **Tokens por plataforma**: por variables de entorno (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `BITBUCKET_TOKEN`). Sin almacenamiento en BD. Documentado en `.dev.vars.example`.
+- [x] **Ruteo unificado**: las herramientas `github_*` siguen con el mismo nombre pero enrutan por plataforma (`owner/repo` = GitHub, `gitlab:grupo/proyecto` o URL de GitLab).
+- [x] **GitLab funcional a nivel código**: leer/escribir por rama, abrir MR, consultar pipelines/checks, auto-fusión con CI en verde (mismos guardarraíles que GitHub).
+- [x] **Endpoint `/api/platforms`**: muestra qué plataformas tienen token/configuración.
+- [x] **UI actualizada**: panel "Repositorios (GitHub / GitLab)" acepta `gitlab:` y URLs, cabecera actualizada.
+- [ ] **OAuth real**: botón "Entrar con GitHub/Google", **solo para el propio usuario** (pendiente de credenciales).
+- [ ] **Prueba en vivo con GitLab**: validar lectura/escritura+MR con un token real.
 
 ---
 
@@ -217,7 +222,7 @@ Se partió en dos: **Parte A** (esta fase) y **Parte B** (plataformas/login, má
 - **Fase 6 — bases `-lora` caídas (2026-10-16)**: probado en vivo por la API REST. Las **4 bases `-lora`** (`mistral-7b-instruct-v0.2-lora`, `gemma-2b/7b-it-lora`, `llama-2-7b-chat-hf-lora`) devuelven **500 / code 8008 incluso SIN adaptador**; con adaptador público (`cf-public-magicoder`) también 500, en todas las formas de petición (chat/completion, con/sin `max_tokens`), de forma reproducible. La base sin sufijo `-lora` da `400 No route`; el sistema **sí** valida la base+LoRA (con base Gemma da `Finetune model mismatch`). Los controles sin LoRA (`llama-3.2-3b` y `qwen2.5-coder-32b`) responden **200** y la status page está **operativa** → no es el token, el adaptador ni una incidencia: es la familia `-lora` la que está caída. Reintentar más tarde (beta) y, si sigue, reportar; sin esto no se puede evaluar ningún adaptador propio.
 - **Fase 6 — `model_type` para Qwen**: la guía de fine-tunes (abr-2026) solo menciona `mistral`/`gemma`/`llama`, pero el catálogo marca Qwen como base LoRA. Verificar si un adaptador Qwen (`model_type: qwen2`) se acepta al subirlo.
 - **Cifras de Unsloth/Colab (Fase 6): son de terceros** (no verificadas).
-- **Fase 7 — falta la prueba en vivo**: las funciones nuevas (`github_delete_file`, `github_merge_pull_request` y las ramas libres) están cubiertas por tests unitarios con la API simulada, pero **no** se probaron contra GitHub real. Falta: (a) correr `npm run lint` y `typecheck`; (b) una prueba en vivo desde el Worker local que borre un archivo de prueba y fusiona un PR con el CI en verde. `GITHUB_AUTO_MERGE` debe quedar en `false` en el `.dev.vars` real salvo durante esa prueba.
+- **Fase 7 — prueba en vivo pendiente**: las funciones nuevas (`github_delete_file`, `github_merge_pull_request` y las ramas libres) están cubiertas por tests unitarios. **Falta probar contra GitHub real** desde `npm run preview` (borrar archivo + fusionar PR con CI en verde). `GITHUB_AUTO_MERGE` debe quedar en `false` salvo durante la prueba. **GitLab** implementado pero **sin prueba en vivo**. `lint` y `typecheck` pasan. **OAuth real** pendiente (requiere credenciales).
 
 ## Cómo se mantiene este archivo
 

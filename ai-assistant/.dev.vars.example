@@ -15,3 +15,11 @@ GITHUB_WRITE_ENABLED=false
 # Auto-fusión (FASE 7): con true, ARIA puede fusionar el PR ella misma, pero
 # SOLO si las pruebas (CI) pasaron. Va aparte de GITHUB_WRITE_ENABLED a propósito.
 GITHUB_AUTO_MERGE=false
+
+# GitLab (FASE 7 Parte B). También funciona por URL o gitlab:grupo/proyecto.
+GITLAB_TOKEN=
+GITLAB_WRITE_ENABLED=false
+GITLAB_AUTO_MERGE=false
+
+# Bitbucket (reconocido pero no implementado todavía)
+BITBUCKET_TOKEN=

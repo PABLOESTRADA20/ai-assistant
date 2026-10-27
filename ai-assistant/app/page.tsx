@@ -784,8 +784,8 @@ export default function Home() {
     },
     {
       key: 'github',
-      label: 'GitHub',
-      title: 'Repositorios de GitHub que ARIA puede leer y revisar',
+      label: 'Repositorios',
+      title: 'Repositorios de GitHub y GitLab que ARIA puede leer y revisar',
       icon: <Github size={14} />,
       onClick: () => setGithubOpen(true),
       active: false,

@@ -834,30 +834,28 @@ async function sendEmailTool(to: string, subject: string, body: string): Promise
   return JSON.stringify({ success: true, message: result.message, id: result.id })
 }
 
-/* --------------------------- herramientas GitHub ------------------------- */
+/* --------------------------- herramientas GitHub/GitLab ------------------------- */
 
 /**
  * Envoltorios de las herramientas de GitHub. Se cargan con import dinámico para
  * no arrastrar Prisma a los caminos que no las usan, igual que el correo.
+ * 
+ * Enrutan por plataforma vía `app/lib/git.ts` (soporta GitHub y GitLab).
  */
 async function githubRepoOverview(repo?: unknown): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.repoOverview(repo)
+  const git = await import('@/app/lib/git')
+  return git.gitRepoOverview(repo)
 }
 
 async function githubListFiles(repo?: unknown, prefix?: unknown, ref?: unknown): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.listFiles(
-    repo,
-    typeof prefix === 'string' ? prefix : '',
-    typeof ref === 'string' ? ref : undefined,
-  )
+  const git = await import('@/app/lib/git')
+  return git.gitListFiles(repo, typeof prefix === 'string' ? prefix : '', typeof ref === 'string' ? ref : undefined)
 }
 
 async function githubReadFile(
@@ -869,64 +867,40 @@ async function githubReadFile(
   endLine?: unknown,
 ): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim() || typeof filePath !== 'string') {
-    return JSON.stringify({ error: 'Faltan el repositorio o la ruta del archivo' })
+    return JSON.stringify({ error: 'Faltan el repositorio o la ruta del archivo (acepta owner/repo, gitlab:grupo/proyecto o URL)' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.readFile(
-    repo,
-    filePath,
-    typeof ref === 'string' ? ref : undefined,
-    offset,
-    startLine,
-    endLine,
-  )
+  const git = await import('@/app/lib/git')
+  return git.gitReadFile(repo, filePath, typeof ref === 'string' ? ref : undefined, offset, startLine, endLine)
 }
 
 async function githubListIssues(repo?: unknown, state?: unknown): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.listIssues(repo, typeof state === 'string' ? state : 'open')
+  const git = await import('@/app/lib/git')
+  return git.gitListIssues(repo, typeof state === 'string' ? state : 'open')
 }
 
 async function githubCreatePullRequest(args: Record<string, unknown>): Promise<string> {
   if (typeof args.repo !== 'string' || !args.repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
   if (typeof args.title !== 'string' || !args.title.trim() || !Array.isArray(args.changes)) {
-    return JSON.stringify({ error: 'Faltan el título o los archivos del pull request' })
+    return JSON.stringify({ error: 'Faltan el título o los archivos del pull/merge request' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.createPullRequest({
-    repo: args.repo,
-    title: args.title,
-    body: typeof args.body === 'string' ? args.body : undefined,
-    branch: typeof args.branch === 'string' ? args.branch : undefined,
-    changes: args.changes as { path: string; content: string }[],
-  })
+  const git = await import('@/app/lib/git')
+  return git.gitCreatePullRequest(args as any)
 }
 
 async function githubApplyPatch(args: Record<string, unknown>): Promise<string> {
   if (typeof args.repo !== 'string' || !args.repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
   if (typeof args.title !== 'string' || !args.title.trim() || !Array.isArray(args.patches)) {
     return JSON.stringify({ error: 'Faltan el título o los parches' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.applyPatch({
-    repo: args.repo,
-    title: args.title,
-    body: typeof args.body === 'string' ? args.body : undefined,
-    branch: typeof args.branch === 'string' ? args.branch : undefined,
-    patches: args.patches as {
-      path: string
-      search: string
-      replace: string
-      baseSha?: string
-    }[],
-  })
+  const git = await import('@/app/lib/git')
+  return git.gitApplyPatch(args as any)
 }
 
 async function githubGetCheckRuns(
@@ -935,14 +909,10 @@ async function githubGetCheckRuns(
   branch?: unknown,
 ): Promise<string> {
   if (typeof repo !== 'string' || !repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.getCheckRuns({
-    repo,
-    pr,
-    branch: typeof branch === 'string' ? branch : undefined,
-  })
+  const git = await import('@/app/lib/git')
+  return git.gitGetCheckRuns({ repo, pr, branch } as any)
 }
 
 async function githubDeleteFile(args: {
@@ -953,7 +923,7 @@ async function githubDeleteFile(args: {
   paths?: unknown
 }): Promise<string> {
   if (typeof args.repo !== 'string' || !args.repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
   if (typeof args.title !== 'string' || !args.title.trim()) {
     return JSON.stringify({ error: 'Falta el título' })
@@ -961,14 +931,8 @@ async function githubDeleteFile(args: {
   if (!Array.isArray(args.paths) || args.paths.length === 0) {
     return JSON.stringify({ error: 'Faltan las rutas de los archivos a borrar' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.deleteFiles({
-    repo: args.repo,
-    title: args.title,
-    body: typeof args.body === 'string' ? args.body : undefined,
-    branch: typeof args.branch === 'string' ? args.branch : undefined,
-    paths: args.paths.filter((p): p is string => typeof p === 'string'),
-  })
+  const git = await import('@/app/lib/git')
+  return git.gitDeleteFiles(args as any)
 }
 
 async function githubMergePullRequest(args: {
@@ -978,15 +942,10 @@ async function githubMergePullRequest(args: {
   method?: unknown
 }): Promise<string> {
   if (typeof args.repo !== 'string' || !args.repo.trim()) {
-    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo)' })
+    return JSON.stringify({ error: 'Falta el repositorio (formato owner/repo, gitlab:grupo/proyecto o URL)' })
   }
-  const gh = await import('@/app/lib/github')
-  return gh.mergePullRequest({
-    repo: args.repo,
-    pr: args.pr,
-    branch: args.branch,
-    method: typeof args.method === 'string' ? args.method : undefined,
-  })
+  const git = await import('@/app/lib/git')
+  return git.gitMergePullRequest(args as any)
 }
 
 /* ----------------------- herramientas de notas nube ---------------------- */

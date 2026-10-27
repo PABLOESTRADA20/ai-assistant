@@ -2,6 +2,21 @@ import { prisma } from '@/app/lib/prisma'
 import type { Prisma } from '../generated/prisma/wasm.js'
 import { sliceWindow } from '@/app/lib/truncate'
 import { decodeBase64 } from '@/app/lib/base64'
+import {
+  PATCH_MAX_REMOVED_LINES,
+  PATCH_SEARCH_MAX_CHARS,
+  applyTextPatches,
+  branchSlug,
+  cleanRepoPath,
+  encodeBase64,
+  isValidBranchName,
+  validateBranch,
+} from '@/app/lib/git-common'
+import { parseRepoRef, repoKey } from '@/app/lib/git-hosts'
+
+// Las protecciones de ramas y parcheo viven en `git-common` (las comparte con
+// GitLab); se reexportan para no romper a quien ya las importaba de acá.
+export { applyTextPatches, isValidBranchName, validateBranch }
 
 /**
  * Integración con GitHub: lectura por defecto y escritura segura mediante PR.
@@ -49,10 +64,10 @@ export const GITHUB_LIMITS = {
   writeChars: 200_000,
   /** Operaciones {search, replace} por llamada a github_apply_patch. */
   patchOps: 20,
-  /** Tamaño máximo de un bloque `search`, para que no se pueda "pegar el archivo entero" y borrarlo. */
-  patchSearchChars: 20_000,
-  /** Líneas netas eliminadas toleradas por archivo (eliminadas − añadidas). */
-  patchMaxRemovedLines: 120,
+  /** Tamaño máximo de un bloque `search` (ver `git-common`). */
+  patchSearchChars: PATCH_SEARCH_MAX_CHARS,
+  /** Líneas netas eliminadas toleradas por archivo (ver `git-common`). */
+  patchMaxRemovedLines: PATCH_MAX_REMOVED_LINES,
   /** No se parchean archivos mayores: la Contents API devuelve contenido hasta ~1 MB. */
   patchFileBytes: 500_000,
   /** Check runs analizados por commit (se piden con filter=latest). */
@@ -161,15 +176,21 @@ export async function addRepo(
   input: string,
   note?: string,
 ): Promise<{ ok: true; repos: GithubRepoRef[] } | { ok: false; error: string }> {
-  const canonical = canonicalRepo(input)
-  if (!canonical) {
-    return { ok: false, error: 'Formato inválido. Usa "owner/repo" o la URL del repositorio.' }
+  const ref = parseRepoRef(input)
+  if (!ref) {
+    return {
+      ok: false,
+      error:
+        'Formato inválido. Usa "owner/repo" (GitHub), "gitlab:grupo/proyecto" o la URL del repositorio.',
+    }
   }
+  const canonical = repoKey(ref)
 
   // Verifica que exista y sea accesible antes de guardarlo (evita typos).
-  const check = await ghFetch(`/repos/${canonical}`)
+  const { gitVerifyRepo } = await import('@/app/lib/git')
+  const check = await gitVerifyRepo(canonical)
   if (!check.ok) {
-    return { ok: false, error: describeError(check.status, check.data) }
+    return { ok: false, error: check.error ?? 'No pude verificar el repositorio.' }
   }
 
   const repos = await getRepos()
@@ -187,13 +208,23 @@ export async function addRepo(
 }
 
 export async function removeRepo(input: string): Promise<GithubRepoRef[]> {
-  const canonical = canonicalRepo(input)
+  const ref = parseRepoRef(input)
+  const canonical = ref ? repoKey(ref) : null
   const repos = await getRepos()
   const next = canonical
     ? repos.filter((r) => r.repo.toLowerCase() !== canonical.toLowerCase())
     : repos
   await saveRepos(next)
   return next
+}
+
+/** Verificación ligera (solo GitHub): el repo existe y es accesible. */
+export async function verifyRepo(repo: string): Promise<{ ok: boolean; error?: string }> {
+  const parsed = parseRepo(repo)
+  if (!parsed) return { ok: false, error: 'Repositorio inválido. Usa "owner/repo".' }
+  const check = await ghFetch(`/repos/${parsed.owner}/${parsed.repo}`)
+  if (!check.ok) return { ok: false, error: describeError(check.status, check.data) }
+  return { ok: true }
 }
 
 /* ------------------- correcciones automáticas por rama ------------------- */
@@ -316,87 +347,6 @@ export interface GithubPullRequestInput {
   body?: string
   branch?: string
   changes: GithubFileChange[]
-}
-
-function cleanRepoPath(path: string): string | null {
-  const clean = path.trim().replace(/^\/+/, '').replace(/\\/g, '/')
-  if (!clean || clean.includes('\0') || clean.split('/').some((part) => part === '..')) return null
-  // Los workflows pueden ejecutar código con secretos y requieren permisos extra.
-  if (clean.toLowerCase().startsWith('.github/workflows/')) return null
-  return clean
-}
-
-function branchSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9._/-]+/g, '-')
-    .replace(/\.{2,}|\/{2,}/g, '-')
-    .replace(/^[./-]+|[./-]+$/g, '')
-    .slice(0, 60)
-}
-
-/**
- * Nombre de rama válido según una versión corta de `git check-ref-format`.
- *
- * Deliberadamente conservador: se rechaza cualquier cosa rara (espacios,
- * controles, `~ ^ : ? * [ \`, `..`, `@{`, barras dobles o en los extremos,
- * terminar en `.lock`, empezar con `.` o `-`, o superar 200 caracteres). No
- * hacerlo bien permite inyección de referencias en la API de GitHub.
- */
-export function isValidBranchName(name: string): boolean {
-  if (!name || name.length > 200) return false
-  if (/[\s\u0000-\u001f\u007f]/.test(name)) return false
-  if (/[~^:?*[\]\\]/.test(name)) return false
-  if (name.includes('..') || name.includes('@{') || name.includes('//')) return false
-  if (name.startsWith('/') || name.endsWith('/')) return false
-  if (name.startsWith('-') || name.startsWith('.')) return false
-  if (name.endsWith('.') || name.endsWith('.lock')) return false
-  if (name === '@') return false
-  return true
-}
-
-/**
- * Valida la rama sobre la que ARIA puede escribir (FASE 7).
- *
- * Cambio respecto a la versión anterior: ya NO hace falta el prefijo `aria/`
- * (el usuario pidió ramas con nombre libre). La protección que importa sigue en
- * pie: **nunca** se escribe directamente en la rama por defecto (`base`), así
- * que un nombre libre no puede saltarse la revisión.
- */
-export function validateBranch(
-  name: string,
-  base: string,
-): { ok: true; branch: string } | { ok: false; error: string } {
-  const branch = name.trim()
-  if (!branch) return { ok: false, error: 'La rama no puede estar vacía.' }
-  if (branch === base) {
-    return {
-      ok: false,
-      error:
-        `No escribo directamente en la rama principal ("${base}"). ` +
-        'Usá una rama nueva y dejá que el cambio pase por el pull request.',
-    }
-  }
-  if (!isValidBranchName(branch)) {
-    return {
-      ok: false,
-      error:
-        `Nombre de rama inválido: "${name}". Evitá espacios, ".." y los caracteres ` +
-        '~ ^ : ? * [ \\ , y no empieces con "." ni con "-".',
-    }
-  }
-  return { ok: true, branch }
-}
-
-function encodeBase64(value: string): string {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  }
-  return btoa(binary)
 }
 
 /**
@@ -567,91 +517,6 @@ export interface GithubApplyPatchInput {
   /** Rama existente donde commitear. Si se omite, se crea una rama nueva y un PR. */
   branch?: string
   patches: GithubPatchOp[]
-}
-
-/** Número de líneas de un fragmento ('' = 0). */
-function countLines(value: string): number {
-  return value === '' ? 0 : value.split('\n').length
-}
-
-/**
- * Aplica una lista de {search, replace} sobre el TEXTO de un archivo.
- *
- * Reglas de seguridad (fallan con mensaje claro, sin tocar nada):
- * - `search` no puede ser vacío.
- * - `search` debe aparecer EXACTAMENTE una vez (0 = no está; >1 = ambiguo).
- * - El bloque `search` no puede superar `patchSearchChars`.
- * - No puede eliminarse más de `patchMaxRemovedLines` líneas netas.
- * - No puede dejar el archivo vacío si antes tenía contenido.
- *
- * Tolerancia a saltos de línea: compara sobre texto normalizado a `\n` y, al
- * terminar, restaura los `\r\n` originales del archivo. Así el modelo puede
- * copiar el bloque con `\n` aunque el archivo use CRLF, sin corromperlo.
- */
-export function applyTextPatches(
-  text: string,
-  ops: { search: string; replace: string }[],
-): { ok: true; content: string } | { ok: false; error: string } {
-  const usesCrlf = text.includes('\r\n')
-  let work = text.replace(/\r\n/g, '\n')
-  let removed = 0
-  let added = 0
-
-  for (const op of ops) {
-    if (!op.search) {
-      return { ok: false, error: 'Cada parche necesita un bloque "search" no vacío.' }
-    }
-    const search = op.search.replace(/\r\n/g, '\n')
-    const replace = op.replace.replace(/\r\n/g, '\n')
-
-    if (search.length > GITHUB_LIMITS.patchSearchChars) {
-      return {
-        ok: false,
-        error: `El bloque "search" es demasiado grande (máximo ${GITHUB_LIMITS.patchSearchChars} caracteres).`,
-      }
-    }
-
-    const first = work.indexOf(search)
-    if (first === -1) {
-      return {
-        ok: false,
-        error:
-          'El bloque "search" no aparece en el archivo. Copialo exactamente como lo ' +
-          'devolvió github_read_file (con su indentación) o volvé a leerlo: pudo cambiar.',
-      }
-    }
-    if (work.indexOf(search, first + 1) !== -1) {
-      return {
-        ok: false,
-        error:
-          'El bloque "search" aparece más de una vez. Incluí más contexto ' +
-          '(líneas vecinas) para que sea único.',
-      }
-    }
-
-    const before = countLines(search)
-    const after = countLines(replace)
-    removed += Math.max(0, before - after)
-    added += Math.max(0, after - before)
-
-    work = work.slice(0, first) + replace + work.slice(first + search.length)
-  }
-
-  const net = removed - added
-  if (net > GITHUB_LIMITS.patchMaxRemovedLines) {
-    return {
-      ok: false,
-      error:
-        `El parche elimina demasiadas líneas (${net} netas, máximo ` +
-        `${GITHUB_LIMITS.patchMaxRemovedLines}). Si es intencional, reescribí el archivo ` +
-        'completo con github_create_pull_request.',
-    }
-  }
-  if (work.length === 0 && text.length > 0) {
-    return { ok: false, error: 'El parche dejaría el archivo vacío. Rechazado por seguridad.' }
-  }
-
-  return { ok: true, content: usesCrlf ? work.replace(/\n/g, '\r\n') : work }
 }
 
 /**

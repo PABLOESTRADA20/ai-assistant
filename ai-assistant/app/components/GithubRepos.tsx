@@ -39,7 +39,7 @@ interface Props {
 }
 
 /**
- * Panel para administrar los repositorios de GitHub que ARIA puede leer.
+ * Panel para administrar los repositorios (GitHub y GitLab) que ARIA puede leer.
  *
  * Todo es de SOLO LECTURA: ARIA nunca crea issues, PRs ni modifica nada. La
  * lista se guarda en el servidor, así que aparece igual desde el PC y el móvil.
@@ -211,7 +211,7 @@ export default function GithubRepos({ open, onClose }: Props) {
             </div>
             <div>
               <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Repositorios de GitHub
+                Repositorios (GitHub / GitLab)
               </div>
               <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                 ARIA los lee para darte ideas de arreglo
@@ -240,7 +240,7 @@ export default function GithubRepos({ open, onClose }: Props) {
             <div className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
               <AlertTriangle size={14} style={{ color: '#fbbf24', flexShrink: 0, marginTop: 1 }} />
               <span>
-                Sin <code>GITHUB_TOKEN</code> solo funcionan repos públicos (límite 60 peticiones/hora).
+                Sin token solo funcionan repos públicos (límite 60 peticiones/hora para GitHub). Usá <code>GITLAB_TOKEN</code> para GitLab privado.
                 Configura un token de solo lectura para subir a 5.000/hora, ver tus repos privados y
                 listarlos aquí mismo.
               </span>

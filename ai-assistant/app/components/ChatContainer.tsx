@@ -1,7 +1,8 @@
 // app/components/ChatContainer.tsx
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
 import WelcomeScreen from './WelcomeScreen'
@@ -32,10 +33,32 @@ export default function ChatContainer({
   onSuggestion,
   onRetry,
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = scrollRef.current
+    if (!el) return
+
+    const handleScroll = () => {
+      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setShowScrollButton(distanceToBottom > 200)
+    }
+
+    handleScroll()
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    // Auto-scroll solo si ya estamos cerca del final
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distanceToBottom < 150) {
+      bottomRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth' })
+    }
   }, [messages, streamingContent, isLoading])
 
   const isEmpty = messages.length === 0 && !isLoading
@@ -58,8 +81,12 @@ export default function ChatContainer({
         }
       : null
 
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6">
+    <div ref={scrollRef} className="relative flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
       <div className="max-w-3xl mx-auto space-y-6">
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} onRetry={() => onRetry(msg.id)} />
@@ -73,7 +100,7 @@ export default function ChatContainer({
               style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
             >
               <div
-                className="h-full rounded-full"
+                className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${Math.round(contextUsagePercent(streamingContext) * 100)}%`,
                   background: 'linear-gradient(90deg, #ff2e4d, #ff7a8c)',
@@ -82,7 +109,7 @@ export default function ChatContainer({
             </div>
             {streamingContext.summarizedCount > 0 && (
               <span
-                className="px-1.5 py-0.5 rounded text-[10px]"
+                className="px-1.5 py-0.5 rounded text-[10px] animate-fade-in"
                 style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
               >
                 compactado ({streamingContext.summarizedCount})
@@ -99,6 +126,23 @@ export default function ChatContainer({
 
         <div ref={bottomRef} />
       </div>
+
+      {showScrollButton && (
+        <button
+          onClick={scrollToBottom}
+          className="fixed bottom-24 right-6 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 hover:scale-110 animate-fade-in z-40"
+          style={{
+            background: 'var(--surface-1)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-primary)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }}
+          aria-label="Bajar al final"
+          title="Bajar al final"
+        >
+          <ArrowDown size={18} />
+        </button>
+      )}
     </div>
   )
 }
