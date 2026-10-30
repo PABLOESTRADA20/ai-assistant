@@ -44,6 +44,11 @@ describe('langFromPath / isIndexedFile', () => {
     expect(isIndexedFile('package-lock.json')).toBe(false)
     expect(isIndexedFile('pnpm-lock.yaml')).toBe(false)
   })
+
+  it('no indexa el REPO_MAP generado por el propio indexador', () => {
+    expect(isIndexedFile('REPO_MAP.md')).toBe(false)
+    expect(isIndexedFile('docs/REPO_MAP.md')).toBe(false)
+  })
 })
 
 describe('hashContent', () => {

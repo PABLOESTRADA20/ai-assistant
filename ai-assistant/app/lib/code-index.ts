@@ -118,11 +118,17 @@ export function langFromPath(path: string): string | null {
   return LANG_BY_EXT[ext] ?? null
 }
 
+/** Ficheros generados por el propio indexador: no se indexan a sí mismos. */
+const GENERATED_FILES = new Set(['REPO_MAP.md'])
+
 /** ¿Este archivo debe ir al índice? (extensión conocida) */
 export function isIndexedFile(path: string): boolean {
   const name = path.split('/').pop() ?? path
   // Lockfiles y generado: sin código que merezca embedder.
   if (/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb)$/.test(name)) return false
+  // REPO_MAP.md se genera a partir de este índice: si se indexara, sus propios
+  // "Trozos" entrarían en la cuenta y el mapa cambiaría en cada pasada.
+  if (GENERATED_FILES.has(name)) return false
   return langFromPath(path) !== null
 }
 
