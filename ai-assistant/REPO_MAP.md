@@ -7,7 +7,7 @@
 
 - Ficheros indexados: 204
 - De ellos, con símbolos: 145
-- Trozos: 1246
+- Trozos: 1245
 - Embeddings: `@cf/baai/bge-m3` (1024 dims)
 
 ## (raíz)
@@ -18,9 +18,9 @@
 ## app/
 - `app/error.tsx` → clearAndReload, Error
 - `app/global-error.tsx` → GlobalError
-- `app/layout.tsx` → RootLayout, viewport, metadata, BOOT_WATCHDOG
+- `app/layout.tsx` → BOOT_WATCHDOG, metadata, viewport, RootLayout
 - `app/manifest.ts` → manifest
-- `app/page.tsx` → Home, MemoryInspector, formatRemaining
+- `app/page.tsx` → Home, formatRemaining, MemoryInspector
 
 ## app/api/auth/
 - `app/api/auth/route.ts` → GET
@@ -29,22 +29,22 @@
 - `app/api/brain/search/route.ts` → POST
 
 ## app/api/chat/
-- `app/api/chat/route.ts` → POST, detail, NO_TOOLS_NOTICE, streamSimple, reserveInputChars, readable, drain, message, groqErrorResponse
+- `app/api/chat/route.ts` → POST, groqErrorResponse, detail, NO_TOOLS_NOTICE, streamSimple, reserveInputChars, readable, drain, message
 
 ## app/api/conversations/
-- `app/api/conversations/route.ts` → POST, GET, DEFAULT_MODEL
+- `app/api/conversations/route.ts` → GET, POST, DEFAULT_MODEL
 
 ## app/api/conversations/[id]/
-- `app/api/conversations/[id]/route.ts` → DELETE, GET, PUT
+- `app/api/conversations/[id]/route.ts` → GET, PUT, DELETE
 
 ## app/api/github/browse/
 - `app/api/github/browse/route.ts` → GET
 
 ## app/api/github/repos/
-- `app/api/github/repos/route.ts` → POST, DELETE, GET
+- `app/api/github/repos/route.ts` → GET, POST, DELETE
 
 ## app/api/memory/
-- `app/api/memory/route.ts` → POST, GET
+- `app/api/memory/route.ts` → GET, POST
 
 ## app/api/memory/[id]/
 - `app/api/memory/[id]/route.ts` → PATCH, DELETE
@@ -59,160 +59,160 @@
 - `app/api/models/route.ts` → GET
 
 ## app/api/notes/
-- `app/api/notes/route.ts` → POST, GET
+- `app/api/notes/route.ts` → GET, POST
 
 ## app/api/notes/[id]/
-- `app/api/notes/[id]/route.ts` → GET, DELETE, PUT
+- `app/api/notes/[id]/route.ts` → PUT, DELETE, GET
 
 ## app/api/quota/
 - `app/api/quota/route.ts` → GET
 
 ## app/api/transcribe/
-- `app/api/transcribe/route.ts` → transcribeWithWorkersAI, GROQ_TRANSCRIBE, POST
+- `app/api/transcribe/route.ts` → POST, GROQ_TRANSCRIBE, transcribeWithWorkersAI
 
 ## app/api/vault/index/
 - `app/api/vault/index/route.ts` → GET
 
 ## app/api/whatsapp/webhook/
-- `app/api/whatsapp/webhook/route.ts` → dynamic, getOrCreateWhatsAppConversation, WHATSAPP_TOOLS, handleMessages, POST, GET
+- `app/api/whatsapp/webhook/route.ts` → handleMessages, POST, WHATSAPP_TOOLS, getOrCreateWhatsAppConversation, GET, dynamic
 
 ## app/components/
 - `app/components/AriaMark.tsx` → Props
 - `app/components/ChatContainer.tsx` → Props, ChatContainer
 - `app/components/ChatInput.tsx` → ChatInput, Props
-- `app/components/CodeHighlighter.tsx` → CodeHighlighter, Props
+- `app/components/CodeHighlighter.tsx` → Props, CodeHighlighter
 - `app/components/GithubRepos.tsx` → GithubRepos, Repo
-- `app/components/InstallButton.tsx` → detectPlatform, InstallButton, readCaptured, BeforeInstallPromptEvent
+- `app/components/InstallButton.tsx` → detectPlatform, readCaptured, InstallButton, BeforeInstallPromptEvent
 - `app/components/LoginScreen.tsx` → LoginScreen, Props
 - `app/components/MemoryInspector.tsx` → MemoryInspector, StatChip, TYPE_LABELS
-- `app/components/MessageBubble.tsx` → CodeHighlighter, CopyButton, SpeakButton, MessageBubble, CodeBlock
+- `app/components/MessageBubble.tsx` → MessageBubble, CodeHighlighter, CopyButton, SpeakButton, CodeBlock
 - `app/components/ModelSelector.tsx` → ModelSelector, Props
 - `app/components/NeuralNetwork.tsx` → NeuralNetwork, Props
-- `app/components/NotesPanel.tsx` → Note, NotesPanel, isEditing, noteToMarkdown
+- `app/components/NotesPanel.tsx` → Note, isEditing, NotesPanel, noteToMarkdown
 - `app/components/PanelLoading.tsx` → PanelLoading
 - `app/components/QuotaBadge.tsx` → QuotaBadge
 - `app/components/ServiceWorkerRegister.tsx` → ServiceWorkerRegister
-- `app/components/SidePanel.tsx` → SidePanel, inputStyle
-- `app/components/Sidebar.tsx` → Sidebar, timeAgo, Props
-- `app/components/SourceChips.tsx` → KIND_META, formatScore, SourceChip, SourceChips
-- `app/components/ToolCard.tsx` → formatResult, formatArgs, TOOL_ICONS, ToolCard
+- `app/components/SidePanel.tsx` → inputStyle, SidePanel
+- `app/components/Sidebar.tsx` → Props, timeAgo, Sidebar
+- `app/components/SourceChips.tsx` → SourceChips, KIND_META, formatScore, SourceChip
+- `app/components/ToolCard.tsx` → formatArgs, formatResult, ToolCard, TOOL_ICONS
 - `app/components/TypingIndicator.tsx` → TypingIndicator
-- `app/components/WelcomeScreen.tsx` → suggestions, WelcomeScreen, Props
+- `app/components/WelcomeScreen.tsx` → Props, suggestions, WelcomeScreen
 
 ## app/components/scene/
-- `app/components/scene/AriaScene.tsx` → AriaScene, ASSEMBLE_SECONDS, AriaSceneProps
-- `app/components/scene/CountachViewer.tsx` → CountachViewer, CountachViewerProps, AriaScene
+- `app/components/scene/AriaScene.tsx` → AriaScene, AriaSceneProps, ASSEMBLE_SECONDS
+- `app/components/scene/CountachViewer.tsx` → CountachViewer, AriaScene, CountachViewerProps
 
 ## app/components/scene/car/
 - `app/components/scene/car/current-car.ts` → buildCar, CarMaterials
-- `app/components/scene/car/lp5000.ts` → buildLp5000, CarPart, WHEELS, addArc, buildShell, buildFlare, buildQuad, bakedGeometry, mergeChildrenByMaterial, Lp5000Materials
-- `app/components/scene/car/utils.ts` → CarStats, collectStats, MATERIAL_TEXTURE_KEYS, disposeObject3D
+- `app/components/scene/car/lp5000.ts` → buildLp5000, Lp5000Materials, CarPart, WHEELS, addArc, buildShell, buildFlare, buildQuad, bakedGeometry, mergeChildrenByMaterial
+- `app/components/scene/car/utils.ts` → MATERIAL_TEXTURE_KEYS, disposeObject3D, CarStats, collectStats
 
 ## app/hooks/
 - `app/hooks/useEscapeToClose.ts` → useEscapeToClose
 - `app/hooks/usePausableInterval.ts` → usePausableInterval
 - `app/hooks/useQuota.ts` → useQuota
-- `app/hooks/useTTS.ts` → pickSpanishVoice, useTTS, stripMarkdown
-- `app/hooks/useVoiceInput.ts` → useVoiceInput, SpeechRecognitionLike, Options, pickAudioMime, VoiceState
+- `app/hooks/useTTS.ts` → useTTS, stripMarkdown, pickSpanishVoice
+- `app/hooks/useVoiceInput.ts` → SpeechRecognitionLike, Options, useVoiceInput, VoiceState, pickAudioMime
 
 ## app/lib/
-- `app/lib/api.ts` → RouteContext, withAuth, jsonError, readJson
-- `app/lib/aria-core.ts` → TOOL_GROUPS, trimMemoryLine, MemoryLine, MEMORY_MAX_LINES, buildContextMessages, compactConversation, RX_CODE_SEARCH, planCompaction, RX_MATH, CompactionPlan, SYSTEM_PROMPT, MIN_COMPACT_MESSAGES, generateSummary, selectTools, GROQ_API, RX_WRITE_VERB, MODEL_CONFIG, LOOKS_LIKE_ORDER, WANTS_CURRENT, wantsWebSearch, RX_GITHUB_WRITE, RX_CODE_REVIEW, RX_NOTE_MENTION, GroqModelConfig, buildAriaContext, AriaContext, rememberTurn, composeMemoryBlock
-- `app/lib/aria-reply.ts` → generateTextReply, drainToText, TextReplyOptions
-- `app/lib/auth-client.ts` → fetchWithTimeout, fetchAuthRequired, verifyToken, TOKEN_KEY, getToken, setToken, authHeaders, apiFetch
-- `app/lib/auth.ts` → getAccessToken, safeEqual, extractToken, isAuthorized, requireAuth
+- `app/lib/api.ts` → readJson, jsonError, withAuth, RouteContext
+- `app/lib/aria-core.ts` → LOOKS_LIKE_ORDER, SYSTEM_PROMPT, GROQ_API, RX_WRITE_VERB, MODEL_CONFIG, GroqModelConfig, WANTS_CURRENT, wantsWebSearch, TOOL_GROUPS, RX_MATH, RX_GITHUB_WRITE, RX_CODE_REVIEW, selectTools, generateSummary, MIN_COMPACT_MESSAGES, CompactionPlan, planCompaction, compactConversation, buildContextMessages, MEMORY_MAX_LINES, MemoryLine, trimMemoryLine, composeMemoryBlock, rememberTurn, AriaContext, buildAriaContext, RX_CODE_SEARCH, RX_NOTE_MENTION
+- `app/lib/aria-reply.ts` → drainToText, generateTextReply, TextReplyOptions
+- `app/lib/auth-client.ts` → apiFetch, setToken, getToken, TOKEN_KEY, verifyToken, fetchAuthRequired, fetchWithTimeout, authHeaders
+- `app/lib/auth.ts` → getAccessToken, requireAuth, isAuthorized, extractToken, safeEqual
 - `app/lib/background.ts` → registerBackground
-- `app/lib/base64.ts` → decodeBase64, encodeBase64
-- `app/lib/brain.ts` → lexicalSim, RANK_BOOST_MAX, orFuse, normalizeLexical, labelHit, DEDUPE_JACCARD, contentTokens, jaccard, dedupeHits, BrainKind, BrainHit, BrainSearchOptions, rankBoost, Candidate, MemoryRow, safeQuery, vaultCandidate, memoryHit, searchBrain, NOTE_TAG_PREFIX, removeMirroredNote, mirrorNoteToMemory
-- `app/lib/changelog.ts` → ChangeEntity, getChange, recordChange, countRecentChanges, jsonParam, toRecord, markReverted, ChangeRecord, latestChange
-- `app/lib/chat-client.ts` → streamChat, MODEL_FALLBACK_ORDER, UnauthorizedError, StreamChatOptions, StreamChatResult, isRetryable
-- `app/lib/chat-draft.ts` → defaultStorage, DRAFT_PREFIX, draftKey, loadDraft, saveDraft
-- `app/lib/code-index.ts` → braceDelta, CodeSearchOptions, LANG_BY_EXT, CodeChunkInput, CodeChunkKind, CODE_SKIP_DIRS, hashContent, isIndexedFile, CODE_INDEX_EXTENSIONS, langFromPath
-- `app/lib/context-info.ts` → contextUsagePercent, formatContextUsage
+- `app/lib/base64.ts` → encodeBase64, decodeBase64
+- `app/lib/brain.ts` → MemoryRow, vaultCandidate, memoryHit, searchBrain, NOTE_TAG_PREFIX, removeMirroredNote, RANK_BOOST_MAX, mirrorNoteToMemory, orFuse, lexicalSim, normalizeLexical, labelHit, DEDUPE_JACCARD, contentTokens, jaccard, dedupeHits, BrainKind, BrainHit, BrainSearchOptions, rankBoost, Candidate, safeQuery
+- `app/lib/changelog.ts` → countRecentChanges, ChangeRecord, ChangeEntity, latestChange, getChange, markReverted, recordChange, jsonParam, toRecord
+- `app/lib/chat-client.ts` → streamChat, isRetryable, StreamChatResult, StreamChatOptions, UnauthorizedError, MODEL_FALLBACK_ORDER
+- `app/lib/chat-draft.ts` → defaultStorage, draftKey, DRAFT_PREFIX, saveDraft, loadDraft
+- `app/lib/code-index.ts` → CodeChunkKind, CODE_INDEX_EXTENSIONS, CODE_SKIP_DIRS, CodeChunkInput, CodeSearchOptions, LANG_BY_EXT, langFromPath, isIndexedFile, hashContent, braceDelta
+- `app/lib/context-info.ts` → formatContextUsage, contextUsagePercent
 - `app/lib/download.ts` → downloadBlob
-- `app/lib/email.ts` → RESEND_API, emailAllowedRecipients, sendEmail
-- `app/lib/embeddings.ts` → reindexVaultEmbeddings, MAX_EMBED_CHARS, upsertNote, ReindexResult, ReindexOptions, needsReindex, matchSnippet, semanticSearchDb
+- `app/lib/email.ts` → sendEmail, emailAllowedRecipients, RESEND_API
+- `app/lib/embeddings.ts` → semanticSearchDb, upsertNote, MAX_EMBED_CHARS, reindexVaultEmbeddings, ReindexOptions, matchSnippet, needsReindex, ReindexResult
 - `app/lib/error-message.ts` → ERROR_MESSAGE_PREFIX
-- `app/lib/format.ts` → formatCompactNumber, fmtDate
-- `app/lib/git-common.ts` → PATCH_SEARCH_MAX_CHARS, PATCH_MAX_REMOVED_LINES
-- `app/lib/git-hosts.ts` → parseRepoRef, repoKey, platformStatuses, GitPlatform, GitHost, GIT_HOSTS, RepoRef, PlatformStatus, platformToken, platformFromHost
-- `app/lib/git.ts` → gitGetCheckRuns, gitDeleteFiles, gitApplyPatch, gitCreatePullRequest, gitReadFile, GitChange, resolve, gitVerifyRepo, gitListFiles, gitRepoOverview, notImplemented, invalid, gitListIssues, gitMergePullRequest
-- `app/lib/github.ts` → removeRepo, listMyRepos, mapRepoSummaries, normalizeGithubUser, GithubRepoSummary, listIssues, readFile, listFiles, repoOverview, getCheckRuns, clip, GhCheckRun, GithubCheckRunsInput, mergePullRequest, GithubMergeInput, deleteFiles, readFileByLines, GithubDeleteInput, applyPatch, GithubApplyPatchInput, GithubPatchOp, createPullRequest, describeError, ghFetch, recordFixAttempt, getFixAttempts, fixAttemptsKey, addRepo, saveRepos, getRepos, parseRepo, githubAutoMergeEnabled, MAX_FIX_ATTEMPTS, GITHUB_LIMITS, verifyRepo, GITHUB_API
-- `app/lib/gitlab.ts` → describeError, mergePullRequest, fileBlobId, listIssues, readByLines, readFile, listFiles, repoOverview, verifyRepo, defaultBranch, resolveTargetBranch, glMessage, commit, createPullRequest, glFetch, gitlabWriteEnabled, LIMITS, applyPatch, deleteFiles, pipelineState, getCheckRuns
-- `app/lib/llm-embed.ts` → embeddingCacheSet, viaBinding, localEmbed, embed, MODEL, hashEmbedText, embeddingCacheGet, viaRest
-- `app/lib/local-agent.ts` → headers, checkLocalAgent, openAppLocally, LocalAgentResult, agentToken, saveLocalToken
-- `app/lib/memory-extract.ts` → sanitizeJson, heuristicExtract, extractMemories, sanitizeExtracted, GROQ_API, SYSTEM_PROMPT
-- `app/lib/memory.ts` → reinforceMemories, MEMORY_TYPES, StoredMemory, toStored, getMemoryById, findMemoryById, createMemory, MemoryUpdate, updateMemory, searchSemanticMemories, MemoryFilters, searchMemories, ConsolidateOptions, consolidateMemories, getMemoryStats, recordEpisode, updateWorkingMemory, getContext, setContext, maybeConsolidate
-- `app/lib/notes.ts` → listNotes, NoteRecord, findNote, saveNote, updateNote, deleteNote, parseTags, toRecord, getNote, tagsJson
-- `app/lib/num.ts` → round01, clamp01, round3
-- `app/lib/persist-messages.ts` → hydrateMessages, MessageInput, persistMessages
-- `app/lib/prisma.ts` → createClient, RequestContext, currentRequestContext, globalForPrisma, getPrisma, prisma, AdapterFactory
-- `app/lib/providers.ts` → ProviderId, Provider, WORKERS_AI, GEMINI, OPENROUTER, MODEL_CATALOG, RESERVE_MODEL, groqChatModels, catalogWithAvailability, isModelAvailable
-- `app/lib/quota-info.ts` → groqStatusLabel, formatHourMinute, quotaTooltip, formatNeuronsRemaining
-- `app/lib/quota.ts` → untilFromError, latestGroqQuotaUntil, FallbackBudget, getFallbackBudget, fallbackBudgetLeft, GROQ_QUOTA_KEY, FALLBACK_NEURON_BUDGET, nextMidnightUtc, parseResetWindow, pruneQuotaMap, estimateNeurons, readQuota, writeQuota, getQuotaMap, modelQuotaUntil, markGroqQuota, firstAvailableGroqModel, chargeFallback, estimateEmbeddingNeurons, chargeEmbedding
+- `app/lib/format.ts` → fmtDate, formatCompactNumber
+- `app/lib/git-common.ts` → PATCH_MAX_REMOVED_LINES, PATCH_SEARCH_MAX_CHARS
+- `app/lib/git-hosts.ts` → GitPlatform, platformStatuses, PlatformStatus, platformToken, repoKey, parseRepoRef, platformFromHost, RepoRef, GIT_HOSTS, GitHost
+- `app/lib/git.ts` → gitDeleteFiles, gitGetCheckRuns, gitListFiles, gitRepoOverview, resolve, gitVerifyRepo, gitCreatePullRequest, gitListIssues, notImplemented, invalid, gitMergePullRequest, GitChange, gitReadFile, gitApplyPatch
+- `app/lib/github.ts` → applyPatch, GithubDeleteInput, deleteFiles, readFileByLines, fixAttemptsKey, addRepo, saveRepos, getRepos, githubAutoMergeEnabled, parseRepo, MAX_FIX_ATTEMPTS, GITHUB_LIMITS, GithubMergeInput, listMyRepos, verifyRepo, GITHUB_API, mergePullRequest, GithubCheckRunsInput, GhCheckRun, clip, getCheckRuns, getFixAttempts, mapRepoSummaries, recordFixAttempt, ghFetch, normalizeGithubUser, GithubRepoSummary, listIssues, readFile, listFiles, repoOverview, describeError, createPullRequest, removeRepo, GithubPatchOp, GithubApplyPatchInput
+- `app/lib/gitlab.ts` → getCheckRuns, applyPatch, deleteFiles, listIssues, fileBlobId, resolveTargetBranch, commit, createPullRequest, LIMITS, gitlabWriteEnabled, glFetch, glMessage, describeError, defaultBranch, verifyRepo, repoOverview, listFiles, readFile, pipelineState, mergePullRequest, readByLines
+- `app/lib/llm-embed.ts` → MODEL, localEmbed, viaBinding, embeddingCacheSet, embeddingCacheGet, hashEmbedText, viaRest, embed
+- `app/lib/local-agent.ts` → openAppLocally, checkLocalAgent, headers, saveLocalToken, agentToken, LocalAgentResult
+- `app/lib/memory-extract.ts` → extractMemories, heuristicExtract, GROQ_API, SYSTEM_PROMPT, sanitizeJson, sanitizeExtracted
+- `app/lib/memory.ts` → updateWorkingMemory, toStored, recordEpisode, getMemoryStats, consolidateMemories, ConsolidateOptions, reinforceMemories, searchMemories, MemoryFilters, searchSemanticMemories, updateMemory, MemoryUpdate, createMemory, findMemoryById, getMemoryById, getContext, setContext, maybeConsolidate, StoredMemory, MEMORY_TYPES
+- `app/lib/notes.ts` → getNote, listNotes, NoteRecord, findNote, saveNote, updateNote, deleteNote, tagsJson, toRecord, parseTags
+- `app/lib/num.ts` → round3, round01, clamp01
+- `app/lib/persist-messages.ts` → persistMessages, hydrateMessages, MessageInput
+- `app/lib/prisma.ts` → RequestContext, currentRequestContext, globalForPrisma, getPrisma, prisma, AdapterFactory, createClient
+- `app/lib/providers.ts` → OPENROUTER, Provider, GEMINI, isModelAvailable, RESERVE_MODEL, MODEL_CATALOG, ProviderId, WORKERS_AI, groqChatModels, catalogWithAvailability
+- `app/lib/quota-info.ts` → groqStatusLabel, formatNeuronsRemaining, formatHourMinute, quotaTooltip
+- `app/lib/quota.ts` → writeQuota, GROQ_QUOTA_KEY, FALLBACK_NEURON_BUDGET, nextMidnightUtc, untilFromError, parseResetWindow, pruneQuotaMap, estimateNeurons, readQuota, getQuotaMap, modelQuotaUntil, markGroqQuota, firstAvailableGroqModel, chargeFallback, estimateEmbeddingNeurons, chargeEmbedding, latestGroqQuotaUntil, FallbackBudget, getFallbackBudget, fallbackBudgetLeft
 - `app/lib/rate-limit.ts` → RateLimitBinding, rateLimit
-- `app/lib/scrub.ts` → RULES, ScrubKind, ScrubResult, scrubText
+- `app/lib/scrub.ts` → RULES, scrubText, ScrubKind, ScrubResult
 - `app/lib/sources.ts` → toSourceRefs, sourceTitle
-- `app/lib/sse.ts` → readSseLines, openAiDelta
-- `app/lib/store.ts` → getConversations, createConversation, updateConversation, deleteConversation
-- `app/lib/tokens.ts` → estimateTokens, DEFAULT_CONTEXT_BUDGET, CHARS_PER_TOKEN, estimateMessagesTokens
-- `app/lib/tools.ts` → revertChangeTool, readNote, updateCloudNoteTool, updateMemoryTool, githubCreatePullRequest, githubListIssues, githubReadFile, githubListFiles, githubRepoOverview, sendEmailTool, openApp, executeToolCall, TOOL_DEFINITIONS, memorySnapshot, readCloudNote, semanticSearchVault, githubApplyPatch, groqFetch, recallMemory, githubGetCheckRuns, githubMergePullRequest, NOTE_READ_MAX, saveCloudNote, listCloudNotes, GROQ_API, bodyModel, githubDeleteFile, MATH_CONSTANTS, MATH_FUNCTIONS, callGroqWithTools, saveNote, searchVault, webSearch, getTime, calculate, MathParser, searchCodeTool, getWeather
-- `app/lib/truncate.ts` → TextWindow, stubToolResult, sliceWindow, normalizeOffset
-- `app/lib/vault-docs.ts` → firstHeading, PROJECT_DOCS, DocSource, renderDoc, vaultRelPath
-- `app/lib/vault-index.ts` → semanticSearch, searchVaultIndex, getVaultIndex, buildIndex, isIndexFresh, INDEX_FILE
-- `app/lib/web-search.ts` → searchVersions, OFFICIAL_VERSION_SOURCES, VERSION_INTENT, EolDetail, EolCatalog, searchMdn, MdnSearch, searchHackerNews, RELEASE_NOISE, releaseNotes, HnAlgolia, searchStackOverflow, stackOverflowThrottled, StackExchange, searchWikipedia, officialVersion, splitQualifier, subjectOf, wikiSearch, DISAMBIGUATION, entityCandidates, STOPWORDS, decodeEntities, WebSearchOutcome, USER_AGENT, cache, getJson, WEB_SIGNALS, getCachedJson, recentSearches, RELEASE_INTENT, SOURCES, filterRelevant, searchWeb, CODE_SIGNALS, searchFirecrawl, FirecrawlResponse, looksSpanish, NEWS_INTENT, FIRECRAWL_ENDPOINT, searchReleases, topSections, RELEASE_SOURCES
-- `app/lib/whatsapp.ts` → chunkText, markWhatsAppRead, markdownToWhatsApp, safeEqualHex, parseIncoming, allowedNumbers, GRAPH_VERSION, sendWhatsAppText, verifyMetaSignature
-- `app/lib/workers-ai.ts` → AiBinding, workersAiChatStream, normalizeToOpenAiSse, LT, ThinkFilter
-- `app/lib/zip.ts` → createZip, encoder, getCrcTable, crc32, safeFileName
+- `app/lib/sse.ts` → openAiDelta, readSseLines
+- `app/lib/store.ts` → deleteConversation, createConversation, updateConversation, getConversations
+- `app/lib/tokens.ts` → CHARS_PER_TOKEN, estimateMessagesTokens, estimateTokens, DEFAULT_CONTEXT_BUDGET
+- `app/lib/tools.ts` → callGroqWithTools, updateMemoryTool, githubCreatePullRequest, githubListIssues, githubReadFile, githubListFiles, githubRepoOverview, sendEmailTool, openApp, executeToolCall, TOOL_DEFINITIONS, readCloudNote, groqFetch, bodyModel, GROQ_API, listCloudNotes, saveCloudNote, NOTE_READ_MAX, githubMergePullRequest, githubDeleteFile, githubGetCheckRuns, githubApplyPatch, semanticSearchVault, MATH_FUNCTIONS, updateCloudNoteTool, readNote, revertChangeTool, getWeather, MATH_CONSTANTS, searchCodeTool, MathParser, calculate, getTime, recallMemory, webSearch, searchVault, saveNote, memorySnapshot
+- `app/lib/truncate.ts` → sliceWindow, stubToolResult, normalizeOffset, TextWindow
+- `app/lib/vault-docs.ts` → PROJECT_DOCS, DocSource, firstHeading, vaultRelPath, renderDoc
+- `app/lib/vault-index.ts` → getVaultIndex, isIndexFresh, buildIndex, searchVaultIndex, INDEX_FILE, semanticSearch
+- `app/lib/web-search.ts` → searchHackerNews, RELEASE_NOISE, decodeEntities, searchReleases, topSections, RELEASE_SOURCES, searchVersions, OFFICIAL_VERSION_SOURCES, VERSION_INTENT, EolDetail, EolCatalog, searchMdn, MdnSearch, recentSearches, WEB_SIGNALS, CODE_SIGNALS, searchFirecrawl, FirecrawlResponse, looksSpanish, NEWS_INTENT, FIRECRAWL_ENDPOINT, STOPWORDS, entityCandidates, WebSearchOutcome, USER_AGENT, DISAMBIGUATION, wikiSearch, subjectOf, cache, releaseNotes, splitQualifier, searchWikipedia, officialVersion, HnAlgolia, StackExchange, stackOverflowThrottled, searchStackOverflow, getJson, getCachedJson, searchWeb, filterRelevant, SOURCES, RELEASE_INTENT
+- `app/lib/whatsapp.ts` → sendWhatsAppText, safeEqualHex, parseIncoming, allowedNumbers, GRAPH_VERSION, verifyMetaSignature, markWhatsAppRead, markdownToWhatsApp, chunkText
+- `app/lib/workers-ai.ts` → normalizeToOpenAiSse, LT, workersAiChatStream, AiBinding, ThinkFilter
+- `app/lib/zip.ts` → encoder, createZip, crc32, getCrcTable, safeFileName
 
 ## app/types/
-- `app/types/index.ts` → SourceRef, ContextInfo, QuotaInfo, Message, MemoryRecord, AVAILABLE_MODELS, AIModel
+- `app/types/index.ts` → AVAILABLE_MODELS, Message, AIModel, MemoryRecord, SourceRef, ContextInfo, QuotaInfo
 
 ## local-agent/
-- `local-agent/aria-local-agent.mjs` → server, corsHeaders, send, readBody, __dirname, loadEnvFile, TOKEN_FILE, TOKEN, APP_ALIASES, resolveTarget, launch, isOriginAllowed
+- `local-agent/aria-local-agent.mjs` → server, resolveTarget, APP_ALIASES, TOKEN, TOKEN_FILE, readBody, send, corsHeaders, isOriginAllowed, launch, __dirname, loadEnvFile
 
 ## scripts/
-- `scripts/build-lora-dataset.ts` → aEjemplo, arg, SISTEMA, main, conversacionesFalsas, leerDeBaseDeDatos
-- `scripts/docs-to-vault.ts` → Copiado, main, indexar, arg
-- `scripts/generate-icons.mjs` → root, jobs
-- `scripts/index-code.ts` → buildRepoMap, main, Env, walk
-- `scripts/measure-tokens.ts` → invokedDirectly, formatReport, buildTokenReport, SAMPLE_MEMORY, SAMPLE_HISTORY, SAMPLE_SUMMARY, TokenReport
-- `scripts/patch-opennext-wasm.mjs` → root, matches, header, copyWasm
+- `scripts/build-lora-dataset.ts` → SISTEMA, arg, conversacionesFalsas, aEjemplo, leerDeBaseDeDatos, main
+- `scripts/docs-to-vault.ts` → main, Copiado, arg, indexar
+- `scripts/generate-icons.mjs` → jobs, root
+- `scripts/index-code.ts` → main, walk, Env, buildRepoMap
+- `scripts/measure-tokens.ts` → SAMPLE_MEMORY, SAMPLE_HISTORY, buildTokenReport, formatReport, invokedDirectly, TokenReport, SAMPLE_SUMMARY
+- `scripts/patch-opennext-wasm.mjs` → copyWasm, header, matches, root
 - `scripts/reindex.ts` → main
-- `scripts/retrieval-eval.ts` → EvalDoc, RankedHit, mrr, NOW, CASES, rankCaseDocs, CaseMetrics, buildRetrievalEvalReport, formatRetrievalReport, invokedDirectly, recallAtK
+- `scripts/retrieval-eval.ts` → EvalDoc, RankedHit, NOW, mrr, CASES, rankCaseDocs, CaseMetrics, buildRetrievalEvalReport, formatRetrievalReport, invokedDirectly, recallAtK
 - `scripts/smoke-brain.ts` → SOURCE
 - `scripts/smoke-changelog.ts` → main
 - `scripts/smoke-code-search.ts` → main
 - `scripts/smoke-memory.ts` → main
-- `scripts/test-migrate.mjs` → url, lastError, sleep, opts
+- `scripts/test-migrate.mjs` → sleep, lastError, url, opts
 - `scripts/wasm-resolver.mjs` → load, resolve
 
 ## tests/integration/
 - `tests/integration/brain.test.ts` → marker, RUN
-- `tests/integration/conversations-persist.test.ts` → auth, RUN
-- `tests/integration/embedding-cache.test.ts` → vec, RUN
+- `tests/integration/conversations-persist.test.ts` → RUN, auth
+- `tests/integration/embedding-cache.test.ts` → RUN, vec
 - `tests/integration/memory.test.ts` → marker, RUN
 - `tests/integration/quota-api.test.ts` → RUN
-- `tests/integration/working-memory.test.ts` → RUN, marker
+- `tests/integration/working-memory.test.ts` → marker, RUN
 
 ## tests/unit/
 - `tests/unit/aria-core.test.ts` → user
-- `tests/unit/auth.test.ts` → saved, req
+- `tests/unit/auth.test.ts` → req, saved
 - `tests/unit/brain.test.ts` → hitAt, makeHit
 - `tests/unit/chat-draft.test.ts` → fakeStorage
 - `tests/unit/code-index.test.ts` → fn
 - `tests/unit/context-info.test.ts` → base
-- `tests/unit/data-change.test.ts` → memoryRow, changeRow, call, changeMod, memoryMod, noteRow
-- `tests/unit/github-checks.test.ts` → Handlers, json, stubChecks
+- `tests/unit/data-change.test.ts` → memoryRow, changeRow, call, noteRow, memoryMod, changeMod
+- `tests/unit/github-checks.test.ts` → stubChecks, Handlers, json
 - `tests/unit/github-limits.test.ts` → stubGithub, b64
 - `tests/unit/github-patch.test.ts` → json, b64
-- `tests/unit/github-write.test.ts` → enableWrite, json, restoreEnv
+- `tests/unit/github-write.test.ts` → enableWrite, restoreEnv, json
 - `tests/unit/quota-info.test.ts` → quota
-- `tests/unit/select-tools.test.ts` → names, user
-- `tests/unit/sources.test.ts` → noteHit, messageHit, vaultHit, memHit
+- `tests/unit/select-tools.test.ts` → user, names
+- `tests/unit/sources.test.ts` → vaultHit, memHit, noteHit, messageHit
 - `tests/unit/sse.test.ts` → streamOf, collect
-- `tests/unit/tools-rounds.test.ts` → finalText, toolCallTurn, ReqMessage
+- `tests/unit/tools-rounds.test.ts` → toolCallTurn, finalText, ReqMessage
 - `tests/unit/whatsapp.test.ts` → sign
 
 ## training/
-- `training/upload-lora.mjs` → base, DESDE_UNSLOTH, BASES, args, id, leerEnv, cf, creado, existente, listar, mb, baseOriginal, modelo
+- `training/upload-lora.mjs` → creado, cf, listar, mb, BASES, DESDE_UNSLOTH, leerEnv, baseOriginal, base, modelo, id, existente, args
