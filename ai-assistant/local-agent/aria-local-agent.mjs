@@ -36,10 +36,16 @@
  */
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import {
+  APP_ALIASES,
+  hasUnsafeChars,
+  loadAgentToken,
+  tokenMatches,
+  validateOpenRequest,
+} from './target-policy.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -81,114 +87,23 @@ const ALLOW_ANY = process.env.ARIA_ALLOW_ANY === '1'
  *      estable entre reinicios y no hace falta configurar nada a mano.
  */
 const TOKEN_FILE = path.join(__dirname, '.aria-local-token')
-const TOKEN = (() => {
-  const fromEnv = process.env.ARIA_LOCAL_TOKEN?.trim()
-  if (fromEnv) return fromEnv
-  try {
-    if (existsSync(TOKEN_FILE)) {
-      const saved = readFileSync(TOKEN_FILE, 'utf-8').trim()
-      if (saved) return saved
-    }
-    const generated = randomBytes(32).toString('hex')
-    writeFileSync(TOKEN_FILE, generated + '\n', { mode: 0o600 })
-    return generated
-  } catch (err) {
-    console.error('No pude leer/escribir el token local:', err.message)
-    // Fail-closed: sin token, el agente rechaza todo (ver handler de /open).
-    return ''
-  }
-})()
+const TOKEN = loadAgentToken({
+  envToken: process.env.ARIA_LOCAL_TOKEN,
+  tokenFile: TOKEN_FILE,
+  warn: (message, err) => console.error(message, err?.message || err),
+})
 const EXTRA_ORIGINS = (process.env.ARIA_ALLOWED_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean)
 const IS_WINDOWS = process.platform === 'win32'
 
-/* ------------------------------ mapa de apps ----------------------------- */
-
-/**
- * Alias cómodos en español e inglés. El valor es lo que se pasa al sistema.
- * Las claves se comparan en minúsculas y sin espacios.
- */
-const APP_ALIASES = {
-  spotify: 'spotify:',
-  vscode: 'code',
-  'visual studio code': 'code',
-  code: 'code',
-  chrome: 'chrome',
-  'google chrome': 'chrome',
-  edge: 'msedge',
-  'microsoft edge': 'msedge',
-  firefox: 'firefox',
-  brave: 'brave',
-  notepad: 'notepad',
-  'bloc de notas': 'notepad',
-  'bloc notas': 'notepad',
-  calc: 'calc',
-  calculadora: 'calc',
-  calculator: 'calc',
-  explorer: 'explorer',
-  explorador: 'explorer',
-  'explorador de archivos': 'explorer',
-  terminal: 'wt',
-  cmd: 'cmd',
-  powershell: 'powershell',
-  word: 'winword',
-  excel: 'excel',
-  powerpoint: 'powerpnt',
-  outlook: 'outlook',
-  whatsapp: 'whatsapp:',
-  telegram: 'tg:',
-  discord: 'discord:',
-  steam: 'steam:',
-  obs: 'obs64',
-  vlc: 'vlc',
-  paint: 'mspaint',
-  settings: 'ms-settings:',
-  configuracion: 'ms-settings:',
-  ajustes: 'ms-settings:',
-}
-
-function normalizeKey(name) {
-  return name
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-}
-
-/** Caracteres que romperían el parseo de `cmd /c start` (inyección de shell). */
-const UNSAFE = /[&|<>^%\r\n"`]/
-
-function resolveTarget(app) {
-  const cleaned = app.trim()
-  const key = normalizeKey(cleaned)
-
-  // 1) Alias del mapa.
-  if (APP_ALIASES[key]) return { value: APP_ALIASES[key], kind: 'alias' }
-
-  // 2) Una URI con esquema (spotify:, ms-settings:, mailto:, vscode://...).
-  if (/^[a-z][a-z0-9+.-]*:/i.test(cleaned) && !/^[a-z]:[\\/]/i.test(cleaned)) {
-    return { value: cleaned, kind: 'uri' }
-  }
-
-  // 3) Una ruta existente (archivo o carpeta): se abre con su programa asociado.
-  try {
-    if (existsSync(cleaned)) return { value: cleaned, kind: 'path' }
-  } catch {
-    /* ignore */
-  }
-
-  // 4) Un ejecutable o comando suelto solo si se permite explícitamente.
-  if (ALLOW_ANY) return { value: cleaned, kind: 'command' }
-  return null
-}
-
 /* --------------------------------- abrir --------------------------------- */
 
 function launch(target, args) {
-  if (UNSAFE.test(target) || (args && UNSAFE.test(args))) {
+  // Defensa en profundidad: la política ya validó esto, pero el lanzamiento no
+  // debe depender de que alguien llame a launch() por otro camino.
+  if (hasUnsafeChars(target) || (args && hasUnsafeChars(args))) {
     throw new Error('El nombre o el argumento contiene caracteres no permitidos.')
   }
 
@@ -285,8 +200,9 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/open') {
     // Fail-closed: si por lo que sea no hay token (p. ej. no se pudo escribir el
-    // archivo), se rechaza todo en vez de quedar abierto.
-    if (!TOKEN || req.headers['x-aria-token'] !== TOKEN) {
+    // archivo), se rechaza todo en vez de quedar abierto. La comparación es en
+    // tiempo constante (SHA-256 + timingSafeEqual).
+    if (!TOKEN || !tokenMatches(req.headers['x-aria-token'], TOKEN)) {
       send(res, 401, { ok: false, error: 'Token incorrecto o ausente.' }, origin)
       return
     }
@@ -299,38 +215,45 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      send(res, 400, { ok: false, error: 'JSON inválido.' }, origin)
+      return
+    }
+
     const app = typeof payload.app === 'string' ? payload.app : ''
-    const args = typeof payload.args === 'string' ? payload.args : undefined
     if (!app) {
       send(res, 400, { ok: false, error: 'Falta el campo "app".' }, origin)
       return
     }
 
-    const resolved = resolveTarget(app)
-    if (!resolved) {
-      send(
-        res,
-        403,
-        {
-          ok: false,
-          error:
-            `No sé cómo abrir "${app}". Usa una app del mapa, una ruta existente o una URI, ` +
-            `o arranca el agente con ARIA_ALLOW_ANY=1 para permitir cualquier comando.`,
-        },
-        origin,
-      )
+    if (payload.args !== undefined && typeof payload.args !== 'string') {
+      send(res, 400, { ok: false, error: 'El campo "args" debe ser texto.' }, origin)
+      return
+    }
+
+    const args = payload.args
+    const result = validateOpenRequest({ app, args }, { allowAny: ALLOW_ANY })
+    if (!result.ok) {
+      send(res, result.status, { ok: false, error: result.error }, origin)
       return
     }
 
     try {
-      launch(resolved.value, args)
+      launch(result.target, result.args)
     } catch (err) {
       send(res, 400, { ok: false, error: String(err.message || err) }, origin)
       return
     }
 
-    console.log(`[open] ${app}${args ? ` (${args})` : ''} -> ${resolved.kind}:${resolved.value}`)
-    send(res, 200, { ok: true, message: `Abriendo ${app}…`, resolved: resolved.value, kind: resolved.kind }, origin)
+    console.log(
+      `[open] ${app}${result.args ? ` (${result.args})` : ''} -> ${result.kind}:${result.target}`,
+    )
+    send(
+      res,
+      200,
+      { ok: true, message: `Abriendo ${app}…`, resolved: result.target, kind: result.kind },
+      origin,
+    )
     return
   }
 
