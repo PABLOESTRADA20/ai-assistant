@@ -177,7 +177,7 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `WHATSAPP_TOKEN` | Token permanente de la app de Meta (WhatsApp Cloud API) | para WhatsApp |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business | para WhatsApp |
 | `WHATSAPP_VERIFY_TOKEN` | Cadena inventada por ti para verificar el webhook | para WhatsApp |
-| `WHATSAPP_APP_SECRET` | App secret de Meta, para validar la firma del webhook | recomendada |
+| `WHATSAPP_APP_SECRET` | App secret de Meta, para validar la firma del webhook. **Obligatorio si usas WhatsApp**: sin él no se procesa ningún POST | sí, para WhatsApp |
 | `WHATSAPP_ALLOWED_NUMBERS` | Lista blanca de teléfonos separada por comas | no |
 | `RESEND_API_KEY` | API key de Resend para enviar correo | para correo |
 | `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
@@ -300,6 +300,8 @@ ARIA usa la **WhatsApp Cloud API oficial de Meta** (gratis hasta ~1.000 conversa
 6. Escribe a ese número desde tu teléfono: ARIA crea una conversación titulada `WhatsApp <tu nombre>` que aparece en el sidebar.
 
 > La ruta del webhook **no** exige `ARIA_ACCESS_TOKEN` (Meta no puede enviarlo); la autenticidad se garantiza con la firma `X-Hub-Signature-256`. El procesamiento es asíncrono: se responde 200 a Meta al instante y ARIA contesta vía Graph API.
+
+> `WHATSAPP_APP_SECRET` es **obligatorio** para procesar mensajes: sin él el webhook responde 200 sin hacer nada (para que Meta no reintente en bucle). La lista blanca de números solo filtra quién puede escribir; **no autentica**, porque el campo `from` viaja dentro del payload. Los reintentos de Meta se deduplican de forma atómica por `messageId` durante 7 días.
 
 ## Correo
 

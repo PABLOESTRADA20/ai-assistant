@@ -23,3 +23,11 @@ GITLAB_AUTO_MERGE=false
 
 # Bitbucket (reconocido pero no implementado todavía)
 BITBUCKET_TOKEN=
+
+# WhatsApp Cloud API (opcional; si lo configuras, APP_SECRET es obligatorio)
+WHATSAPP_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_APP_SECRET=
+# Lista blanca opcional: solo filtra números, no autentica.
+WHATSAPP_ALLOWED_NUMBERS=

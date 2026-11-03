@@ -5,6 +5,7 @@ import {
   markdownToWhatsApp,
   parseIncoming,
   verifyMetaSignature,
+  verifyTokenMatches,
 } from '@/app/lib/whatsapp'
 
 /** HMAC-SHA256 en hex con el mismo formato que espera Meta (`sha256=...`). */
@@ -119,6 +120,26 @@ describe('verifyMetaSignature', () => {
     expect(await verifyMetaSignature('app-secret', body, null)).toBe(false)
     expect(await verifyMetaSignature('app-secret', body, 'sha1=abcdef')).toBe(false)
     expect(await verifyMetaSignature('app-secret', body, 'sha256=zzzz')).toBe(false)
+  })
+})
+
+describe('verifyTokenMatches', () => {
+  it('acepta el token correcto y rechaza el incorrecto', async () => {
+    expect(await verifyTokenMatches('verify-123', 'verify-123')).toBe(true)
+    expect(await verifyTokenMatches('verify-123', 'verify-124')).toBe(false)
+  })
+
+  it('falla cerrado si falta cualquiera de los dos', async () => {
+    expect(await verifyTokenMatches(undefined, 'verify-123')).toBe(false)
+    expect(await verifyTokenMatches('verify-123', undefined)).toBe(false)
+    expect(await verifyTokenMatches('', '')).toBe(false)
+    expect(await verifyTokenMatches(null, null)).toBe(false)
+  })
+
+  it('no filtra por longitud ni por prefijo', async () => {
+    expect(await verifyTokenMatches('corto', 'mucho-mas-largo')).toBe(false)
+    expect(await verifyTokenMatches('secreto', 'secreto-mas-largo')).toBe(false)
+    expect(await verifyTokenMatches('secreto-mas-largo', 'secreto')).toBe(false)
   })
 })
 
