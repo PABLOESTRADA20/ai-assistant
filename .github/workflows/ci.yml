@@ -1,18 +1,21 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
+  workflow_dispatch:
 
 # Un push nuevo en la misma rama/PR cancela el run anterior en curso.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   checks:
-    name: Lint, typecheck and unit tests
+    name: Lint, typecheck, unit tests and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,7 +26,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: ./ai-assistant/package-lock.json
 
@@ -43,6 +46,13 @@ jobs:
 
       - name: Unit tests
         run: npm run test:unit
+
+      - name: Build
+        env:
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          GROQ_API_KEY: ci-placeholder
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
 
   integration:
     name: Integration tests (Postgres)
@@ -78,7 +88,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: ./ai-assistant/package-lock.json
 
@@ -94,3 +104,25 @@ jobs:
       # contra él. Siempre corre: no necesita ningún secret del repositorio.
       - name: Integration tests
         run: npm run test:integration
+
+  audit:
+    name: Audit (no bloqueante)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ai-assistant
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ./ai-assistant/package-lock.json
+
+      - name: npm audit (solo avisa)
+        run: |
+          if ! npm audit --omit=dev --audit-level=high; then
+            echo "::warning::npm audit encontró vulnerabilidades altas o un error de auditoría; revisa el informe. No bloquea el CI."
+          fi

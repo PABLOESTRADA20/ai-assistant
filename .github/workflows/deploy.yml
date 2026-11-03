@@ -7,8 +7,15 @@ on:
   workflow_dispatch:
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   deploy:
     name: Deploy to Cloudflare Workers
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -74,82 +81,79 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy
 
+      - name: Aviso de configuración de WhatsApp
+        env:
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
+        run: |
+          if [ -n "$WHATSAPP_TOKEN" ] && [ -z "$WHATSAPP_APP_SECRET" ]; then
+            echo "::warning::WHATSAPP_TOKEN está definido pero falta WHATSAPP_APP_SECRET. El webhook no procesará mensajes."
+          fi
+
       - name: Set Worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SECRET_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SECRET_ARIA_ACCESS_TOKEN: ${{ secrets.ARIA_ACCESS_TOKEN }}
+          SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SECRET_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          SECRET_OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SECRET_ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          SECRET_FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          SECRET_WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          SECRET_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          SECRET_WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          SECRET_WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
+          SECRET_WHATSAPP_ALLOWED_NUMBERS: ${{ secrets.WHATSAPP_ALLOWED_NUMBERS }}
+          SECRET_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SECRET_EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SECRET_EMAIL_ALLOWED_TO: ${{ secrets.EMAIL_ALLOWED_TO }}
+          SECRET_ARIA_GITHUB_TOKEN: ${{ secrets.ARIA_GITHUB_TOKEN }}
+          SECRET_GITHUB_WRITE_ENABLED: ${{ secrets.GITHUB_WRITE_ENABLED }}
         run: |
-          echo "${{ secrets.DATABASE_URL }}" | npx wrangler secret put DATABASE_URL
-          echo "${{ secrets.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY
+          put() {
+            printf '%s' "$2" | npx wrangler secret put "$1"
+          }
+          put_if_set() {
+            if [ -n "$2" ]; then
+              put "$1" "$2"
+            fi
+          }
+
+          put DATABASE_URL "$SECRET_DATABASE_URL"
+          put GROQ_API_KEY "$SECRET_GROQ_API_KEY"
+          put ARIA_ACCESS_TOKEN "$SECRET_ARIA_ACCESS_TOKEN"
+
           # Proveedores gratis adicionales. Todos opcionales: si el secret no
-          # existe, sus modelos simplemente no aparecen en la app (el endpoint
-          # /api/models calcula la disponibilidad).
-          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-            echo "${{ secrets.GEMINI_API_KEY }}" | npx wrangler secret put GEMINI_API_KEY
-          fi
-          if [ -n "${{ secrets.MISTRAL_API_KEY }}" ]; then
-            echo "${{ secrets.MISTRAL_API_KEY }}" | npx wrangler secret put MISTRAL_API_KEY
-          fi
-          if [ -n "${{ secrets.OPENROUTER_API_KEY }}" ]; then
-            echo "${{ secrets.OPENROUTER_API_KEY }}" | npx wrangler secret put OPENROUTER_API_KEY
-          fi
-          if [ -n "${{ secrets.ZAI_API_KEY }}" ]; then
-            echo "${{ secrets.ZAI_API_KEY }}" | npx wrangler secret put ZAI_API_KEY
-          fi
-          # Sin claves de busqueda web obligatorias: `web_search` usa Firecrawl
-          # en modo keyless (busqueda general y noticias) mas APIs keyless
-          # (Wikipedia, Stack Exchange, Hacker News, MDN, endoflife.date y
-          # GitHub Releases), todas gratuitas.
-          #
-          # Opcional: si se define el secret FIRECRAWL_API_KEY (tier gratis de
-          # 1.000 creditos/mes), `web_search` la usa sola y sube el limite keyless
-          # por IP. No hace falta para que funcione.
-          if [ -n "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
-            echo "${{ secrets.FIRECRAWL_API_KEY }}" | npx wrangler secret put FIRECRAWL_API_KEY
-          fi
-          # Control de acceso. En produccion es obligatorio: el paso de
-          # validacion del inicio aborta el deploy si falta, asi que aqui
-          # siempre viene definido. Toda la API exige `Authorization: Bearer`.
-          echo "${{ secrets.ARIA_ACCESS_TOKEN }}" | npx wrangler secret put ARIA_ACCESS_TOKEN
-          # WhatsApp Cloud API (Meta). Sin estos secrets el webhook responde 200
-          # sin hacer nada, y ARIA no lee ni responde mensajes de WhatsApp.
-          if [ -n "${{ secrets.WHATSAPP_TOKEN }}" ]; then
-            echo "${{ secrets.WHATSAPP_TOKEN }}" | npx wrangler secret put WHATSAPP_TOKEN
-          fi
-          if [ -n "${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" ]; then
-            echo "${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}" | npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
-          fi
-          if [ -n "${{ secrets.WHATSAPP_VERIFY_TOKEN }}" ]; then
-            echo "${{ secrets.WHATSAPP_VERIFY_TOKEN }}" | npx wrangler secret put WHATSAPP_VERIFY_TOKEN
-          fi
-          if [ -n "${{ secrets.WHATSAPP_APP_SECRET }}" ]; then
-            echo "${{ secrets.WHATSAPP_APP_SECRET }}" | npx wrangler secret put WHATSAPP_APP_SECRET
-          fi
-          if [ -n "${{ secrets.WHATSAPP_ALLOWED_NUMBERS }}" ]; then
-            echo "${{ secrets.WHATSAPP_ALLOWED_NUMBERS }}" | npx wrangler secret put WHATSAPP_ALLOWED_NUMBERS
-          fi
-          # Correo saliente vía Resend (free tier). Con RESEND_API_KEY y
-          # EMAIL_FROM, la herramienta send_email funciona.
-          if [ -n "${{ secrets.RESEND_API_KEY }}" ]; then
-            echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY
-          fi
-          if [ -n "${{ secrets.EMAIL_FROM }}" ]; then
-            echo "${{ secrets.EMAIL_FROM }}" | npx wrangler secret put EMAIL_FROM
-          fi
-          if [ -n "${{ secrets.EMAIL_ALLOWED_TO }}" ]; then
-            echo "${{ secrets.EMAIL_ALLOWED_TO }}" | npx wrangler secret put EMAIL_ALLOWED_TO
-          fi
-          # GitHub (opcional). Es solo lectura salvo que también se active el
-          # interruptor explícito de PRs seguros. El secret del repo se llama
-          # ARIA_GITHUB_TOKEN porque "GITHUB_TOKEN" esta reservado por Actions;
-          # aqui se mapea al secret GITHUB_TOKEN que lee el Worker.
-          if [ -n "${{ secrets.ARIA_GITHUB_TOKEN }}" ]; then
-            echo "${{ secrets.ARIA_GITHUB_TOKEN }}" | npx wrangler secret put GITHUB_TOKEN
-          fi
-          if [ "${{ secrets.GITHUB_WRITE_ENABLED }}" = "true" ]; then
-            echo "true" | npx wrangler secret put GITHUB_WRITE_ENABLED
+          # existe, sus modelos simplemente no aparecen en la app.
+          put_if_set GEMINI_API_KEY "$SECRET_GEMINI_API_KEY"
+          put_if_set MISTRAL_API_KEY "$SECRET_MISTRAL_API_KEY"
+          put_if_set OPENROUTER_API_KEY "$SECRET_OPENROUTER_API_KEY"
+          put_if_set ZAI_API_KEY "$SECRET_ZAI_API_KEY"
+          put_if_set FIRECRAWL_API_KEY "$SECRET_FIRECRAWL_API_KEY"
+
+          # WhatsApp Cloud API (Meta). Sin WHATSAPP_TOKEN y PHONE_NUMBER_ID el
+          # webhook responde 200 sin hacer nada. WHATSAPP_APP_SECRET es
+          # obligatorio para procesar mensajes.
+          put_if_set WHATSAPP_TOKEN "$SECRET_WHATSAPP_TOKEN"
+          put_if_set WHATSAPP_PHONE_NUMBER_ID "$SECRET_WHATSAPP_PHONE_NUMBER_ID"
+          put_if_set WHATSAPP_VERIFY_TOKEN "$SECRET_WHATSAPP_VERIFY_TOKEN"
+          put_if_set WHATSAPP_APP_SECRET "$SECRET_WHATSAPP_APP_SECRET"
+          put_if_set WHATSAPP_ALLOWED_NUMBERS "$SECRET_WHATSAPP_ALLOWED_NUMBERS"
+
+          # Correo saliente vía Resend (free tier).
+          put_if_set RESEND_API_KEY "$SECRET_RESEND_API_KEY"
+          put_if_set EMAIL_FROM "$SECRET_EMAIL_FROM"
+          put_if_set EMAIL_ALLOWED_TO "$SECRET_EMAIL_ALLOWED_TO"
+
+          # GitHub (opcional). El secret del repo se llama ARIA_GITHUB_TOKEN
+          # porque "GITHUB_TOKEN" está reservado por Actions; aquí se mapea al
+          # secret GITHUB_TOKEN que lee el Worker.
+          put_if_set GITHUB_TOKEN "$SECRET_ARIA_GITHUB_TOKEN"
+          if [ "$SECRET_GITHUB_WRITE_ENABLED" = "true" ]; then
+            put GITHUB_WRITE_ENABLED true
           else
-            # Evita que un deploy conserve accidentalmente un valor `true`
-            # antiguo cuando se quite o desactive el secret en GitHub.
-            echo "false" | npx wrangler secret put GITHUB_WRITE_ENABLED
+            put GITHUB_WRITE_ENABLED false
           fi
