@@ -83,6 +83,13 @@ describe('chunkCode', () => {
     expect(chunks[0].symbol).toBe('bracey')
   })
 
+  it('no desalinea la profundidad por llaves dentro de regex literales', () => {
+    const filler = `  const relleno = '${'x'.repeat(220)}'\n`
+    const content = `export function conRegex() {\n  const re = /[{]+/\n${filler}  return re.test('{')\n}\n\nexport function siguiente() {\n${filler}  return 2\n}`
+    const chunks = chunkCode('app/lib/regex.ts', content)
+    expect(chunks.map((c) => c.symbol)).toEqual(['conRegex', 'siguiente'])
+  })
+
   it('no parte una clase por sus métodos (profundidad de llaves)', () => {
     const methods = Array.from(
       { length: 8 },
