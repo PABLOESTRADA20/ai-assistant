@@ -70,10 +70,7 @@ jobs:
           # http://127.0.0.1:8787. El token del agente NUNCA se hornea en el
           # bundle; el navegador lo pide una vez y lo guarda en localStorage.
           NEXT_PUBLIC_ARIA_LOCAL_AGENT: ${{ secrets.NEXT_PUBLIC_ARIA_LOCAL_AGENT }}
-        run: npx opennextjs-cloudflare build
-
-      - name: Patch handler.mjs for native WASM import
-        run: node scripts/patch-opennext-wasm.mjs
+        run: npm run build:worker
 
       - name: Deploy to Workers
         env:

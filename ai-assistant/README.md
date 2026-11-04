@@ -95,6 +95,7 @@ Para **entrenar un adaptador LoRA** sin usar tu PC, en `training/` está el cuad
 | `npm run db:smoke` | Smoke test del sistema de memoria |
 | `npm run db:brain` | Smoke test del cerebro: memoria de trabajo, refuerzo, edición y consolidación |
 | `npm run agent` | Arranca el agente local que abre apps en tu PC (`local-agent/`) |
+| `npm run build:worker` | Build OpenNext + parche WASM (misma base para preview, deploy y CI) |
 | `npm run preview` | Build OpenNext + preview local en workerd |
 | `npm run deploy` | Build OpenNext + deploy a Cloudflare Workers |
 
@@ -350,7 +351,9 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY` y `ARIA_ACCESS_TOKEN` (obligatorio). Opcional: `FIRECRAWL_API_KEY`.
 4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `ARIA_ACCESS_TOKEN` (**obligatorio**: sin él el deploy aborta). Opcionales: `FIRECRAWL_API_KEY`, `ARIA_GITHUB_TOKEN` y `GITHUB_WRITE_ENABLED`.
 
-El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
+El pipeline: `prisma migrate deploy` (Neon) → `npm run build:worker` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
+
+`build:worker` usa `--dangerouslyUseUnsupportedNextVersion` porque OpenNext 1.20.6 todavía no reconoce Next 15.5.28; el build verificado funciona con esa bandera. Cuando OpenNext publique soporte para esta versión, hay que quitarla (y actualizar ambos scripts).
 
 Pruebas locales del mismo entorno: `npm run preview` (Worker en workerd).
 
