@@ -25,7 +25,7 @@ jobs:
         working-directory: ./ai-assistant
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: ARIA_ACCESS_TOKEN es obligatorio (fail-closed)
         env:
