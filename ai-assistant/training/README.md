@@ -6,6 +6,10 @@ computador**: se hace en la GPU gratuita de Kaggle (o Colab).
 ## Qué hay
 
 - `aria-lora-kaggle.ipynb`: el cuaderno de entrenamiento. Se sube a Kaggle y se ejecuta.
+- `../scripts/build-lora-dataset.ts`: genera el JSONL desde la base y el set sintético.
+- `../scripts/lora-seed.ts`: 69 conversaciones sintéticas curadas (71 ejemplos), sin datos
+  personales, para enseñar el estilo de ARIA.
+- `../tests/unit/lora-dataset.test.ts`: tests del generador y del set sintético.
 
 ## Qué entrena (y qué no)
 
@@ -33,6 +37,23 @@ Se cambia con una línea en la celda de "Cargar el modelo base" (`ELEGIDO`).
    ```
 
    Deja el archivo en `data/lora/aria-chat.jsonl` (esa carpeta **no** se sube a git).
+   Por defecto genera **un ejemplo por respuesta del asistente** (con contexto) y suma
+   los ejemplos sintéticos. Al 2026-11-02 salen **15 reales + 71 sintéticos = 86**.
+
+   Opciones útiles:
+
+   ```
+   npm run db:dataset -- --dry                 # solo el informe, no escribe
+   npm run db:dataset -- --no-seed             # solo conversaciones reales
+   npm run db:dataset -- --seed-only           # solo el set sintético
+   npm run db:dataset -- --by-conversation     # una charla = un ejemplo (antiguo)
+   npm run db:dataset -- --with-tools          # incluye trazas de herramientas
+   npm run db:dataset -- --fake                # autoprueba sin base de datos
+   ```
+
+   Revisá el informe: si hay datos personales o secretos, **no entrenes** hasta limpiarlos.
+   El set sintético está versionado y no contiene datos tuyos; el JSONL real sí, y por eso
+   nunca se sube al repositorio.
 
 2. Entrá a https://www.kaggle.com y creá un **Dataset privado** subiendo ese archivo.
    (*Datasets → New Dataset → Private*). No lo hagas público.
@@ -94,8 +115,10 @@ cuaderno guardado y el *Output* de una versión guardada. Para no perder el avan
   explica dónde moverlo.
 - **Privacidad**: `aria-chat.jsonl` tiene tus conversaciones. Mantené el dataset de
   Kaggle **privado** y **nunca** lo subas a un repositorio público de Hugging Face.
-- **Con pocas conversaciones el modelo memoriza** en vez de aprender. Hoy hay muy
-  pocas: sirve para comprobar que el circuito funciona, no para tener un buen modelo.
+- **Con pocos datos reales el modelo memoriza** en vez de aprender. Hoy hay 15 turnos
+  reales + 71 ejemplos sintéticos: alcanza para comprobar el circuito y enseñar estilo,
+  no para un modelo robusto. Los sintéticos **no** sirven como set de evaluación; la
+  comparación final debe hacerse con casos reales que el modelo no haya visto.
 - El adaptador se configura con **rango 8**, que es lo recomendado por Cloudflare (acepta hasta
   32, pero 8 deja el archivo bien por debajo de los 300 MB).
 - La celda de guardado **corrige y verifica** `model_type`, `r`, los nombres exactos de los

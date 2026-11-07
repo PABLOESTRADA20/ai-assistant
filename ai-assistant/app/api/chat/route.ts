@@ -24,6 +24,7 @@ import { getRepos } from '@/app/lib/github'
 import { rateLimit } from '@/app/lib/rate-limit'
 import { registerBackground } from '@/app/lib/background'
 import { toSourceRefs } from '@/app/lib/sources'
+import { contextEvent, modelSwitchEvent, sourcesEvent } from '@/app/lib/chat-events'
 import { openAiDelta, readSseLines } from '@/app/lib/sse'
 import { DEFAULT_CONTEXT_BUDGET, estimateMessagesTokens } from '@/app/lib/tokens'
 import {
@@ -340,39 +341,34 @@ export const POST = withAuth(async (req: NextRequest) => {
             // (DeepSeek -> Groq). `until` permite al cliente mostrar la cuenta
             // regresiva de la cuota.
             if (switchedForTools || switchedForQuota) {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: 'model_switch',
-                    from: requestedModel,
-                    to: model,
-                    reason: switchedForQuota ? 'quota' : 'no_tools',
-                    ...(quotaUntil ? { until: quotaUntil } : {}),
-                  })}\n\n`,
-                ),
-              )
+              const switchEvent = modelSwitchEvent({
+                from: requestedModel,
+                to: model,
+                reason: switchedForQuota ? 'quota' : 'no_tools',
+                until: quotaUntil,
+              })
+              if (switchEvent) controller.enqueue(encoder.encode(switchEvent))
             }
 
             // Indicador de contexto del turno: presupuesto, prompt estimado y
             // compactación (solo lectura; la estimación es local).
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({
-                  type: 'context',
-                  context: { budget: contextBudget, promptTokens, summarizedCount, hasSummary: Boolean(summary) },
-                })}\n\n`,
+                contextEvent({
+                  budget: contextBudget,
+                  promptTokens,
+                  summarizedCount,
+                  hasSummary: Boolean(summary),
+                }),
               ),
             )
 
             // Chips de fuentes: qué recuerdos/notas del cerebro entraron al
             // contexto de esta respuesta. Fuera de `emit` para no sumar al
             // contador de contenido (mismo camino que los eventos tool_call).
-            if (brainHits.length > 0) {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: 'sources', sources: toSourceRefs(brainHits) })}\n\n`,
-                ),
-              )
+            const sources = sourcesEvent(toSourceRefs(brainHits))
+            if (sources) {
+              controller.enqueue(encoder.encode(sources))
             }
 
             const emit = (content: string) => {
@@ -575,36 +571,31 @@ export const POST = withAuth(async (req: NextRequest) => {
 
         // Aviso de auto-cambio por cuota (modo reserva) o por herramientas.
         if (switchedForQuota || switchedForTools) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({
-                type: 'model_switch',
-                from: requestedModel,
-                to: model,
-                reason: switchedForQuota ? 'quota' : 'no_tools',
-                ...(quotaUntil ? { until: quotaUntil } : {}),
-              })}\n\n`,
-            ),
-          )
+          const switchEvent = modelSwitchEvent({
+            from: requestedModel,
+            to: model,
+            reason: switchedForQuota ? 'quota' : 'no_tools',
+            until: quotaUntil,
+          })
+          if (switchEvent) controller.enqueue(encoder.encode(switchEvent))
         }
 
         // Indicador de contexto del turno (simple mode): mismo formato SSE.
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({
-              type: 'context',
-              context: { budget: contextBudget, promptTokens, summarizedCount, hasSummary: Boolean(summary) },
-            })}\n\n`,
+            contextEvent({
+              budget: contextBudget,
+              promptTokens,
+              summarizedCount,
+              hasSummary: Boolean(summary),
+            }),
           ),
         )
 
         // Chips de fuentes (simple mode): mismas fuentes, mismo formato SSE.
-        if (brainHits.length > 0) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: 'sources', sources: toSourceRefs(brainHits) })}\n\n`,
-            ),
-          )
+        const sources = sourcesEvent(toSourceRefs(brainHits))
+        if (sources) {
+          controller.enqueue(encoder.encode(sources))
         }
 
         const drain = async (res: Response): Promise<number> => {

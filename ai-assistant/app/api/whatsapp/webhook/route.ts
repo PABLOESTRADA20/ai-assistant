@@ -3,6 +3,7 @@ import { prisma } from '@/app/lib/prisma'
 import { registerBackground } from '@/app/lib/background'
 import { DEFAULT_MODEL } from '@/app/lib/aria-core'
 import { generateTextReply } from '@/app/lib/aria-reply'
+import { claimWhatsAppMessage } from '@/app/lib/whatsapp-dedupe'
 import {
   allowedNumbers,
   isWhatsAppConfigured,
@@ -11,6 +12,7 @@ import {
   parseIncoming,
   sendWhatsAppText,
   verifyMetaSignature,
+  verifyTokenMatches,
   type IncomingWhatsAppMessage,
 } from '@/app/lib/whatsapp'
 
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
   const challenge = url.searchParams.get('hub.challenge')
   const expected = process.env.WHATSAPP_VERIFY_TOKEN
 
-  if (mode === 'subscribe' && expected && token === expected) {
+  if (mode === 'subscribe' && (await verifyTokenMatches(expected, token))) {
     return new Response(challenge ?? 'OK', { status: 200 })
   }
   return new Response('Forbidden', { status: 403 })
@@ -58,22 +60,23 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const raw = await req.text()
 
-  // Valida la firma si hay app secret configurado.
+  // El app secret es obligatorio: la lista blanca NO autentica, porque el campo
+  // "from" viaja dentro del payload y cualquiera puede falsificarlo. Sin secret
+  // se responde 200 sin procesar nada (Meta no debe reintentar en bucle).
   const appSecret = process.env.WHATSAPP_APP_SECRET
-  if (appSecret) {
-    const valid = await verifyMetaSignature(appSecret, raw, req.headers.get('x-hub-signature-256'))
-    if (!valid) {
-      console.warn('WhatsApp: firma inválida, petición descartada')
-      return new Response('Invalid signature', { status: 401 })
+  if (!appSecret) {
+    if (isWhatsAppConfigured()) {
+      console.error(
+        'WhatsApp: falta WHATSAPP_APP_SECRET. El webhook no procesa mensajes sin firma válida.',
+      )
     }
-  } else if (isWhatsAppConfigured() && !allowedNumbers()) {
-    // Sin app secret Y sin lista blanca, cualquiera podría enviar mensajes
-    // falsos al webhook y gastar la cuota de Groq. Se rechaza el procesamiento.
-    console.error(
-      'WhatsApp: falta WHATSAPP_APP_SECRET y no hay WHATSAPP_ALLOWED_NUMBERS. ' +
-        'Define el app secret (recomendado) o una lista blanca para aceptar mensajes.',
-    )
     return new Response('OK', { status: 200 })
+  }
+
+  const valid = await verifyMetaSignature(appSecret, raw, req.headers.get('x-hub-signature-256'))
+  if (!valid) {
+    console.warn('WhatsApp: firma inválida, petición descartada')
+    return new Response('Invalid signature', { status: 401 })
   }
 
   let payload: unknown
@@ -111,6 +114,13 @@ async function handleMessages(messages: IncomingWhatsAppMessage[]): Promise<void
       const digits = msg.from.replace(/[^\d]/g, '')
       if (allowlist && !allowlist.includes(digits)) {
         console.warn(`WhatsApp: número no autorizado ${digits}`)
+        continue
+      }
+
+      // Meta reintenta el mismo mensaje si el webhook tarda: la clave única
+      // decide de forma atómica cuál es el primer intento.
+      if (!(await claimWhatsAppMessage(msg.messageId))) {
+        console.warn(`WhatsApp: mensaje duplicado ${msg.messageId}`)
         continue
       }
 

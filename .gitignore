@@ -1,0 +1,10 @@
+# Python (scripts de las skills): nunca versionar bytecode ni cachés.
+__pycache__/
+*.py[cod]
+
+# Restos de comprobaciones locales del notebook de LoRA.
+check_nb.js
+
+# Basura del sistema operativo.
+.DS_Store
+Thumbs.db

@@ -95,6 +95,7 @@ Para **entrenar un adaptador LoRA** sin usar tu PC, en `training/` está el cuad
 | `npm run db:smoke` | Smoke test del sistema de memoria |
 | `npm run db:brain` | Smoke test del cerebro: memoria de trabajo, refuerzo, edición y consolidación |
 | `npm run agent` | Arranca el agente local que abre apps en tu PC (`local-agent/`) |
+| `npm run build:worker` | Build OpenNext + parche WASM (misma base para preview, deploy y CI) |
 | `npm run preview` | Build OpenNext + preview local en workerd |
 | `npm run deploy` | Build OpenNext + deploy a Cloudflare Workers |
 
@@ -177,7 +178,7 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `WHATSAPP_TOKEN` | Token permanente de la app de Meta (WhatsApp Cloud API) | para WhatsApp |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business | para WhatsApp |
 | `WHATSAPP_VERIFY_TOKEN` | Cadena inventada por ti para verificar el webhook | para WhatsApp |
-| `WHATSAPP_APP_SECRET` | App secret de Meta, para validar la firma del webhook | recomendada |
+| `WHATSAPP_APP_SECRET` | App secret de Meta, para validar la firma del webhook. **Obligatorio si usas WhatsApp**: sin él no se procesa ningún POST | sí, para WhatsApp |
 | `WHATSAPP_ALLOWED_NUMBERS` | Lista blanca de teléfonos separada por comas | no |
 | `RESEND_API_KEY` | API key de Resend para enviar correo | para correo |
 | `EMAIL_FROM` | Remitente (`ARIA <onboarding@resend.dev>` por defecto) | no |
@@ -301,6 +302,8 @@ ARIA usa la **WhatsApp Cloud API oficial de Meta** (gratis hasta ~1.000 conversa
 
 > La ruta del webhook **no** exige `ARIA_ACCESS_TOKEN` (Meta no puede enviarlo); la autenticidad se garantiza con la firma `X-Hub-Signature-256`. El procesamiento es asíncrono: se responde 200 a Meta al instante y ARIA contesta vía Graph API.
 
+> `WHATSAPP_APP_SECRET` es **obligatorio** para procesar mensajes: sin él el webhook responde 200 sin hacer nada (para que Meta no reintente en bucle). La lista blanca de números solo filtra quién puede escribir; **no autentica**, porque el campo `from` viaja dentro del payload. Los reintentos de Meta se deduplican de forma atómica por `messageId` durante 7 días.
+
 ## Correo
 
 ARIA puede **enviar** correo con [Resend](https://resend.com) (free tier: 3.000/mes, 100/día):
@@ -335,7 +338,7 @@ npm run agent
 #    app y lo guarda en su localStorage.
 ```
 
-El header muestra un indicador verde cuando el agente está conectado. Pide en el chat: *"abre Spotify"*, *"abre VS Code"*, *"abre la carpeta Descargas"*, *"abre la calculadora"*. El agente escucha **solo en `127.0.0.1`** (no en la red), valida el `Origin` y **exige siempre el token** (si no defines `ARIA_LOCAL_TOKEN` lo genera al arrancar y lo imprime). Por defecto solo abre apps de su mapa, rutas existentes y URIs. Con `ARIA_ALLOW_ANY=1` permite cualquier ejecutable.
+El header muestra un indicador verde cuando el agente está conectado. Pide en el chat: *"abre Spotify"*, *"abre VS Code"*, *"abre la carpeta Descargas"*, *"abre la calculadora"*. El agente escucha **solo en `127.0.0.1`** (no en la red), valida el `Origin` y **exige siempre el token** (si no defines `ARIA_LOCAL_TOKEN` lo genera al arrancar y lo imprime). Por defecto solo abre apps de su mapa, rutas existentes **no ejecutables** y URIs de la lista blanca (`http`, `https`, `mailto`, `spotify`, `ms-settings`, `whatsapp`, `tg`, `discord`, `steam`, `vscode`). Nunca abre ejecutables por ruta (`.exe`, `.bat`, `.ps1`, `.lnk`, etc.) ni consolas con argumentos; los argumentos deben ser una URL `http(s)` o una ruta existente no ejecutable, sin caracteres de inyección (`&`, `|`, `<`, `>`, `^`, `%`, `"`, backticks ni saltos de línea). Cada llamada a `open_app` pide confirmación en el navegador con la app y los argumentos exactos. Con `ARIA_ALLOW_ANY=1` se permiten comandos sueltos, pero se mantienen todas las demás reglas.
 
 > El token del agente **nunca** se compila dentro de la web (nada de `NEXT_PUBLIC_*`): si lo pide, el navegador te muestra un diálogo y lo guarda en `localStorage`. Así la versión desplegada también funciona, sin recompilar y sin exponer el secreto a quien abra la app.
 
@@ -348,7 +351,9 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 3. **Secrets de Cloudflare** (se ponen solos en el pipeline): `DATABASE_URL`, `GROQ_API_KEY` y `ARIA_ACCESS_TOKEN` (obligatorio). Opcional: `FIRECRAWL_API_KEY`.
 4. **GitHub secrets** del repo: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `ARIA_ACCESS_TOKEN` (**obligatorio**: sin él el deploy aborta). Opcionales: `FIRECRAWL_API_KEY`, `ARIA_GITHUB_TOKEN` y `GITHUB_WRITE_ENABLED`.
 
-El pipeline: `prisma migrate deploy` (Neon) → `opennextjs-cloudflare build` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
+El pipeline: `prisma migrate deploy` (Neon) → `npm run build:worker` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
+
+`build:worker` usa `--dangerouslyUseUnsupportedNextVersion` porque OpenNext 1.20.6 todavía no reconoce Next 15.5.28; el build verificado funciona con esa bandera. Cuando OpenNext publique soporte para esta versión, hay que quitarla (y actualizar ambos scripts).
 
 Pruebas locales del mismo entorno: `npm run preview` (Worker en workerd).
 

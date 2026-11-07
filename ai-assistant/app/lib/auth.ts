@@ -48,15 +48,13 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0
 }
 
-/** Token de la peticion: cabecera Bearer o cookie `aria_token` de respaldo. */
+/** Token de la peticion: solo `Authorization: Bearer <token>`. */
 function extractToken(req: Request): string | null {
   const header = req.headers.get('authorization') ?? ''
   if (header.toLowerCase().startsWith('bearer ')) {
     return header.slice(7).trim() || null
   }
-  const cookie = req.headers.get('cookie') ?? ''
-  const match = cookie.match(/(?:^|;\s*)aria_token=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : null
+  return null
 }
 
 /** True si la peticion puede pasar. Sin token configurado, solo en dev/tests. */

@@ -1,6 +1,13 @@
 import { GROQ, type Provider } from '@/app/lib/providers'
 import type { MemoryUpdate } from '@/app/lib/memory'
 import { markGroqQuota, nextMidnightUtc, parseResetWindow, untilFromError } from '@/app/lib/quota'
+import {
+  estimateMessagesTokens,
+  estimateToolDefinitionsTokens,
+  fitOutputTokens,
+  GROQ_FREE_TPM,
+  trimMessagesToBudget,
+} from '@/app/lib/tokens'
 import { sliceWindow, stubToolResult } from '@/app/lib/truncate'
 
 const GROQ_API = GROQ.apiUrl!
@@ -1735,6 +1742,26 @@ export interface ToolCallRecord {
   status: 'done' | 'error'
 }
 
+/**
+ * Presupuesto de ENTRADA del turno con herramientas.
+ *
+ * El TPM free de Groq (8000) se comparte entre todas las peticiones del turno:
+ * la ronda que decide la herramienta, la que recibe el resultado y el stream
+ * final. Si el prompt roza el límite, el stream final recibe 429 aunque la
+ * herramienta ya haya funcionado. Por eso el contexto se recorta antes de
+ * empezar a un valor que deje aire para las rondas y para la respuesta.
+ */
+export const TOOL_INPUT_BUDGET = 4000
+/** Suelo del recorte: por debajo de esto ni el sistema ni la pregunta caben. */
+export const TOOL_MIN_INPUT_BUDGET = 1200
+/**
+ * Tope de salida de una ronda intermedia. Solo tiene que emitir el nombre de la
+ * herramienta y sus argumentos, no la respuesta final.
+ */
+export const TOOL_ROUND_MAX_TOKENS = 1024
+/** Suelo de salida para no pedir una respuesta vacía cuando queda poca cuota. */
+export const TOOL_MIN_OUTPUT_TOKENS = 512
+
 export async function callGroqWithTools(
   apiKey: string,
   messages: { role: string; content: string }[],
@@ -1758,9 +1785,19 @@ export async function callGroqWithTools(
   // haría que Groq rechace el request entero. En ese caso se decide en 'auto'.
   const canForceSearch = toolDefinitions.some((t) => t.function.name === 'web_search')
 
-  const finalMessages: GroqMessage[] = [...messages]
+  // Los esquemas de herramientas también ocupan prompt. Se descuentan del
+  // presupuesto antes de recortar el historial, porque si no el turno entra
+  // justo en el TPM y la ronda final ya no tiene aire.
+  const toolTokens = estimateToolDefinitionsTokens(toolDefinitions)
+  const inputBudget = Math.max(TOOL_MIN_INPUT_BUDGET, TOOL_INPUT_BUDGET - toolTokens)
+  const finalMessages: GroqMessage[] =
+    provider.id === 'groq' ? trimMessagesToBudget(messages, inputBudget) : [...messages]
   const toolCalls: ToolCallRecord[] = []
   let toolCallCount = 0
+  /** Tokens realmente consumidos por las rondas no-stream de este turno. */
+  let usedTokens = 0
+  /** true si se cortó una ronda para no agotar el TPM antes del stream final. */
+  let stoppedForBudget = false
   /**
    * Rondas máximas de herramientas.
    *
@@ -1810,6 +1847,27 @@ export async function callGroqWithTools(
   const seenCalls = new Set<string>()
 
   while (toolCallCount < MAX_TOOL_ROUNDS) {
+    const promptTokens = estimateMessagesTokens(finalMessages) + toolTokens
+    const roundMaxTokens =
+      provider.id === 'groq'
+        ? fitOutputTokens({
+            promptTokens,
+            usedTokens,
+            desired: Math.min(maxTokens, TOOL_ROUND_MAX_TOKENS),
+            min: Math.min(TOOL_MIN_OUTPUT_TOKENS, maxTokens),
+          })
+        : Math.min(maxTokens, TOOL_ROUND_MAX_TOKENS)
+
+    // Si ya no queda espacio ni para una ronda mínima, otra petición solo
+    // serviría para recibir un 429. Se pasa a redactar con lo reunido.
+    if (provider.id === 'groq' && usedTokens > 0 && roundMaxTokens <= TOOL_MIN_OUTPUT_TOKENS) {
+      stoppedForBudget = true
+      console.warn(
+        `Presupuesto de tokens agotado (${usedTokens} usados, prompt ${promptTokens}); se corta para redactar`,
+      )
+      break
+    }
+
     const body = {
       model,
       messages: finalMessages,
@@ -1818,7 +1876,7 @@ export async function callGroqWithTools(
         ? ('auto' as const)
         : ({ type: 'function', function: { name: 'web_search' } } as const),
       stream: false,
-      max_tokens: maxTokens,
+      max_tokens: roundMaxTokens,
       temperature,
     }
 
@@ -1838,6 +1896,9 @@ export async function callGroqWithTools(
     }
 
     const data = await res.json()
+    const usageTotal = Number(data?.usage?.total_tokens)
+    if (Number.isFinite(usageTotal) && usageTotal > 0) usedTokens += usageTotal
+
     const choice = data.choices?.[0]
     const msg = choice?.message
 
@@ -1923,9 +1984,13 @@ export async function callGroqWithTools(
   // Va como `user` y no como `system`: los modelos `gpt-oss-*` viven en formato
   // harmony y no aplican un `system` inyectado a mitad del historial, con lo que
   // el aviso se pierde y el stream vuelve a cerrarse vacio.
-  const hitRoundLimit = toolCallCount >= MAX_TOOL_ROUNDS
+  const hitRoundLimit = toolCallCount >= MAX_TOOL_ROUNDS || stoppedForBudget
   if (hitRoundLimit) {
-    console.warn(`Limite de ${MAX_TOOL_ROUNDS} rondas de herramientas alcanzado, forzando respuesta`)
+    console.warn(
+      stoppedForBudget
+        ? 'Presupuesto de tokens agotado; se fuerza la respuesta con lo reunido'
+        : `Limite de ${MAX_TOOL_ROUNDS} rondas de herramientas alcanzado, forzando respuesta`,
+    )
     finalMessages.push({
       role: 'user',
       content:
@@ -1935,11 +2000,24 @@ export async function callGroqWithTools(
     })
   }
 
+  // El stream final comparte el TPM con las rondas anteriores. Se le da el
+  // máximo que quepa, no el `max_tokens` nominal del modelo.
+  const finalPromptTokens = estimateMessagesTokens(finalMessages)
+  const finalMaxTokens =
+    provider.id === 'groq'
+      ? fitOutputTokens({
+          promptTokens: finalPromptTokens,
+          usedTokens,
+          desired: maxTokens,
+          min: Math.min(TOOL_MIN_OUTPUT_TOKENS, maxTokens),
+        })
+      : maxTokens
+
   const streamRes = await groqFetch(apiKey, {
     model,
     messages: finalMessages,
     stream: true,
-    max_tokens: maxTokens,
+    max_tokens: finalMaxTokens,
     temperature,
   }, 3, provider)
 

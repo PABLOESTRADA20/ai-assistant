@@ -256,6 +256,19 @@ export default function Home() {
     const app = typeof tool.args.app === 'string' ? tool.args.app : ''
     const target = typeof tool.args.args === 'string' ? tool.args.args : undefined
 
+    // `open_app` puede abrir cualquier cosa en el PC: el usuario autoriza cada
+    // llamada viendo la app y los argumentos exactos que propone el modelo.
+    if (typeof window !== 'undefined') {
+      const argsLabel = target === undefined ? 'sin argumentos' : `argumentos: ${JSON.stringify(target)}`
+      const approved = window.confirm(`¿Autorizas abrir "${app}"?\n\n${argsLabel}`)
+      if (!approved) {
+        tool.result = 'El usuario no autorizó abrir esta aplicación.'
+        tool.status = 'error'
+        setStreamingTools([...events])
+        return
+      }
+    }
+
     let result = await openAppLocally(app, target)
 
     // El agente pide un token que la app aún no tiene: se lo pedimos una vez y

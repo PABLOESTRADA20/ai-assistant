@@ -151,14 +151,41 @@ export function hashContent(text: string): string {
   return `${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`
 }
 
+/** Posición de la barra que cierra un regex literal, o null si no lo es. */
+function regexEnd(line: string, start: number): number | null {
+  let i = start + 1
+  let inClass = false
+
+  while (i < line.length) {
+    const c = line[i]
+    if (c === '\\') { i += 2; continue }
+    if (c === '[') inClass = true
+    else if (c === ']') inClass = false
+    else if (c === '/' && !inClass) return i
+    i++
+  }
+  return null
+}
+
 /**
- * Braces de una línea ignorando cadenas y comentarios.
+ * Heurística para distinguir un regex literal de una división. No pretende ser
+ * perfecta: cubre los casos normales (`/.../` tras operador, `return`, etc.).
+ */
+function startsRegex(line: string, slash: number): boolean {
+  let i = slash - 1
+  while (i >= 0 && /\s/.test(line[i])) i--
+  if (i < 0) return true
+  if ('([{=,:;!&|?+-*%^~<>'.includes(line[i])) return true
+  const head = line.slice(0, i + 1)
+  return /(?:^|[^\w$])(?:return|case|throw|typeof|instanceof|in|of|delete|void|new|yield|await)$/.test(head)
+}
+
+/**
+ * Braces de una línea ignorando cadenas, comentarios y regex literales.
  *
- * Sin esto, `{` dentro de un string o de un comentario desalineaba la
- * profundidad y los troces salían en el lugar equivocado. No pretende ser un
- * parser: los regex literales con llaves y las plantillas multilínea con llaves
- * desbalanceadas siguen siendo puntos ciegos conocidos y aceptados (como mucho
- * parten un trozo de más, nunca pierden código).
+ * Sin esto, `{` dentro de un string, comentario o regex desalineaba la
+ * profundidad y los trozos salían en el lugar equivocado. Las plantillas
+ * multilínea con llaves desbalanceadas siguen siendo un punto ciego conocido.
  */
 function braceDelta(line: string): number {
   let delta = 0
@@ -184,6 +211,10 @@ function braceDelta(line: string): number {
         const end = line.indexOf('*/', i + 2)
         i = end === -1 ? line.length : end + 2
         continue
+      }
+      if (startsRegex(line, i)) {
+        const end = regexEnd(line, i)
+        if (end !== null) { i = end + 1; continue }
       }
     }
 

@@ -46,10 +46,37 @@ describe('isAuthorized', () => {
     expect(isAuthorized(req())).toBe(false)
   })
 
-  it('acepta la cookie aria_token de respaldo', () => {
+  it('la cookie aria_token ya no autoriza', () => {
     process.env.ARIA_ACCESS_TOKEN = 'super-secreta'
-    expect(isAuthorized(req({ cookie: 'aria_token=super-secreta' }))).toBe(true)
-    expect(isAuthorized(req({ cookie: 'aria_token=mala' }))).toBe(false)
+    expect(isAuthorized(req({ cookie: 'aria_token=super-secreta' }))).toBe(false)
+  })
+
+  it('una cookie mal formada devuelve 401 sin lanzar excepción', () => {
+    process.env.ARIA_ACCESS_TOKEN = 'super-secreta'
+    const malformed = req({ cookie: 'aria_token=%E0%A4%A' })
+
+    expect(() => isAuthorized(malformed)).not.toThrow()
+    expect(isAuthorized(malformed)).toBe(false)
+    expect(requireAuth(malformed)!.status).toBe(401)
+  })
+
+  it('el Bearer funciona aunque haya una cookie basura', () => {
+    process.env.ARIA_ACCESS_TOKEN = 'super-secreta'
+    expect(
+      isAuthorized(
+        req({
+          authorization: 'Bearer super-secreta',
+          cookie: 'basura=1; aria_token=%E0%A4%A',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('rechaza Bearer vacío y esquemas distintos de Bearer', () => {
+    process.env.ARIA_ACCESS_TOKEN = 'super-secreta'
+    expect(isAuthorized(req({ authorization: 'Bearer ' }))).toBe(false)
+    expect(isAuthorized(req({ authorization: 'Bearer' }))).toBe(false)
+    expect(isAuthorized(req({ authorization: 'Basic super-secreta' }))).toBe(false)
   })
 })
 

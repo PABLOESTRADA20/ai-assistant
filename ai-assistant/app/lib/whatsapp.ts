@@ -14,8 +14,10 @@
  *   WHATSAPP_APP_SECRET       app secret, para validar la firma X-Hub-Signature-256
  *   WHATSAPP_ALLOWED_NUMBERS  (opcional) lista blanca de números separada por comas
  *
- * Sin los tres primeros, `isWhatsAppConfigured()` devuelve false y el webhook
- * responde 200 sin hacer nada (para que Meta no reintente en bucle).
+ * `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID` determinan si la integración
+ * está configurada. `WHATSAPP_APP_SECRET` es obligatorio para procesar POST:
+ * sin él, el webhook responde 200 sin hacer nada (para que Meta no reintente en
+ * bucle) y la lista blanca no sustituye la firma.
  */
 
 const GRAPH_VERSION = 'v21.0'
@@ -93,6 +95,27 @@ function safeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let diff = 0
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+async function sha256(value: string): Promise<Uint8Array> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return new Uint8Array(digest)
+}
+
+/**
+ * Compara el verify token del GET en tiempo constante. Se hashean ambos lados
+ * para que la comparación no dependa de la longitud ni del primer byte distinto.
+ * Si falta cualquiera de los dos, falla cerrado.
+ */
+export async function verifyTokenMatches(
+  expected: string | null | undefined,
+  provided: string | null | undefined,
+): Promise<boolean> {
+  if (!expected || !provided) return false
+  const [a, b] = await Promise.all([sha256(expected), sha256(provided)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
   return diff === 0
 }
 
