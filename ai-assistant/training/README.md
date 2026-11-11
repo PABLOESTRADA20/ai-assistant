@@ -66,6 +66,7 @@ Se cambia con una línea en la celda de "Cargar el modelo base" (`ELEGIDO`).
    - **Accelerator**: `GPU T4 x2` (o P100).
 
 5. Ejecutá las celdas de arriba hacia abajo. Al final te queda `aria-lora.zip` para bajar.
+   La celda de instalación **no toca** el PyTorch con CUDA que ya trae Kaggle.
 6. Hacé **Save Version → Save & Run All** para que el `.zip` quede en el *Output* del cuaderno.
 
 ## Subir el adaptador a Cloudflare
@@ -106,6 +107,24 @@ cuaderno guardado y el *Output* de una versión guardada. Para no perder el avan
 - Al reabrir, ejecutá instalación (si el kernel es nuevo), datos, modelo y LoRA; la celda de
   entrenamiento **reanuda sola** si encuentra `salida/checkpoint-*`.
 - Subí el `aria-lora.zip` como **dataset privado** para conservar el adaptador entre reinicios.
+
+## Si `torch` aparece roto en Kaggle
+
+Si ves `AttributeError: module 'torch' has no attribute 'cuda'` (o `Tensor`, `library`),
+la sesión quedó con una instalación a medias. **No desinstales ni reinstales PyTorch** en
+Kaggle: la imagen ya trae una build CUDA compatible y al reemplazarla se rompen `peft`,
+`bitsandbytes` y `unsloth`.
+
+El cuaderno actual ya lo evita:
+
+- no ejecuta `pip uninstall torch...`;
+- instala `unsloth==2026.11.4` y `unsloth_zoo==2026.11.4`, que resuelven `transformers`/`trl`
+  compatibles (el `trl==0.15.2` anterior ya no sirve para Unsloth);
+- importa `unsloth` antes que `transformers`/`trl`;
+- falla con un mensaje claro si `torch` no tiene CUDA.
+
+Para recuperar una sesión ya rota: **Factory reset** o abrí una sesión nueva, volvé a subir el
+cuaderno corregido y ejecutá desde la celda de instalación. No sigas en la sesión rota.
 
 ## Avisos importantes
 
