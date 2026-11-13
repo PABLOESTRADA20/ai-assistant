@@ -98,6 +98,37 @@ Notas de la API: la ruta de subida es `/finetunes/{id}/finetune-assets` **sin ba
 (con barra devuelve 404) y Cloudflare **no permite reescribir** un finetune: si el nombre ya
 existe, hay que borrarlo o usar otro.
 
+## Evaluación y decisión (2026-11-13)
+
+El entrenamiento se ejecutó de punta a punta en Kaggle con los 86 ejemplos. El adaptador
+`aria-v1` se subió a Cloudflare y se evaluó con **24 casos nuevos**, no usados en
+entrenamiento, en dos condiciones: el system prompt corto de entrenamiento y el
+`SYSTEM_PROMPT` largo de producción.
+
+| Condición | Gana base | Gana LoRA | Empates |
+|---|---:|---:|---:|
+| Prompt de entrenamiento | 16 | 7 | 1 |
+| Prompt de producción | 11 | 9 | 4 |
+
+Puntajes promedio (1–5), base / LoRA:
+
+| Criterio | Entrenamiento | Producción |
+|---|---:|---:|
+| Corrección | 2,63 / 1,88 | 2,50 / 2,21 |
+| Completitud | 3,21 / 2,13 | 3,08 / 2,54 |
+| Claridad | 3,71 / 2,67 | 3,33 / 3,29 |
+| Criterio | 2,71 / 1,96 | 2,58 / 2,17 |
+| Formato | 4,13 / 3,21 | 4,04 / 3,71 |
+
+El LoRA aprendió a ser más breve, pero perdió corrección y completitud. Además, 8 respuestas
+mostraron repetición degenerada (hasta 8 líneas iguales) y un caso entró en bucle. A
+temperatura 0,7 la repetición baja, pero no desaparece.
+
+**Decisión:** no se integra. Con 86 ejemplos, `r=8` y 3 épocas el adaptador sobreajusta y no
+supera a la base. El finetune `aria-v1` se borró de Cloudflare después de la evaluación. Para
+reintentar haría falta un dataset mucho mayor (cientos o miles de ejemplos), separar un set
+held-out y usar early stopping.
+
 ## Si Kaggle se reinicia
 
 Kaggle borra `/kaggle/working` al reiniciar o expirar la sesión. Lo que sobrevive es el
@@ -128,16 +159,18 @@ cuaderno corregido y ejecutá desde la celda de instalación. No sigas en la ses
 
 ## Avisos importantes
 
-- **El entrenamiento aún no se ejecutó de punta a punta.** La subida y la inferencia sí están
-  probadas en vivo (2026-10-30), pero las librerías (`unsloth`, `trl`, `peft`) cambian de
-  versión seguido. Si una celda falla por el nombre de un parámetro, el propio cuaderno
-  explica dónde moverlo.
+- **El entrenamiento se ejecutó de punta a punta (2026-11-13)** y el adaptador se evaluó; el
+  resultado fue negativo y se descartó (ver "Evaluación y decisión"). La subida y la
+  inferencia ya estaban probadas en vivo (2026-10-30). Las librerías (`unsloth`, `trl`,
+  `peft`) cambian de versión seguido; si una celda falla por el nombre de un parámetro, el
+  propio cuaderno explica dónde moverlo.
 - **Privacidad**: `aria-chat.jsonl` tiene tus conversaciones. Mantené el dataset de
   Kaggle **privado** y **nunca** lo subas a un repositorio público de Hugging Face.
 - **Con pocos datos reales el modelo memoriza** en vez de aprender. Hoy hay 15 turnos
   reales + 71 ejemplos sintéticos: alcanza para comprobar el circuito y enseñar estilo,
   no para un modelo robusto. Los sintéticos **no** sirven como set de evaluación; la
-  comparación final debe hacerse con casos reales que el modelo no haya visto.
+  comparación final debe hacerse con casos reales que el modelo no haya visto. La evaluación
+  del 2026-11-13 confirmó que 86 ejemplos no alcanzan para un adaptador que supere a la base.
 - El adaptador se configura con **rango 8**, que es lo recomendado por Cloudflare (acepta hasta
   32, pero 8 deja el archivo bien por debajo de los 300 MB).
 - La celda de guardado **corrige y verifica** `model_type`, `r`, los nombres exactos de los
