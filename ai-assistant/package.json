@@ -28,6 +28,7 @@
     "tokens:measure": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/measure-tokens.ts",
     "eval:retrieval": "node --import ./scripts/wasm-module-hook.mjs --import tsx --import ./scripts/register-pg-adapter.mjs scripts/retrieval-eval.ts",
     "agent": "node local-agent/aria-local-agent.mjs",
+    "pilot:demo": "node --import tsx scripts/pilot-demo.ts",
     "icons": "node scripts/generate-icons.mjs",
     "lint": "next lint",
     "build:worker": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && node scripts/patch-opennext-wasm.mjs",

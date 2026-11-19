@@ -129,6 +129,22 @@ supera a la base. El finetune `aria-v1` se borró de Cloudflare después de la e
 reintentar haría falta un dataset mucho mayor (cientos o miles de ejemplos), separar un set
 held-out y usar early stopping.
 
+## Piloto de aplicación (2026-11-19)
+
+Antes de volver a entrenar, el repo incluye un piloto local para producir señal medible:
+
+```
+npm run pilot:demo
+```
+
+Toma el `git diff` de la working tree, construye los prompts con el `SYSTEM_PROMPT` de
+producción, usa un completor determinista (**sin red**) y guarda las trazas en
+`data/traces/pilot.jsonl` (ignorado por git). Las dos aplicaciones son **proponer un test
+unitario** y **resumir un PR**, con veredicto `needs-review` para revisión humana.
+
+No despliega, no consulta la BD y no reabre la Fase 6. Es el primer paso del volante
+aplicación → trazas → evaluación → escala.
+
 ## Si Kaggle se reinicia
 
 Kaggle borra `/kaggle/working` al reiniciar o expirar la sesión. Lo que sobrevive es el
