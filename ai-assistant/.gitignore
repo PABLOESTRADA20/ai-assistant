@@ -53,3 +53,6 @@ next-env.d.ts
 
 # conjunto de datos de entrenamiento (FASE 6): datos personales, NUNCA al repo
 /data/lora/
+
+# trazas del piloto de modelo chico: pueden contener texto real anonimizado
+/data/traces/
