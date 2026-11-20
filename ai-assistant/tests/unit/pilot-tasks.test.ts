@@ -22,6 +22,7 @@ describe('buildTestGenerationPrompt', () => {
     expect(prompt).toContain(SYSTEM)
     expect(prompt).toContain('vi.mock')
     expect(prompt).toContain('tests/unit/')
+    expect(prompt).toContain('El path debe ser NUEVO')
     expect(prompt).toContain('Máximo 40 líneas')
     expect(prompt).toContain('app/lib/nuevo.ts')
     expect(prompt).toContain('tests/unit/viejo.test.ts')

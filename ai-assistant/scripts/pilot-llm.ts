@@ -48,6 +48,10 @@ async function main(): Promise<void> {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
+  const existingTests = git(['ls-files', 'tests/unit/*.test.ts'])
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
 
   mkdirSync(dirname(OUT), { recursive: true })
   const result = await runPilot({
@@ -56,6 +60,7 @@ async function main(): Promise<void> {
     commits,
     systemPrompt: SYSTEM_PROMPT,
     repo: 'PABLOESTRADA20/ai-assistant',
+    existingTests,
     complete: (prompt) =>
       completeWithGroq(prompt, {
         apiKey,
