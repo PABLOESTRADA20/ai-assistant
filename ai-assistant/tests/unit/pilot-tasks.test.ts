@@ -22,6 +22,7 @@ describe('buildTestGenerationPrompt', () => {
     expect(prompt).toContain(SYSTEM)
     expect(prompt).toContain('vi.mock')
     expect(prompt).toContain('tests/unit/')
+    expect(prompt).toContain('Máximo 40 líneas')
     expect(prompt).toContain('app/lib/nuevo.ts')
     expect(prompt).toContain('tests/unit/viejo.test.ts')
     expect(prompt).toContain('+ const nueva = 1')
@@ -34,10 +35,10 @@ describe('buildTestGenerationPrompt', () => {
       changedFiles: [],
     })
 
-    expect(prompt).toContain('S'.repeat(6_000))
-    expect(prompt).not.toContain('S'.repeat(6_001))
-    expect(prompt).toContain('D'.repeat(12_000))
-    expect(prompt).not.toContain('D'.repeat(12_001))
+    expect(prompt).toContain('S'.repeat(1_500))
+    expect(prompt).not.toContain('S'.repeat(1_501))
+    expect(prompt).toContain('D'.repeat(4_000))
+    expect(prompt).not.toContain('D'.repeat(4_001))
   })
 })
 

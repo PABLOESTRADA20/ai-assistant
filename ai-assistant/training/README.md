@@ -129,21 +129,39 @@ supera a la base. El finetune `aria-v1` se borró de Cloudflare después de la e
 reintentar haría falta un dataset mucho mayor (cientos o miles de ejemplos), separar un set
 held-out y usar early stopping.
 
-## Piloto de aplicación (2026-11-19)
+## Piloto de aplicación (2026-11-19/20)
 
-Antes de volver a entrenar, el repo incluye un piloto local para producir señal medible:
+Antes de volver a entrenar, el repo incluye un piloto para producir señal medible.
+
+Prueba sin red:
 
 ```
 npm run pilot:demo
 ```
 
-Toma el `git diff` de la working tree, construye los prompts con el `SYSTEM_PROMPT` de
-producción, usa un completor determinista (**sin red**) y guarda las trazas en
-`data/traces/pilot.jsonl` (ignorado por git). Las dos aplicaciones son **proponer un test
-unitario** y **resumir un PR**, con veredicto `needs-review` para revisión humana.
+Modo real con Groq (**opt-in**, requiere `GROQ_API_KEY` en `.env.local`):
 
-No despliega, no consulta la BD y no reabre la Fase 6. Es el primer paso del volante
-aplicación → trazas → evaluación → escala.
+```
+npm run pilot:llm -- --live
+npm run pilot:llm -- --live --model=qwen/qwen3.8-27b --max-tokens=900 --verdict=ci-passed --score=4
+```
+
+Si un modelo intenta llamar herramientas sin que se le declaren (pasó con `gpt-oss-20b`), usá
+`qwen/qwen3.8-27b`. El prompt recorta el system prompt a 1.500 caracteres y el diff a 4.000
+para entrar en el límite de tokens por minuto del free tier; el tope de salida se ajusta con
+`--max-tokens=` (900 funcionó en la ejecución real del 2026-11-20, que guardó 2 trazas con
+veredicto `needs-review`).
+
+Ambos toman el `git diff` de la working tree, construyen los prompts con el
+`SYSTEM_PROMPT` de producción, anonimizan el diff con `scrubText` **antes** de enviarlo y
+guardan las trazas en `data/traces/pilot.jsonl` (ignorado por git). Las dos aplicaciones son
+**proponer un test unitario** y **resumir un PR**. El veredicto por defecto es
+`needs-review`; con `--verdict=` se registra el resultado real (por ejemplo `ci-passed`) y
+con `--score=` una nota opcional.
+
+El modo real envía el diff anonimizado a Groq: revisá el cambio antes de correrlo. No
+despliega, no consulta la BD, no imprime la clave y no reabre la Fase 6. Es el primer paso
+del volante aplicación → trazas → evaluación → escala.
 
 ## Si Kaggle se reinicia
 

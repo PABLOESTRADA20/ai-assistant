@@ -22,6 +22,15 @@ export type PilotVerdict =
   | 'ci-passed'
   | 'ci-failed'
 
+/** Valores admitidos para el veredicto del piloto. */
+export const PILOT_VERDICTS: readonly PilotVerdict[] = [
+  'accepted',
+  'rejected',
+  'needs-review',
+  'ci-passed',
+  'ci-failed',
+] as const
+
 export interface PilotToolTrace {
   name: string
   args?: unknown
@@ -37,6 +46,9 @@ export interface PilotTraceInput {
   score?: number
   repo?: string
   meta?: Record<string, unknown>
+  /** Anonimizaciones hechas antes de construir el prompt (p. ej. antes de enviar a Groq). */
+  extraRedactions?: number
+  extraByKind?: Partial<Record<ScrubKind, number>>
   now?: () => Date
 }
 
@@ -132,6 +144,9 @@ export function createTraceLogger(sink: TraceSink) {
         mergeCounts(byKind, clean.byKind)
         return clean.value
       }
+
+      redactions += input.extraRedactions ?? 0
+      mergeCounts(byKind, input.extraByKind ?? {})
 
       const prompt = take(scrubString(input.prompt))
       const output = take(scrubString(input.output))

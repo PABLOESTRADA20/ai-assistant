@@ -9,8 +9,8 @@
 import type { PilotTaskName } from '@/app/lib/pilot-traces'
 import { sliceWindow } from '@/app/lib/truncate'
 
-const DIFF_CHARS = 12_000
-const PROMPT_CHARS = 6_000
+const DIFF_CHARS = 4_000
+const PROMPT_CHARS = 1_500
 
 export interface TestGenerationInput {
   diff: string
@@ -55,6 +55,7 @@ export function buildTestGenerationPrompt(input: TestGenerationInput): string {
     'TAREA: propón UN archivo nuevo de tests unitarios para el cambio mostrado.',
     'Reglas: Vitest; usa vi.mock si el módulo tiene efectos; sin red, sin BD real, sin secretos.',
     'El archivo debe vivir en tests/unit/ y terminar en .test.ts.',
+    'Máximo 40 líneas; cierra siempre el bloque ```. No expliques el código fuera del formato.',
     'Devuelve exactamente este formato, sin texto adicional:',
     'ARCHIVO: tests/unit/ejemplo.test.ts',
     '```ts',
