@@ -29,6 +29,14 @@ describe('configuración del piloto', () => {
     expect(script).not.toContain('build:worker')
   })
 
+  it('expone el evaluador sin incluir deploy', () => {
+    const script = packageJson.scripts['pilot:eval']
+    expect(script).toBeDefined()
+    expect(script).toContain('scripts/pilot-eval.ts')
+    expect(script).not.toContain('deploy')
+    expect(script).not.toContain('build:worker')
+  })
+
   it('ignora las trazas para que no se suban al repo', () => {
     expect(gitignore).toContain('/data/traces/')
   })

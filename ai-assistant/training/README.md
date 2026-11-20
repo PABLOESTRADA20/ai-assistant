@@ -149,7 +149,7 @@ npm run pilot:llm -- --live --model=qwen/qwen3.8-27b --max-tokens=900 --verdict=
 Si un modelo intenta llamar herramientas sin que se le declaren (pasó con `gpt-oss-20b`), usá
 `qwen/qwen3.8-27b`. El prompt recorta el system prompt a 1.500 caracteres y el diff a 4.000
 para entrar en el límite de tokens por minuto del free tier; el tope de salida se ajusta con
-`--max-tokens=` (900 funcionó en la ejecución real del 2026-11-20, que guardó 2 trazas con
+`--max-tokens=` (900 funcionó en la ejecución real del 2026-11-20, que guardó trazas con
 veredicto `needs-review`).
 
 Ambos toman el `git diff` de la working tree, construyen los prompts con el
@@ -162,6 +162,25 @@ con `--score=` una nota opcional.
 El modo real envía el diff anonimizado a Groq: revisá el cambio antes de correrlo. No
 despliega, no consulta la BD, no imprime la clave y no reabre la Fase 6. Es el primer paso
 del volante aplicación → trazas → evaluación → escala.
+
+### Evaluación de las trazas
+
+```
+npm run pilot:eval            # solo trazas del modo LLM
+npm run pilot:eval -- --all   # incluye el demo determinista
+```
+
+`pilot:eval` aplica una rúbrica de 0-5 (seguridad, import de Vitest, aserciones, path nuevo y
+referencia a los archivos cambiados), ejecuta los tests propuestos en un **worktree temporal**
+creado desde `HEAD` y guarda los veredictos en `data/traces/eval.jsonl` (ignorado). Antes de
+ejecutar descarta código con red, BD, procesos o secretos. El worktree apunta al subdirectorio
+`ai-assistant/` del repo para que el alias `@/` y `vitest.config.ts` se resuelvan igual que en
+el proyecto real.
+
+Primera corrida (2026-11-20): 4 trazas, 1 `ci-passed` (resumen de PR) y 3 `ci-failed` (dos
+tests proponían paths que ya existen y el tercero asumía que `PILOT_VERDICTS` estaba congelado
+en runtime). Esa es la señal que faltaba: con veredictos ya se puede decidir qué aplicación
+ampliar y cuándo construir un dataset con held-out.
 
 ## Si Kaggle se reinicia
 

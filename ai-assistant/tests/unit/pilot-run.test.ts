@@ -75,7 +75,9 @@ describe('runPilot', () => {
       expect(trace.output).not.toContain('ana@ejemplo.com')
     }
     expect(traces[0].meta.proposalPath).toBe('tests/unit/generado.test.ts')
+    expect(traces[0].meta.changedFiles).toEqual(['app/lib/nuevo.ts'])
     expect(traces[1].meta.proposalTitle).toBe('Cambio verificado por CI')
+    expect(traces[1].meta.changedFiles).toEqual(['app/lib/nuevo.ts'])
   })
 
   it('si el completor devuelve basura, lanza y no guarda trazas', async () => {

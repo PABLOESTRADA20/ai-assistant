@@ -73,6 +73,25 @@ export interface TraceSink {
   append(line: string): void
 }
 
+export type PilotEvalVerdict = 'ci-passed' | 'ci-failed' | 'needs-review'
+
+/** Evaluación de una traza; se guarda aparte para no mutar la traza original. */
+export interface PilotEvalRecord {
+  id: string
+  traceId: string
+  task: PilotTaskName
+  verdict: PilotEvalVerdict
+  score: number
+  reasons: string[]
+  details: string | null
+  ts: string
+}
+
+/** Destino de las evaluaciones (JSONL separado de las trazas). */
+export interface EvalSink {
+  append(line: string): void
+}
+
 const MAX_FIELD_CHARS = 20_000
 
 type Scrubbed<T> = {

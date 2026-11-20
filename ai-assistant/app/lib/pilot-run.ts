@@ -19,6 +19,7 @@ export interface PilotRunInput {
   commits: string[]
   systemPrompt: string
   repo: string
+  existingTests?: string[]
   complete: (prompt: string, task: PilotTaskName) => string | Promise<string>
   sink: TraceSink
   verdict?: PilotVerdict
@@ -75,6 +76,7 @@ export async function runPilot(input: PilotRunInput): Promise<PilotRunResult> {
     diff: diff.text,
     changedFiles: changedFiles.map((item) => item.text),
     systemPrompt: systemPrompt.text,
+    existingTests: input.existingTests,
   })
   const testOutput = await input.complete(testPrompt, 'test-generation')
   const testProposal = parseTestProposal(testOutput)
@@ -96,7 +98,7 @@ export async function runPilot(input: PilotRunInput): Promise<PilotRunResult> {
     extraByKind: testCounts.byKind,
     meta: {
       ...(input.meta ?? {}),
-      changedFiles: changedFiles.length,
+      changedFiles: changedFiles.map((item) => item.text),
       proposalPath: testProposal.path,
       notes: testProposal.notes,
     },
@@ -124,7 +126,11 @@ export async function runPilot(input: PilotRunInput): Promise<PilotRunResult> {
     repo: repo.text,
     extraRedactions: prCounts.redactions,
     extraByKind: prCounts.byKind,
-    meta: { ...(input.meta ?? {}), proposalTitle: prProposal.title },
+    meta: {
+      ...(input.meta ?? {}),
+      proposalTitle: prProposal.title,
+      changedFiles: changedFiles.map((item) => item.text),
+    },
   })
 
   return {

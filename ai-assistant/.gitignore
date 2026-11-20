@@ -56,3 +56,6 @@ next-env.d.ts
 
 # trazas del piloto de modelo chico: pueden contener texto real anonimizado
 /data/traces/
+
+# worktrees temporales del evaluador del piloto
+/.tmp/
