@@ -13,10 +13,18 @@ const packageJson = JSON.parse(
 const gitignore = readFileSync(path.join(appRoot, '.gitignore'), 'utf8')
 
 describe('configuración del piloto', () => {
-  it('expone un script local que no llama a build ni a deploy', () => {
+  it('expone un demo local que no llama a build ni a deploy', () => {
     const script = packageJson.scripts['pilot:demo']
     expect(script).toBeDefined()
     expect(script).toContain('scripts/pilot-demo.ts')
+    expect(script).not.toContain('deploy')
+    expect(script).not.toContain('build:worker')
+  })
+
+  it('expone el modo LLM real sin incluir deploy', () => {
+    const script = packageJson.scripts['pilot:llm']
+    expect(script).toBeDefined()
+    expect(script).toContain('scripts/pilot-llm.ts')
     expect(script).not.toContain('deploy')
     expect(script).not.toContain('build:worker')
   })

@@ -3,11 +3,9 @@
  *
  *   npm run pilot:demo
  *
- * Toma el diff real de la working tree, construye los prompts con el system
- * prompt de producción, usa un "modelo" determinista (sin red) y guarda las
- * trazas anonimizadas en data/traces/pilot.jsonl (ignorado por git).
- *
- * No despliega, no consulta la BD y no envía nada a ningún proveedor.
+ * Igual circuito que el modo real, pero con un completor determinista: no hace
+ * red ni consulta la BD. Escribe trazas anonimizadas en data/traces/pilot.jsonl
+ * (ignorado por git).
  */
 
 import { execFileSync } from 'node:child_process'
@@ -15,13 +13,8 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { SYSTEM_PROMPT } from '../app/lib/aria-core'
-import { createTraceLogger, type PilotTaskName } from '../app/lib/pilot-traces'
-import {
-  buildPrSummaryPrompt,
-  buildTestGenerationPrompt,
-  parsePrSummary,
-  parseTestProposal,
-} from '../app/lib/pilot-tasks'
+import { runPilot } from '../app/lib/pilot-run'
+import type { PilotTaskName } from '../app/lib/pilot-traces'
 
 const OUT = resolve('data/traces/pilot.jsonl')
 
@@ -60,7 +53,7 @@ function fakeComplete(_prompt: string, task: PilotTaskName): string {
   ].join('\n')
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const diff = git(['diff', 'HEAD'])
   if (!diff.trim()) {
     console.log('Sin cambios en git diff HEAD; no hay trazas nuevas.')
@@ -77,56 +70,26 @@ function main(): void {
     .filter(Boolean)
 
   mkdirSync(dirname(OUT), { recursive: true })
-  const logger = createTraceLogger({
-    append: (line) => appendFileSync(OUT, line, 'utf8'),
-  })
-
-  const testPrompt = buildTestGenerationPrompt({
+  const result = await runPilot({
     diff,
     changedFiles,
-    systemPrompt: SYSTEM_PROMPT,
-  })
-  const testProposal = parseTestProposal(fakeComplete(testPrompt, 'test-generation'))
-  if (!testProposal) throw new Error('El generador de tests devolvió un formato inválido.')
-
-  const testTrace = logger.record({
-    task: 'test-generation',
-    prompt: testPrompt,
-    output: fakeComplete(testPrompt, 'test-generation'),
-    tools: [{ name: 'git_diff', result: diff }],
-    verdict: 'needs-review',
-    repo: 'PABLOESTRADA20/ai-assistant',
-    meta: {
-      changedFiles: changedFiles.length,
-      proposalPath: testProposal.path,
-      notes: testProposal.notes,
-    },
-  })
-
-  const prPrompt = buildPrSummaryPrompt({
-    diff,
     commits,
     systemPrompt: SYSTEM_PROMPT,
     repo: 'PABLOESTRADA20/ai-assistant',
-  })
-  const prProposal = parsePrSummary(fakeComplete(prPrompt, 'pr-summary'))
-  if (!prProposal) throw new Error('El resumidor de PR devolvió un formato inválido.')
-
-  const prTrace = logger.record({
-    task: 'pr-summary',
-    prompt: prPrompt,
-    output: fakeComplete(prPrompt, 'pr-summary'),
-    tools: [{ name: 'git_log', result: commits.join('\n') }],
+    complete: fakeComplete,
+    sink: { append: (line) => appendFileSync(OUT, line, 'utf8') },
     verdict: 'needs-review',
-    repo: 'PABLOESTRADA20/ai-assistant',
-    meta: { proposalTitle: prProposal.title },
+    meta: { mode: 'demo' },
   })
 
   console.log(
-    `Piloto: ${changedFiles.length} archivos, ${testProposal.path}, ` +
-      `${prProposal.title}. Trazas en ${OUT} ` +
-      `(redacciones: ${testTrace.redactions + prTrace.redactions}).`,
+    `Piloto (demo): ${changedFiles.length} archivos, ${result.testPath}, ` +
+      `${result.prTitle}. ${result.traces} trazas en ${OUT} ` +
+      `(redacciones: ${result.redactions}).`,
   )
 }
 
-main()
+main().catch((err: unknown) => {
+  console.error('El piloto falló:', err instanceof Error ? err.message : String(err))
+  process.exitCode = 1
+})

@@ -97,6 +97,21 @@ describe('createTraceLogger', () => {
     expect(trace.truncated).toBe(true)
   })
 
+  it('suma las anonimizaciones hechas antes de enviar el prompt', () => {
+    const trace = createTraceLogger(sink()).record({
+      task: 'pr-summary',
+      prompt: 'ya limpio',
+      output: 'b',
+      extraRedactions: 2,
+      extraByKind: { email: 1, 'api-key': 1 },
+    })
+
+    expect(trace.redactions).toBe(2)
+    expect(trace.byKind.email).toBe(1)
+    expect(trace.byKind['api-key']).toBe(1)
+    expect(scrub).toHaveBeenCalled()
+  })
+
   it('usa el reloj inyectado para la marca de tiempo y el id', () => {
     const now = () => new Date('2026-11-19T10:20:30.000Z')
     const trace = createTraceLogger(sink()).record({
