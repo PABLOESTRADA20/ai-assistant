@@ -144,7 +144,12 @@ Modo real con Groq (**opt-in**, requiere `GROQ_API_KEY` en `.env.local`):
 ```
 npm run pilot:llm -- --live
 npm run pilot:llm -- --live --model=qwen/qwen3.8-27b --max-tokens=900 --verdict=ci-passed --score=4
+npm run pilot:llm -- --live --ref=3530f64 --verdict=ci-passed
 ```
+
+`--ref=<commit>` usa el diff de ese commit contra su primer padre (útil para PRs ya
+fusionados) en vez del working tree. `--retries=` (por defecto 2) reintenta los 429 y 5xx
+esperando el tiempo que indica Groq.
 
 Si un modelo intenta llamar herramientas sin que se le declaren (pasó con `gpt-oss-20b`), usá
 `qwen/qwen3.8-27b`. El prompt recorta el system prompt a 1.500 caracteres y el diff a 4.000
@@ -181,6 +186,13 @@ Primera corrida (2026-11-20): 4 trazas, 1 `ci-passed` (resumen de PR) y 3 `ci-fa
 tests proponían paths que ya existen y el tercero asumía que `PILOT_VERDICTS` estaba congelado
 en runtime). Esa es la señal que faltaba: con veredictos ya se puede decidir qué aplicación
 ampliar y cuándo construir un dataset con held-out.
+
+Lote del 2026-11-23 (`--ref=c69e070`, `--ref=58250b7` y `--ref=3530f64`): 10 trazas LLM,
+6 `ci-passed` y 4 `ci-failed`. Por tarea: **resúmenes de PR 4/4** y **tests generados 2/6**.
+Los dos tests aprobados vinieron de los PRs `#17` y `#18`; el fallo del `#19` fue inventar
+`evaluatePilot` en vez de usar `evaluateTestProposal`. El resumidor es consistente en formato
+(4/4), pero su rúbrica no ejecuta código; el generador de tests es donde hay fallos medibles
+y es por ahí donde conviene construir el dataset con held-out.
 
 ## Si Kaggle se reinicia
 

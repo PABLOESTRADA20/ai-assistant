@@ -3,8 +3,10 @@ import {
   completeWithGroq,
   DEFAULT_PILOT_MAX_TOKENS,
   DEFAULT_PILOT_MODEL,
+  DEFAULT_PILOT_RETRIES,
   parsePilotArgs,
   pilotTaskLabel,
+  retryDelayMs,
 } from '@/app/lib/pilot-llm'
 
 function fakeResponse(body: unknown, status = 200): Response {
@@ -24,6 +26,8 @@ describe('parsePilotArgs', () => {
       verdict: 'needs-review',
       score: null,
       maxTokens: DEFAULT_PILOT_MAX_TOKENS,
+      retries: DEFAULT_PILOT_RETRIES,
+      ref: null,
     })
   })
 
@@ -35,6 +39,8 @@ describe('parsePilotArgs', () => {
         '--verdict=ci-passed',
         '--score=4',
         '--max-tokens=600',
+        '--retries=1',
+        '--ref=3530f64',
       ]),
     ).toEqual({
       live: true,
@@ -42,6 +48,8 @@ describe('parsePilotArgs', () => {
       verdict: 'ci-passed',
       score: 4,
       maxTokens: 600,
+      retries: 1,
+      ref: '3530f64',
     })
   })
 
@@ -92,6 +100,27 @@ describe('completeWithGroq', () => {
     ).rejects.toThrow(/Groq respondió 429/)
   })
 
+  it('reintenta un 429 y usa el tiempo que pide Groq', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(fakeResponse({ error: 'Please try again in 0.01s' }, 429))
+      .mockResolvedValueOnce(
+        fakeResponse({ choices: [{ message: { content: 'ok tras reintentar' } }] }),
+      ) as unknown as typeof fetch
+    const sleepImpl = vi.fn().mockResolvedValue(undefined)
+
+    const out = await completeWithGroq('prompt', {
+      apiKey: 'x',
+      retries: 2,
+      fetchImpl,
+      sleepImpl,
+    })
+
+    expect(out).toBe('ok tras reintentar')
+    expect(vi.mocked(fetchImpl)).toHaveBeenCalledTimes(2)
+    expect(sleepImpl).toHaveBeenCalledWith(500)
+  })
+
   it('rechaza respuestas vacías', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(fakeResponse({ choices: [] })) as unknown as typeof fetch
     await expect(completeWithGroq('prompt', { apiKey: 'x', fetchImpl })).rejects.toThrow(
@@ -105,6 +134,15 @@ describe('completeWithGroq', () => {
       /Falta GROQ_API_KEY/,
     )
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+describe('retryDelayMs', () => {
+  it('respeta el tiempo de Groq y lo acota', () => {
+    expect(retryDelayMs('Please try again in 22.62s')).toBe(22_620)
+    expect(retryDelayMs('Please try again in 0.01s')).toBe(500)
+    expect(retryDelayMs('sin pista')).toBe(1_000)
+    expect(retryDelayMs('Please try again in 999s')).toBe(30_000)
   })
 })
 
