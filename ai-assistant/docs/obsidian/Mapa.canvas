@@ -1,0 +1,23 @@
+﻿{
+  "nodes": [
+    { "id": "inicio", "type": "file", "file": "Inicio.md", "x": 360, "y": 0, "width": 300, "height": 120 },
+    { "id": "proyecto", "type": "file", "file": "Proyecto.md", "x": 0, "y": 200, "width": 280, "height": 120 },
+    { "id": "estado", "type": "file", "file": "Estado actual.md", "x": 340, "y": 200, "width": 280, "height": 120 },
+    { "id": "cronologia", "type": "file", "file": "Cronología.md", "x": 680, "y": 200, "width": 280, "height": 120 },
+    { "id": "fase6", "type": "file", "file": "Fases/Fase 6.md", "x": 0, "y": 400, "width": 280, "height": 120 },
+    { "id": "fase7", "type": "file", "file": "Fases/Fase 7.md", "x": 340, "y": 400, "width": 280, "height": 120 },
+    { "id": "piloto", "type": "file", "file": "Piloto/Piloto de trazas.md", "x": 680, "y": 400, "width": 300, "height": 120 },
+    { "id": "eval", "type": "file", "file": "Piloto/Trazas y evaluación.md", "x": 680, "y": 560, "width": 300, "height": 120 },
+    { "id": "pendientes", "type": "file", "file": "Pendientes.md", "x": 340, "y": 560, "width": 280, "height": 120 }
+  ],
+  "edges": [
+    { "id": "e1", "fromNode": "inicio", "toNode": "proyecto" },
+    { "id": "e2", "fromNode": "inicio", "toNode": "estado" },
+    { "id": "e3", "fromNode": "inicio", "toNode": "cronologia" },
+    { "id": "e4", "fromNode": "estado", "toNode": "fase6" },
+    { "id": "e5", "fromNode": "estado", "toNode": "fase7" },
+    { "id": "e6", "fromNode": "fase6", "toNode": "piloto" },
+    { "id": "e7", "fromNode": "piloto", "toNode": "eval" },
+    { "id": "e8", "fromNode": "eval", "toNode": "pendientes" }
+  ]
+}
