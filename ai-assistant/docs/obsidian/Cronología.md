@@ -65,6 +65,7 @@ updated: 2026-11-24
 - `tests/integration/changelog.test.ts` cubre el SQL crudo de [[Fases/Fase 4]]; `npm run db:index-code -- --force` permite reindexar tras cambiar el troceador.
 - `ROADMAP.md` y [[Fases/Fase 3]] quedan con el recuento real 215/215 y 1.344 trozos.
 - Dependabot #15 y #16 fusionados con CI verde: Next 15.5.29, OpenNext 1.20.17, Prisma 6.19.3, wrangler 4.164.0, Vitest 5.1.0. Auditoría: 18 avisos (5 altas siguen bloqueadas por Prisma 7/Next 16).
+- PR #22 fusionado en `527137b` con CI 3/3; `main` sigue limpio y las ramas no se eliminan.
 
 ## Regla para futuras sesiones
 

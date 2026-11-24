@@ -7,13 +7,13 @@ updated: 2026-11-24
 # Estado actual
 
 > [!tip] Fecha de corte
-> 2026-11-24, con `main` en `b795264` (#15) y la rama `fix/general-errors` lista para PR.
+> 2026-11-24, con `main` en `527137b` (merge del PR #22) y CI 3/3 en verde.
 
 ## Repositorio
 
-- `main` en `b795264` (merge de #15), árbol limpio, `origin/main` sincronizado. Justo antes estaba en `1ea90f0` (#21).
-- Rama de trabajo local `fix/general-errors` (4 commits) lista para PR; las ramas ya fusionadas no se borran.
-- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`. Ver [[Registro de PRs]].
+- `main` en `527137b` (merge del PR #22), árbol limpio, `origin/main` sincronizado. Justo antes estaba en `b795264` (#15), con el build de escritorio actualizado en `13d82c6`.
+- La rama `fix/general-errors` se conserva después del merge; las ramas ya fusionadas no se borran.
+- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`, #22 → `527137b`. Ver [[Registro de PRs]].
 - Dependabot revisado: #15 y #16 fusionados con CI verde; #4–#7/#9–#12 quedan sin fusionar (saltos mayores superados o CI roja), #8 cerrado. Ver [[Pendientes]].
 
 ## Fases
@@ -45,7 +45,7 @@ updated: 2026-11-24
 ## Calidad
 
 - Última corrida local: `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**47 archivos / 471 tests**), `build` ✅.
-- CI del PR #21: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`). PR #15 y #16 también cerraron con 3/3.
+- CI del PR #22: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`). #15, #16 y #21 también cerraron con 3/3.
 - Variables usadas para validar: `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`.
 - Auditoría tras #16: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas). Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**. Antes eran 20 (5 altas, 15 moderadas).
 
