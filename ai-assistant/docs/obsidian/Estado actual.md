@@ -7,13 +7,13 @@ updated: 2026-11-24
 # Estado actual
 
 > [!tip] Fecha de corte
-> 2026-11-24, con `main` en `527137b` (merge del PR #22) y CI 3/3 en verde.
+> 2026-11-24, con `main` en `a835beb` (merge del PR #23) y CI 3/3 en verde.
 
 ## Repositorio
 
-- `main` en `527137b` (merge del PR #22), árbol limpio, `origin/main` sincronizado. Justo antes estaba en `b795264` (#15), con el build de escritorio actualizado en `13d82c6`.
-- La rama `fix/general-errors` se conserva después del merge; las ramas ya fusionadas no se borran.
-- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`, #22 → `527137b`. Ver [[Registro de PRs]].
+- `main` en `a835beb` (merge del PR #23), árbol limpio, `origin/main` sincronizado. Antes pasó por `527137b` (#22) y `b795264` (#15); el build de escritorio se actualizó en `13d82c6`.
+- Las ramas ya fusionadas no se borran: `fix/general-errors`, `docs/post-merge-22` y el resto siguen vivas.
+- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`, #22 → `527137b`, #23 → `a835beb`. Ver [[Registro de PRs]].
 - Dependabot revisado: #15 y #16 fusionados con CI verde; #4–#7/#9–#12 quedan sin fusionar (saltos mayores superados o CI roja), #8 cerrado. Ver [[Pendientes]].
 
 ## Fases
@@ -27,7 +27,7 @@ updated: 2026-11-24
 | 4 | ✅ | Edición por id, `ChangeLog` y reversión |
 | 5 | ❌ | Clasificador no construido: las regex bastaron |
 | 6 | ❌ | `aria-v1` entrenado, evaluado, no mejora y borrado |
-| 7 | 🟦 | Parte A y B en código; falta OAuth y prueba en vivo |
+| 7 | 🟦 | Parte A y B en código; OAuth implementado con mocks; falta prueba real y en vivo |
 
 ## Versiones instaladas
 
@@ -44,8 +44,8 @@ updated: 2026-11-24
 
 ## Calidad
 
-- Última corrida local: `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**47 archivos / 471 tests**), `build` ✅.
-- CI del PR #22: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`). #15, #16 y #21 también cerraron con 3/3.
+- Última corrida local (rama `feat/oauth-fase7`): `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**50 archivos / 516 tests**), `build` ✅.
+- CI de #22 y #23: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`). #15, #16 y #21 también cerraron con 3/3.
 - Variables usadas para validar: `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`.
 - Auditoría tras #16: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas). Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**. Antes eran 20 (5 altas, 15 moderadas).
 
@@ -57,7 +57,7 @@ updated: 2026-11-24
 
 ## Bloqueos
 
-- Fase 7 en vivo: faltan `GITHUB_TOKEN`, `GITLAB_TOKEN` y credenciales OAuth; OAuth aún no implementado.
+- Fase 7 en vivo: faltan `GITHUB_TOKEN`, `GITLAB_TOKEN` y credenciales OAuth reales; el flujo OAuth ya está implementado y cubierto con mocks, pero no probado con apps reales.
 - Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp.
 - 5 vulnerabilidades altas pendientes de decisión (saltos mayores prohibidos).
 - Reindexación forzada no ejecutada aquí: sin Docker, `TEST_DATABASE_URL` ni cuota. El recuento vigente (215/215 y 1.344 trozos) ya está en `ROADMAP.md`; el comando es `npm run db:index-code -- --force`. Ver [[Pendientes]].

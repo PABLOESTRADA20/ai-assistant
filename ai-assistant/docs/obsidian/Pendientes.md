@@ -11,11 +11,11 @@ updated: 2026-11-24
 
 ## Bloqueos externos
 
-1. **OAuth real** de GitHub/Google (botón "Entrar con…"), usuario único.
+1. **OAuth real** de GitHub/Google: el código y los botones ya están; faltan las apps, los secretos (`*_OAUTH_CLIENT_ID`, `*_OAUTH_CLIENT_SECRET`, `*_OAUTH_ALLOWED_*`, `ARIA_SESSION_SECRET`, `ARIA_OAUTH_REDIRECT_BASE`) y probar el flujo de extremo a extremo.
 2. Token de **GitLab** y prueba en vivo de lectura/escritura, MR, pipelines y auto-fusión.
 3. Prueba real en GitHub de `github_delete_file` y `github_merge_pull_request` con CI verde (`GITHUB_AUTO_MERGE=false` salvo durante la prueba).
 4. Verificar el **deploy en Cloudflare** y el **webhook de Meta/WhatsApp**.
-5. Credenciales y entorno: hoy no hay `GITHUB_TOKEN`, `GITLAB_TOKEN`, `WHATSAPP_APP_SECRET`, OAuth ni `kaggle.json`.
+5. Credenciales y entorno: hoy no hay `GITHUB_TOKEN`, `GITLAB_TOKEN`, `WHATSAPP_APP_SECRET`, credenciales OAuth ni `kaggle.json`.
 
 ## Deuda técnica
 

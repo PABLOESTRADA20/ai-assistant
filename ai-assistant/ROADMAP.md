@@ -2,7 +2,7 @@
 
 > Fuente de verdad del plan de trabajo. Se lee al **empezar** cada sesión y se actualiza al **cerrarla**.
 > Una fase por sesión. No se avanza a la siguiente sin cerrar la anterior.
-> Última actualización: 2026-11-24 (Fases 1–2 **aceptadas en vivo**; **Fase 3 cerrada**: último recuento real **215/215 ficheros y 1.344 trozos**, pasada sin cambios con 0 embeddings; **Fase 4 hecha** y probada en vivo, con test de integración del SQL crudo añadido; Fase 5 **descartada con evidencia**; **Fase 6 ejecutada y descartada con evidencia**: el LoRA `aria-v1` se entrenó, subió y evaluó con 24 casos nuevos, sin mejora sobre la base; **Fase 7 Parte A hecha** y **Parte B en curso** (GitHub+GitLab, tokens por entorno, distribuidor). Falta OAuth real y prueba en vivo de GitLab. Corregidos además: WASM en `next dev`/`next start`, distinción PR recién abierto vs. repo sin checks y dependencias de Dependabot #15/#16).
+> Última actualización: 2026-11-24 (Fases 1–2 **aceptadas en vivo**; **Fase 3 cerrada**: último recuento real **215/215 ficheros y 1.344 trozos**, pasada sin cambios con 0 embeddings; **Fase 4 hecha** y probada en vivo, con test de integración del SQL crudo añadido; Fase 5 **descartada con evidencia**; **Fase 6 ejecutada y descartada con evidencia**: el LoRA `aria-v1` se entrenó, subió y evaluó con 24 casos nuevos, sin mejora sobre la base; **Fase 7 Parte A hecha** y **Parte B en curso** (GitHub+GitLab, tokens por entorno, distribuidor). OAuth de GitHub/Google implementado y cubierto con mocks; falta probarlo con credenciales reales, igual que la prueba en vivo de GitLab. Corregidos además: WASM en `next dev`/`next start`, distinción PR recién abierto vs. repo sin checks y dependencias de Dependabot #15/#16).
 
 ## Objetivo
 
@@ -171,7 +171,8 @@ Se partió en dos: **Parte A** (esta fase) y **Parte B** (plataformas/login, má
 - [x] **GitLab funcional a nivel código**: leer/escribir por rama, abrir MR, consultar pipelines/checks, auto-fusión con CI en verde (mismos guardarraíles que GitHub).
 - [x] **Endpoint `/api/platforms`**: muestra qué plataformas tienen token/configuración.
 - [x] **UI actualizada**: panel "Repositorios (GitHub / GitLab)" acepta `gitlab:` y URLs, cabecera actualizada.
-- [ ] **OAuth real**: botón "Entrar con GitHub/Google", **solo para el propio usuario** (pendiente de credenciales).
+- [x] **OAuth en código (FASE 7)**: `/api/auth` anuncia los proveedores configurados; `/api/auth/oauth/start` guarda un `state` anti-CSRF en cookie HttpOnly y redirige; `/api/auth/oauth/callback` canjea el código, lee el perfil, exige que la identidad esté en la lista blanca **de un solo usuario** y entrega una sesión firmada (HMAC-SHA256) que viaja en `Authorization: Bearer` (el SSE no cambia). La cookie `aria_token` sigue sin autorizar. Botones GitHub/Google en el login y tests con `fetch` inyectado (`tests/unit/oauth*.test.ts`, `auth-client.test.ts`).
+- [ ] **OAuth real**: falta crear las apps en GitHub/Google, definir `*_OAUTH_CLIENT_ID`, `*_OAUTH_CLIENT_SECRET`, `*_OAUTH_ALLOWED_*`, `ARIA_OAUTH_REDIRECT_BASE` y `ARIA_SESSION_SECRET`, y probar el flujo de extremo a extremo. **La Fase 7 no se cierra hasta entonces**.
 - [ ] **Prueba en vivo con GitLab**: validar lectura/escritura+MR con un token real.
 
 ---
@@ -246,7 +247,7 @@ Se partió en dos: **Parte A** (esta fase) y **Parte B** (plataformas/login, má
 - ~~**Fase 6 — falta de evaluación real**~~ **Resuelto (2026-11-13)**: se entrenó `aria-v1`, se subió y se comparó con 24 casos nuevos. No supera a la base y se descarta; el finetune se borró de Cloudflare. No reintentar sin un dataset mucho mayor y un set held-out.
 - **Fase 6 — `model_type` para Qwen**: la guía de fine-tunes (abr-2026) solo menciona `mistral`/`gemma`/`llama`, pero el catálogo marca Qwen como base LoRA. Verificar si un adaptador Qwen (`model_type: qwen2`) se acepta al subirlo.
 - **Cifras de Unsloth/Colab (Fase 6): son de terceros** (no verificadas).
-- **Fase 7 — prueba en vivo pendiente**: las funciones nuevas (`github_delete_file`, `github_merge_pull_request` y las ramas libres) están cubiertas por tests unitarios. **Falta probar contra GitHub real** desde `npm run preview` (borrar archivo + fusionar PR con CI en verde). `GITHUB_AUTO_MERGE` debe quedar en `false` salvo durante la prueba. **GitLab** implementado pero **sin prueba en vivo**. `lint` y `typecheck` pasan. **OAuth real** pendiente (requiere credenciales).
+- **Fase 7 — prueba en vivo pendiente**: las funciones nuevas (`github_delete_file`, `github_merge_pull_request` y las ramas libres) están cubiertas por tests unitarios. **Falta probar contra GitHub real** desde `npm run preview` (borrar archivo + fusionar PR con CI en verde). `GITHUB_AUTO_MERGE` debe quedar en `false` salvo durante la prueba. **GitLab** implementado pero **sin prueba en vivo**. `lint`, `typecheck`, `test:unit` y `build` pasan. **OAuth** implementado y probado con mocks (sin red); sigue pendiente el flujo real con credenciales.
 
 ## Cómo se mantiene este archivo
 
