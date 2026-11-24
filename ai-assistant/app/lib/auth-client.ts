@@ -7,7 +7,8 @@
  * admite cabeceras sin problema.
  */
 
-const TOKEN_KEY = 'aria_access_token'
+/** Misma clave que usa el callback OAuth para entregar la sesión. */
+export const TOKEN_KEY = 'aria_access_token'
 
 /** Evento que se dispara cuando el servidor responde 401. */
 export const UNAUTHORIZED_EVENT = 'aria:unauthorized'
