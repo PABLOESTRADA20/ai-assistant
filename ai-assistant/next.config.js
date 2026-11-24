@@ -1,4 +1,5 @@
 const { initOpenNextCloudflareForDev } = require('@opennextjs/cloudflare')
+const { shouldExternalizeWasm } = require('./scripts/next-wasm.cjs')
 
 if (process.env.NODE_ENV !== 'production') {
   initOpenNextCloudflareForDev()
@@ -46,23 +47,25 @@ const nextConfig = {
   webpack: (config) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true }
 
-    // Let `.wasm` imports pass through webpack untouched, so the wasm files end up
-    // as native `import()` statements that esbuild/wrangler can resolve and bundle
-    // as precompiled `WebAssembly.Module` objects (workerd only allows instantiating
-    // precompiled modules). Bundling them through webpack's asyncWebAssembly would
-    // generate `fs.readFile + WebAssembly.instantiate(bytes)`, which workerd bans.
-    const wasmExternal = ({ request }, callback) => {
-      if (request && /\.wasm(\?module)?$/.test(request)) {
-        return callback(null, `module ${request}`)
+    // Solo el build del worker necesita los `.wasm` sin tocar: así wrangler los
+    // precompila como `WebAssembly.Module`, que es lo único que admite workerd.
+    // En `next dev` / `next start` (Node) ese externalizado rompía porque Next
+    // buscaba el fichero bajo `.next/server/...` sin copiarlo ahí. Ahí webpack
+    // usa `asyncWebAssembly` (fs.readFile + instantiate), que sí funciona en Node.
+    if (shouldExternalizeWasm()) {
+      const wasmExternal = ({ request }, callback) => {
+        if (request && /\.wasm(\?module)?$/.test(request)) {
+          return callback(null, `module ${request}`)
+        }
+        callback()
       }
-      callback()
+      const existing = Array.isArray(config.externals)
+        ? config.externals
+        : config.externals
+          ? [config.externals]
+          : []
+      config.externals = [...existing, wasmExternal]
     }
-    const existing = Array.isArray(config.externals)
-      ? config.externals
-      : config.externals
-        ? [config.externals]
-        : []
-    config.externals = [...existing, wasmExternal]
     return config
   },
 }
