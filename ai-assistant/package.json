@@ -44,7 +44,7 @@
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "6.19.3",
     "clsx": "^2.1.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.10",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.436.0",
     "react": "^18",
