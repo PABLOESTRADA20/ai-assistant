@@ -1,7 +1,7 @@
 /**
  * Ayudantes comunes para los handlers de `/api/*`.
  *
- * Antes cada ruta repetía el mismo preámbulo (`const denied = requireAuth(req);
+ * Antes cada ruta repetía el mismo preámbulo (`const denied = await requireAuth(req);
  * if (denied) return denied`), el mismo `catch` con `{ error: String(err) }` y
  * la misma validación de cuerpo `'JSON inválido'`. Acá quedan centralizados.
  */
@@ -23,7 +23,7 @@ export function withAuth<Ctx = RouteContext, Req extends Request = Request>(
   handler: (req: Req, ctx: Ctx) => Promise<Response> | Response,
 ): (req: Req, ctx: Ctx) => Promise<Response> {
   return async (req, ctx) => {
-    const denied = requireAuth(req)
+    const denied = await requireAuth(req)
     if (denied) return denied
     return handler(req, ctx)
   }

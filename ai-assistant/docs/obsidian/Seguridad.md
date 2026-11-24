@@ -1,16 +1,16 @@
 ﻿---
 title: ARIA — Seguridad
 tags: [aria, seguridad, auth, whatsapp]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Seguridad
 
 ## Autenticación
 
-- La app acepta **solo** `Authorization: Bearer`. La cookie `aria_token` **ya no autoriza**.
-- En producción la app falla cerrada si falta `ARIA_ACCESS_TOKEN` (guard en el deploy + tests).
-- OAuth de GitHub/Google sigue **pendiente**: no hay credenciales reales ni implementación terminada.
+- La app acepta **solo** `Authorization: Bearer`: la clave compartida o una sesión OAuth firmada (HMAC-SHA256). La cookie `aria_token` **ya no autoriza**; `aria_oauth_state` es solo anti-CSRF.
+- En producción la app falla cerrada si falta `ARIA_ACCESS_TOKEN` (guard en el deploy + tests). `requireAuth` sí acepta una sesión OAuth válida aunque falte esa clave.
+- OAuth de GitHub/Google **en código**: `state` en cookie HttpOnly, canje de código, lista blanca de un solo usuario y sesión de 7 días por defecto (`ARIA_SESSION_TTL_SECONDS`). Falta probarlo con apps y credenciales reales; ver [[Fases/Fase 7]].
 
 ## WhatsApp
 

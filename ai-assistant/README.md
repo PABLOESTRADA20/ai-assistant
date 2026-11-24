@@ -172,7 +172,12 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 | `CLOUDFLARE_API_TOKEN` | Token con permiso Workers AI (embeddings) | ✅ |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID de Cloudflare | ✅ |
 | `VAULT_PATH` | Ruta al vault Obsidian (solo local) | local |
-| `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. **En producción es obligatoria**: sin ella la app falla cerrada (deniega todo) y el deploy aborta | ✅ en producción |
+| `ARIA_ACCESS_TOKEN` | Clave de acceso a la app. Si está definida, toda la API exige `Authorization: Bearer <clave>` y el cliente muestra un login. **En producción es obligatoria**: sin ella la app falla cerrada (deniega todo) y el deploy aborta. También sirve como secreto de las sesiones OAuth si no hay `ARIA_SESSION_SECRET` | ✅ en producción |
+| `ARIA_SESSION_SECRET` | Secreto con el que se firman las sesiones de GitHub/Google (HMAC-SHA256). Si falta, se usa `ARIA_ACCESS_TOKEN` | para OAuth |
+| `ARIA_SESSION_TTL_SECONDS` | Duración de la sesión OAuth (7 días por defecto, máximo 30) | no |
+| `ARIA_OAUTH_REDIRECT_BASE` | Origen público para el callback (`https://…` sin barra final). Sin él se usa el origen de la petición; fíjalo en producción | para OAuth |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` / `GITHUB_OAUTH_ALLOWED_LOGIN` | OAuth de GitHub solo para ese login (un único usuario). Sin los tres, el botón no aparece | para OAuth |
+| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` / `GOOGLE_OAUTH_ALLOWED_EMAIL` | OAuth de Google solo para ese email (un único usuario). Sin los tres, el botón no aparece | para OAuth |
 | `NEXT_PUBLIC_ARIA_LOCAL_AGENT` | URL del agente local que abre apps (por defecto `http://127.0.0.1:8787`). No es un secreto: puede ir en el bundle | no |
 | `ARIA_LOCAL_TOKEN` | Token del **agente local** (no de la web). Si no se define, el agente lo genera y lo imprime. El navegador lo pide una vez y lo guarda en `localStorage`; nunca va en el bundle | agente |
 | `WHATSAPP_TOKEN` | Token permanente de la app de Meta (WhatsApp Cloud API) | para WhatsApp |
@@ -200,6 +205,13 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 > secret, **en producción la app falla cerrada** (deniega todas las rutas
 > `/api/*`) y el workflow de deploy aborta; solo queda abierta en desarrollo y
 > en los tests, para poder trabajar sin configurar nada.
+>
+> Desde la FASE 7 también se puede entrar con **GitHub o Google**: el callback
+> canjea el código, exige que la identidad coincida con la lista blanca de un
+> solo usuario y entrega una sesión firmada. Esa sesión viaja en la misma
+> cabecera `Authorization: Bearer` que la clave, así que el SSE del chat no
+> cambia. La cookie `aria_oauth_state` solo evita CSRF: **nunca autoriza**.
+> Faltan credenciales OAuth reales para probar el flujo de extremo a extremo.
 
 > **Dictado por voz**: el audio se graba en el navegador y se manda a
 > `/api/transcribe`, que lo pasa a **Groq Whisper** (usa la misma `GROQ_API_KEY`;
@@ -237,7 +249,7 @@ La producción sigue apuntando a Neon: moverla al Postgres propio exige un puent
 - Confirmación al eliminar
 - Diseño responsive
 - **Tool calls visibles en la UI** — tarjetas colapsables con args y resultado (persistidos en DB)
-- **Acceso protegido por clave** — si `ARIA_ACCESS_TOKEN` está definido, la API exige `Authorization: Bearer` y el cliente muestra login; la clave se guarda solo en el navegador
+- **Acceso protegido por clave u OAuth** — con `ARIA_ACCESS_TOKEN` la API exige `Authorization: Bearer`; con GitHub/Google configurados el login ofrece botones y entrega una sesión firmada. Todo se guarda solo en el navegador
 - **Exportar conversaciones a Markdown** — botón en el header
 - **Índice del vault Obsidian** — indexación automática al iniciar (`.aria-index.json`)
 - **Búsqueda semántica real (pgvector)** — embeddings `bge-m3` vía Workers AI (1024 dims), indexados en las tablas `VaultNote` y `Memory`; el mismo modelo en local y en producción
@@ -275,7 +287,7 @@ Además, si el modelo que tienes seleccionado se queda sin cuota a mitad de uso,
 La app es responsive y además **instalable**: en el navegador del móvil, "Añadir a pantalla de inicio" abre ARIA a pantalla completa (manifest + iconos + `viewport-fit=cover`, con las zonas seguras del notch respetadas).
 
 - El dictado por voz y la lectura en voz alta funcionan en el móvil; con el botón **Voz** del header ARIA lee cada respuesta al terminarla.
-- Si defines `ARIA_ACCESS_TOKEN`, en el móvil tendrás que introducir la clave una vez (se guarda en ese navegador).
+- Si defines `ARIA_ACCESS_TOKEN` u OAuth, en el móvil tendrás que entrar una vez (la sesión se guarda en ese navegador).
 - El agente local de "abrir apps en tu PC" **no** funciona desde el móvil (`127.0.0.1` sería el propio teléfono). Para eso usa ARIA en el PC.
 
 ## WhatsApp

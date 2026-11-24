@@ -7,7 +7,10 @@
  * admite cabeceras sin problema.
  */
 
-const TOKEN_KEY = 'aria_access_token'
+import type { OAuthProvider } from '@/app/lib/oauth'
+
+/** Misma clave que usa el callback OAuth para entregar la sesión. */
+export const TOKEN_KEY = 'aria_access_token'
 
 /** Evento que se dispara cuando el servidor responde 401. */
 export const UNAUTHORIZED_EVENT = 'aria:unauthorized'
@@ -70,16 +73,37 @@ function fetchWithTimeout(input: string, init: RequestInit, ms: number): Promise
   return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(id))
 }
 
-/** Pregunta al servidor si la app exige clave. */
-export async function fetchAuthRequired(): Promise<boolean> {
+/** Enlace del botón de acceso; el `provider` siempre pasa por un valor known. */
+export function oauthStartHref(provider: OAuthProvider): string {
+  return `/api/auth/oauth/start?provider=${encodeURIComponent(provider)}`
+}
+
+function isOAuthProvider(value: unknown): value is OAuthProvider {
+  return value === 'github' || value === 'google'
+}
+
+/** Información pública de acceso: si hace falta clave y qué OAuth hay. */
+export async function fetchAuthInfo(): Promise<{
+  required: boolean
+  providers: OAuthProvider[]
+}> {
+  const empty = { required: false, providers: [] as OAuthProvider[] }
   try {
     const res = await fetchWithTimeout('/api/auth', { cache: 'no-store' }, 8000)
-    if (!res.ok) return false
-    const data = await res.json()
-    return data?.required === true
+    if (!res.ok) return empty
+    const data = (await res.json()) as { required?: unknown; providers?: unknown }
+    return {
+      required: data?.required === true,
+      providers: Array.isArray(data?.providers) ? data.providers.filter(isOAuthProvider) : [],
+    }
   } catch {
-    return false
+    return empty
   }
+}
+
+/** Pregunta al servidor si la app exige clave (compatibilidad con el arranque). */
+export async function fetchAuthRequired(): Promise<boolean> {
+  return (await fetchAuthInfo()).required
 }
 
 /**

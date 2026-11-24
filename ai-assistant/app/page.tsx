@@ -34,10 +34,11 @@ import { useQuota } from './hooks/useQuota'
 import { usePausableInterval } from './hooks/usePausableInterval'
 import {
   apiFetch,
-  fetchAuthRequired,
+  fetchAuthInfo,
   getToken,
   UNAUTHORIZED_EVENT,
 } from './lib/auth-client'
+import type { OAuthProvider } from './lib/oauth'
 
 // Paneles laterales: viven en chunks aparte y se descargan recién al abrirlos
 // (T1 de la fase de rendimiento). `ssr: false` porque son overlays que solo
@@ -80,6 +81,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [authState, setAuthState] = useState<'checking' | 'needed' | 'ready'>('checking')
+  const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([])
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingTools, setStreamingTools] = useState<ToolInvocation[]>([])
   const [streamingSources, setStreamingSources] = useState<SourceRef[]>([])
@@ -115,8 +117,9 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const required = await fetchAuthRequired()
+      const { required, providers } = await fetchAuthInfo()
       if (cancelled) return
+      setOauthProviders(providers)
       if (!required) {
         setAuthState('ready')
         return
@@ -725,7 +728,12 @@ export default function Home() {
   }
 
   if (authState === 'needed') {
-    return <LoginScreen onSuccess={() => setAuthState('ready')} />
+    return (
+      <LoginScreen
+        providers={oauthProviders}
+        onSuccess={() => setAuthState('ready')}
+      />
+    )
   }
 
   // Acciones secundarias del header. En pantallas grandes se ven como botones;

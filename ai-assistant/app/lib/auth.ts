@@ -14,8 +14,13 @@
  *  - en PRODUCCION la app falla cerrada (deniega todo), para que un descuido de
  *    configuracion del deploy no deje la URL publica;
  *  - en desarrollo y tests sigue abierta, para trabajar sin configurar nada.
- * La proteccion se activa en cuanto se define el secret.
+ * La proteccion se activa en cuanto se define el secret. Desde FASE 7 tambien
+ * se acepta un token de sesion firmado por OAuth (GitHub/Google): viaja en la
+ * misma cabecera Bearer, así que el SSE del chat no cambia ni una línea. Solo
+ * `requireAuth` es asíncrono porque verificar la firma usa Web Crypto.
  */
+
+import { verifySessionToken } from '@/app/lib/oauth'
 
 /** Token configurado, o null si no hay ninguno. */
 export function getAccessToken(): string | null {
@@ -49,7 +54,7 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /** Token de la peticion: solo `Authorization: Bearer <token>`. */
-function extractToken(req: Request): string | null {
+export function getBearerToken(req: Request): string | null {
   const header = req.headers.get('authorization') ?? ''
   if (header.toLowerCase().startsWith('bearer ')) {
     return header.slice(7).trim() || null
@@ -64,19 +69,22 @@ export function isAuthorized(req: Request): boolean {
     // Fail-closed en produccion: sin secret, se deniega todo.
     return !isProduction()
   }
-  const provided = extractToken(req)
+  const provided = getBearerToken(req)
   return provided !== null && safeEqual(provided, token)
 }
 
 /**
  * Devuelve la respuesta 401 si la peticion no esta autorizada, o null si lo
- * esta. Se usa al principio de cada handler:
+ * esta. Acepta la clave compartida o una sesión OAuth firmada. Se usa al
+ * principio de cada handler a través de `withAuth`:
  *
- *   const denied = requireAuth(req)
+ *   const denied = await requireAuth(req)
  *   if (denied) return denied
  */
-export function requireAuth(req: Request): Response | null {
+export async function requireAuth(req: Request): Promise<Response | null> {
   if (isAuthorized(req)) return null
+  const provided = getBearerToken(req)
+  if (provided && (await verifySessionToken(provided))) return null
   return Response.json(
     {
       error: 'Acceso no autorizado. Introduce la clave de ARIA para continuar.',

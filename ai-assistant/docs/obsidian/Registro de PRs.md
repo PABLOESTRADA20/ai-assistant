@@ -22,10 +22,11 @@ Todos los PRs locales se fusionaron con **merge commit** y las ramas **no se eli
 | #16 | `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` | `af0032b` | 13 actualizaciones: Next 15.5.29, OpenNext 1.20.17, Prisma 6.19.3, wrangler 4.164.0, Vitest 5.1.0; CI 3/3 |
 | #15 | `dependabot/github_actions/softprops/action-gh-release-3` | `b795264` | `action-gh-release` v3 (runtime Node 24); CI 3/3 |
 | #22 | `fix/general-errors` | `527137b` | 5 commits: WASM en dev/start, PR recién abierto vs. sin checks, test de integración de `ChangeLog`, `--force` y documentación; CI 3/3 |
+| #23 | `docs/post-merge-22` | `a835beb` | Ajuste documental tras #22 (ROADMAP, Obsidian y recuentos); CI 3/3 |
 
 ## Ramas remotas vivas
 
-`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update).
+`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update).
 
 ## Revisados sin fusionar
 

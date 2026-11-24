@@ -1,13 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { KeyRound, Eye, EyeOff, Loader2 } from 'lucide-react'
-import { verifyToken } from '@/app/lib/auth-client'
+import { Github, KeyRound, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { oauthStartHref, verifyToken } from '@/app/lib/auth-client'
+import type { OAuthProvider } from '@/app/lib/oauth'
 import NeuralNetwork from './NeuralNetwork'
 import AriaMark from './AriaMark'
 
 interface Props {
   onSuccess: () => void
+  providers?: OAuthProvider[]
+}
+
+const PROVIDER_LABEL: Record<OAuthProvider, string> = {
+  github: 'GitHub',
+  google: 'Google',
 }
 
 /**
@@ -17,7 +24,7 @@ interface Props {
  * clave se comprueba contra `/api/conversations`; si es valida se guarda en
  * `localStorage` y a partir de ahi todas las peticiones la llevan solas.
  */
-export default function LoginScreen({ onSuccess }: Props) {
+export default function LoginScreen({ onSuccess, providers = [] }: Props) {
   const [value, setValue] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -64,9 +71,46 @@ export default function LoginScreen({ onSuccess }: Props) {
             ARIA protegida
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Introduce la clave de acceso para continuar.
+            {providers.length
+              ? 'Entra con tu cuenta autorizada o usa la clave de acceso.'
+              : 'Introduce la clave de acceso para continuar.'}
           </p>
         </div>
+
+        {providers.length > 0 && (
+          <>
+            <div className="flex flex-col gap-2">
+              {providers.map((provider) => (
+                <a
+                  key={provider}
+                  href={oauthStartHref(provider)}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium transition hover:opacity-90 flex items-center justify-center gap-2"
+                  style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {provider === 'github' ? (
+                    <Github size={16} />
+                  ) : (
+                    <span className="text-sm font-bold" style={{ color: '#4285f4' }}>
+                      G
+                    </span>
+                  )}
+                  Entrar con {PROVIDER_LABEL[provider]}
+                </a>
+              ))}
+            </div>
+            <div className="flex items-center gap-3 my-4">
+              <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                o con tu clave
+              </span>
+              <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
+            </div>
+          </>
+        )}
 
         <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>
           Clave de acceso
@@ -119,7 +163,7 @@ export default function LoginScreen({ onSuccess }: Props) {
         </button>
 
         <p className="text-xs mt-4 text-center" style={{ color: 'var(--text-muted)' }}>
-          La clave se guarda solo en este navegador.
+          La sesión o la clave se guarda solo en este navegador.
         </p>
       </form>
     </div>
