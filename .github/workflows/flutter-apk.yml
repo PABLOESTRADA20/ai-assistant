@@ -78,7 +78,7 @@ jobs:
           path: ARIA-*.apk
 
       - name: Publicar en Releases
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: apk-v${{ github.run_number }}
           name: ARIA Android v${{ github.run_number }}
