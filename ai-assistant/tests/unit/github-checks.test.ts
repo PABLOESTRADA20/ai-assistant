@@ -33,6 +33,10 @@ const json = (data: unknown, status = 200) =>
 interface Handlers {
   pr?: unknown
   prStatus?: number
+  /** Fecha de creación del PR; por defecto antigua para no alterar los tests viejos. */
+  createdAt?: string
+  /** Fecha del commit de la rama; por defecto antigua. */
+  commitDate?: string
   branch?: unknown
   branchStatus?: number
   checkRuns?: unknown
@@ -40,6 +44,9 @@ interface Handlers {
   statuses?: unknown
   annotations?: Record<number, unknown>
 }
+
+const OLD_DATE = '2020-01-01T00:00:00.000Z'
+const nowIso = () => new Date().toISOString()
 
 /** Mock de la API de GitHub para checks. Devuelve las URLs consultadas. */
 function stubChecks(h: Handlers = {}) {
@@ -58,6 +65,7 @@ function stubChecks(h: Handlers = {}) {
                 title: 'Fix',
                 state: 'open',
                 merged: false,
+                created_at: h.createdAt ?? OLD_DATE,
                 head: { sha: 'sha-1', ref: 'aria/x' },
                 base: { ref: 'main' },
               },
@@ -66,7 +74,15 @@ function stubChecks(h: Handlers = {}) {
       if (url.includes('/branches/')) {
         return h.branchStatus && h.branchStatus >= 400
           ? json({ message: 'Not Found' }, h.branchStatus)
-          : json(h.branch ?? { name: 'aria/x', commit: { sha: 'sha-1' } })
+          : json(
+              h.branch ?? {
+                name: 'aria/x',
+                commit: {
+                  sha: 'sha-1',
+                  commit: { committer: { date: h.commitDate ?? OLD_DATE } },
+                },
+              },
+            )
       }
       if (url.includes('/annotations')) {
         const id = Number(url.match(/check-runs\/(\d+)\/annotations/)?.[1])
@@ -176,6 +192,34 @@ describe('getCheckRuns', () => {
     const out = JSON.parse(await getCheckRuns({ repo: 'owner/repo', branch: 'aria/x' }))
     expect(out.state).toBe('none')
     expect(out.counts).toEqual({ check_runs: 0, statuses: 0 })
+    expect(out.checks_registered).toBe(false)
+  })
+
+  it('un PR recién abierto sin checks es pending, no "sin CI"', async () => {
+    stubChecks({ createdAt: nowIso() })
+    const out = JSON.parse(await getCheckRuns({ repo: 'owner/repo', pr: 7 }))
+    expect(out.state).toBe('pending')
+    expect(out.checks_registered).toBe(false)
+    expect(out.counts).toEqual({ check_runs: 0, statuses: 0 })
+    expect(JSON.stringify(out.warnings)).toMatch(/todavía no registró/i)
+    expect(out.note).toMatch(/todavía no registró/i)
+  })
+
+  it('una rama con commit recién empujado sin checks también es pending', async () => {
+    stubChecks({ commitDate: nowIso() })
+    const out = JSON.parse(await getCheckRuns({ repo: 'owner/repo', branch: 'aria/x' }))
+    expect(out.state).toBe('pending')
+    expect(out.checks_registered).toBe(false)
+  })
+
+  it('un PR reciente con checks registrados mantiene su estado real', async () => {
+    stubChecks({
+      createdAt: nowIso(),
+      checkRuns: [{ name: 'ci', status: 'completed', conclusion: 'success' }],
+    })
+    const out = JSON.parse(await getCheckRuns({ repo: 'owner/repo', pr: 7 }))
+    expect(out.state).toBe('success')
+    expect(out.checks_registered).toBe(true)
   })
 
   it('considera los commit statuses (CI antiguos) además de los check runs', async () => {

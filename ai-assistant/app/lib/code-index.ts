@@ -151,6 +151,18 @@ export function hashContent(text: string): string {
   return `${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`
 }
 
+/**
+ * Un fichero se reindexa si cambió su contenido o si se pidió `--force`.
+ * Extraído del script para poder probar la puerta de costo sin Postgres.
+ */
+export function needsCodeReindex(
+  existingHash: string | undefined,
+  currentHash: string,
+  force = false,
+): boolean {
+  return force || existingHash !== currentHash
+}
+
 /** Posición de la barra que cierra un regex literal, o null si no lo es. */
 function regexEnd(line: string, start: number): number | null {
   let i = start + 1

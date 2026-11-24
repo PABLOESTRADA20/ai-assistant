@@ -1,20 +1,20 @@
 ---
 title: ARIA — Estado actual
 tags: [aria, estado, versiones]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Estado actual
 
 > [!tip] Fecha de corte
-> 2026-11-23, justo después de fusionar el PR #20.
+> 2026-11-24, con `main` en `b795264` (#15) y la rama `fix/general-errors` lista para PR.
 
 ## Repositorio
 
-- `main` en `1e66de9` (merge de #20), árbol limpio, `origin/main` sincronizado.
-- Rama de trabajo local `feat/piloto-refs` todavía existe (las ramas no se borran después del merge).
-- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`. Ver [[Registro de PRs]].
-- PRs de Dependabot **#4–#12 sin revisar**; hay ramas nuevas `dependabot/github_actions/softprops/action-gh-release-3` y `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (esta con forced update).
+- `main` en `b795264` (merge de #15), árbol limpio, `origin/main` sincronizado. Justo antes estaba en `1ea90f0` (#21).
+- Rama de trabajo local `fix/general-errors` (4 commits) lista para PR; las ramas ya fusionadas no se borran.
+- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`. Ver [[Registro de PRs]].
+- Dependabot revisado: #15 y #16 fusionados con CI verde; #4–#7/#9–#12 quedan sin fusionar (saltos mayores superados o CI roja), #8 cerrado. Ver [[Pendientes]].
 
 ## Fases
 
@@ -33,21 +33,21 @@ updated: 2026-11-23
 
 | Paquete | Versión |
 |---|---|
-| `next` | 15.5.28 |
-| `@opennextjs/cloudflare` | 1.20.6 |
-| `prisma` / `@prisma/client` | 6.19.0 |
+| `next` | 15.5.29 |
+| `@opennextjs/cloudflare` | 1.20.17 |
+| `prisma` / `@prisma/client` | 6.19.3 |
 | `react` | 18 |
 | `tailwindcss` | 3.4.x |
-| `wrangler` | 4.158.0 (antes 4.130.0) |
+| `wrangler` | 4.164.0 (antes 4.158.0 y 4.130.0) |
 | `@types/node` | 24.19.1 |
-| `vitest` | 5.0.3 |
+| `vitest` | 5.1.0 |
 
 ## Calidad
 
-- Última corrida local: `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**46 archivos / 461 tests**), `build` ✅.
-- CI del PR #20: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`).
+- Última corrida local: `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**47 archivos / 471 tests**), `build` ✅.
+- CI del PR #21: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`). PR #15 y #16 también cerraron con 3/3.
 - Variables usadas para validar: `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`.
-- Auditoría: **20 vulnerabilidades** (5 altas, 15 moderadas, 0 críticas). Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**. `wrangler@4.158.0` bajó el total de 35 a 20.
+- Auditoría tras #16: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas). Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**. Antes eran 20 (5 altas, 15 moderadas).
 
 ## Datos y piloto
 
@@ -60,7 +60,7 @@ updated: 2026-11-23
 - Fase 7 en vivo: faltan `GITHUB_TOKEN`, `GITLAB_TOKEN` y credenciales OAuth; OAuth aún no implementado.
 - Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp.
 - 5 vulnerabilidades altas pendientes de decisión (saltos mayores prohibidos).
-- `ROADMAP.md` dice 204/204 ficheros en Fase 3; la reindexación real posterior fue 215 ficheros / 1.344 trozos. Ver [[Pendientes]].
+- Reindexación forzada no ejecutada aquí: sin Docker, `TEST_DATABASE_URL` ni cuota. El recuento vigente (215/215 y 1.344 trozos) ya está en `ROADMAP.md`; el comando es `npm run db:index-code -- --force`. Ver [[Pendientes]].
 
 ## Reglas operativas
 

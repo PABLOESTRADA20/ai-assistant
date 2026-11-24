@@ -16,7 +16,7 @@ fecha: 2026-10-15
 - `ChangeLog` (migración `20261015120000_add_change_log`, aplicada en Neon) + `app/lib/changelog.ts` con **SQL crudo** como `Note`: `entity`, `entityId`, `action`, `before`/`after` (jsonb), `actor`, `revertedAt`, `createdAt`. Solo se guardan los campos mutables.
 - Límites: **12 cambios/min por registro** (`MAX_CHANGES_PER_MINUTE`) y **un único id por llamada**. El borrado no se expone como herramienta.
 - `revert_change`: reaplica `before` y marca `revertedAt`; se puede pedir por `changeId` o por `entity` + `entityId`. La segunda reversión del mismo cambio se rechaza.
-- Tests: 17 en `tests/unit/data-change.test.ts` + casos en `select-tools.test.ts`; total 291 unitarios verdes en su cierre.
+- Tests: 17 en `tests/unit/data-change.test.ts` + casos en `select-tools.test.ts`; total 291 unitarios verdes en su cierre. Añadido el 2026-11-24: `tests/integration/changelog.test.ts` para el SQL crudo (jsonb, reversión única, ventana de tiempo y `NULL`); se omite sin `TEST_DATABASE_URL`.
 
 ## Aceptación en vivo (2026-10-15)
 
@@ -39,7 +39,7 @@ fecha: 2026-10-15
 
 ## Pendientes de esta fase
 
-Ver [[Pendientes]]: ruta de embedding con cuota agotada sin probar en vivo, test de integración del SQL crudo y solapamiento "nota" con el vault de Obsidian.
+Ver [[Pendientes]]: ruta de embedding con cuota agotada sin probar en vivo y solapamiento "nota" con el vault de Obsidian. El test de integración del SQL crudo ya existe (2026-11-24), pero no se ha corrido en esta PC por falta de Docker/`TEST_DATABASE_URL`.
 
 ## Enlaces
 

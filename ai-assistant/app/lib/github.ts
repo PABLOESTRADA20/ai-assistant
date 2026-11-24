@@ -76,6 +76,11 @@ export const GITHUB_LIMITS = {
   checkTextChars: 300,
   /** Anotaciones leídas por cada check fallido. */
   checkAnnotations: 5,
+  /**
+   * Margen en que un PR recién abierto (o una rama con un commit recién
+   * empujado) puede no tener checks registrados todavía en la API.
+   */
+  checkRegistrationGraceMs: 2 * 60 * 1000,
 } as const
 
 export interface GithubRepoRef {
@@ -332,6 +337,20 @@ function describeError(status: number, data: unknown): string {
   if (status === 422) return `GitHub rechazó los datos del cambio: ${message || 'validación fallida'}`
   if (status === 0) return `No pude contactar con GitHub: ${message}`
   return `GitHub respondió ${status}${message ? `: ${message}` : ''}`
+}
+
+/**
+ * Un commit recién creado puede no tener checks todavía: GitHub registra los
+ * check runs unos segundos después. Confundir ese momento con "repo sin CI"
+ * hacía que la herramienta dijera "sin checks configurados" justo al abrir
+ * el PR. Se usa la fecha del PR o del commit de la rama, nunca la hora actual
+ * del sistema como única señal.
+ */
+function isRecentCommit(iso: string | null): boolean {
+  if (!iso) return false
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return false
+  return Math.abs(Date.now() - at) <= GITHUB_LIMITS.checkRegistrationGraceMs
 }
 
 /* --------------------- escritura segura mediante pull request ----------- */
@@ -1063,6 +1082,7 @@ export async function mergePullRequest(input: GithubMergeInput): Promise<string>
   // 3) Verificar las pruebas ANTES de fusionar (nunca fusionar a ciegas).
   const checks = JSON.parse(await getCheckRuns({ repo: fullRepo, pr: pullNumber })) as {
     state?: string
+    checks_registered?: boolean
     failed?: number
     pending?: number
   }
@@ -1076,7 +1096,9 @@ export async function mergePullRequest(input: GithubMergeInput): Promise<string>
       branch,
       note:
         checks.state === 'pending'
-          ? 'Hay checks en cola: esperá y volvé a intentar.'
+          ? checks.checks_registered === false
+            ? 'GitHub todavía no registró los checks de este PR: esperá y volvé a intentar.'
+            : 'Hay checks en cola: esperá y volvé a intentar.'
           : 'Corregí los checks fallidos en la misma rama y volvé a intentar.',
     })
   }
@@ -1222,6 +1244,7 @@ export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string>
   let sha = ''
   let branch: string | null = requestedBranch || null
   let base: string | null = null
+  let commitCreatedAt: string | null = null
   const prMeta: Record<string, unknown> = {}
   const warnings: string[] = []
 
@@ -1234,9 +1257,12 @@ export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string>
       merged?: boolean
       draft?: boolean
       html_url?: string
+      created_at?: string
+      updated_at?: string
       head?: { sha?: string; ref?: string }
       base?: { ref?: string }
     }
+    commitCreatedAt = p.created_at ?? p.updated_at ?? null
     sha = p.head?.sha ?? ''
     if (!sha) return JSON.stringify({ error: 'GitHub no devolvió el commit del pull request.' })
     branch = p.head?.ref ?? branch
@@ -1257,9 +1283,17 @@ export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string>
         error: `No encontré la rama "${requestedBranch}": ${describeError(brRes.status, brRes.data)}`,
       })
     }
-    const b = brRes.data as { commit?: { sha?: string }; name?: string }
+    const b = brRes.data as {
+      commit?: {
+        sha?: string
+        commit?: { committer?: { date?: string }; author?: { date?: string } }
+      }
+      name?: string
+    }
     sha = b.commit?.sha ?? ''
     if (!sha) return JSON.stringify({ error: 'GitHub no devolvió el commit de la rama.' })
+    commitCreatedAt =
+      b.commit?.commit?.committer?.date ?? b.commit?.commit?.author?.date ?? null
     branch = b.name ?? requestedBranch
   }
 
@@ -1326,11 +1360,21 @@ export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string>
   }
 
   const total = runs.length + statusItems.length
+  const checksRegistered = total > 0
   let state: 'success' | 'failure' | 'pending' | 'none'
   if (failed > 0 || statusFailure > 0) state = 'failure'
   else if (pending > 0 || statusPending > 0) state = 'pending'
-  else if (total === 0) state = 'none'
+  else if (!checksRegistered) state = 'none'
   else state = 'success'
+
+  // Justo tras abrir el PR GitHub todavía no ha publicado los checks: eso es
+  // "pendiente, reintenta", no "este repo no tiene CI".
+  if (state === 'none' && isRecentCommit(commitCreatedAt)) {
+    state = 'pending'
+    warnings.push(
+      'GitHub todavía no registró los checks de este commit (el PR o la rama se creó hace poco): volvé a consultar en unos segundos.',
+    )
+  }
 
   // 4) Detalle de los fallos: salida del check + anotaciones (máx. 5 checks).
   const MAX_DETAIL_RUNS = 5
@@ -1385,6 +1429,7 @@ export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string>
     sha,
     auth: hasGithubToken() ? 'token' : 'anónimo (60 req/hora)',
     state,
+    checks_registered: checksRegistered,
     counts: { check_runs: runs.length, statuses: statusItems.length },
     passed,
     failed,
@@ -1398,7 +1443,9 @@ export async function getCheckRuns(input: GithubCheckRunsInput): Promise<string>
       state === 'success'
         ? 'Todos los checks pasaron; recién ahora el cambio puede darse por listo.'
         : state === 'pending'
-          ? 'Hay checks en cola o en curso: esperá y volvé a consultar; no lo des por bueno todavía.'
+          ? checksRegistered
+            ? 'Hay checks en cola o en curso: esperá y volvé a consultar; no lo des por bueno todavía.'
+            : 'GitHub todavía no registró los checks: esperá y volvé a consultar; no lo des por bueno todavía.'
           : state === 'failure'
             ? 'Hay checks fallidos: leé el detalle y corregí en la misma rama, luego volvé a consultar.'
             : 'Este commit no tiene checks ni estados configurados.',

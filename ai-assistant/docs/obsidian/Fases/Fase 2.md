@@ -23,9 +23,9 @@ En el mismo PR #1 de `web_anime`:
 - Un 2.º `github_apply_patch` **con `branch`** commiteó en la misma rama (`pull_request: null`, `fix_attempts` 1 → 2).
 - El 4.º intento fue rechazado por el tope: "ya recibió 2 correcciones automáticas".
 
-## Matiz pendiente
+## Matiz de temporización (resuelto 2026-11-24)
 
-Si se consulta justo tras abrir el PR, GitHub todavía no ha creado el check (0 checks) y el resumen dice `state:"none"` ("sin checks configurados") cuando lo correcto sería **pendiente, reintenta**. Es una mejora posible, no bloqueante; está en [[Pendientes]].
+Si se consulta justo tras abrir el PR, GitHub todavía no ha creado el check (0 checks). Antes el resumen decía `state:"none"` ("sin checks configurados") cuando lo correcto era **pendiente, reintenta**. Ahora `getCheckRuns` mira la fecha de creación del PR (o del commit de la rama): con menos de 2 minutos y sin checks devuelve `state:"pending"`, `checks_registered:false` y un aviso; `mergePullRequest` bloquea la fusión en ese caso. Si el PR es viejo y sigue sin checks, mantiene `none` y la auto-fusión puede avisar y fusionar.
 
 Además, el CI de `web_anime` ya estaba roto en `main` antes de la prueba; no se tocó.
 

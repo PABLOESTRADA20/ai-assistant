@@ -21,6 +21,7 @@ Con `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x` para CI
 
 ```
 npm run db:index-code
+npm run db:index-code -- --force   # tras cambiar el chunker
 npm run db:smoke-code
 npm run db:dataset -- --dry
 npm run db:dataset -- --fake

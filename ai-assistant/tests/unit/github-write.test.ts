@@ -217,7 +217,9 @@ describe('mergePullRequest', () => {
     state: 'success' | 'pending' | 'failure' | 'none'
   }
 
-  function stubMerge(opts: { checks?: Checks; mergeable?: boolean | null } = {}) {
+  function stubMerge(
+    opts: { checks?: Checks; mergeable?: boolean | null; createdAt?: string } = {},
+  ) {
     const calls: { url: string; method: string; body?: Record<string, unknown> }[] = []
     const state = opts.checks?.state ?? 'success'
     vi.stubGlobal(
@@ -248,6 +250,7 @@ describe('mergePullRequest', () => {
             number: 3,
             state: 'open',
             merged: false,
+            created_at: opts.createdAt ?? '2020-01-01T00:00:00.000Z',
             mergeable: opts.mergeable === undefined ? true : opts.mergeable,
             head: { ref: 'aria/x', sha: 'sha-1' },
             base: { ref: 'main' },
@@ -314,6 +317,20 @@ describe('mergePullRequest', () => {
     const out = JSON.parse(await mergePullRequest({ repo: 'owner/repo', pr: 3 }))
     expect(out.success).toBe(true)
     expect(out.checks).toBe('none')
+  })
+
+  it('no fusiona un PR recién abierto mientras GitHub no registra los checks', async () => {
+    enableWrite(true)
+    const calls = stubMerge({
+      checks: { state: 'none' },
+      createdAt: new Date().toISOString(),
+    })
+
+    const out = JSON.parse(await mergePullRequest({ repo: 'owner/repo', pr: 3 }))
+    expect(out.error).toMatch(/no pasaron/i)
+    expect(out.state).toBe('pending')
+    expect(out.note).toMatch(/todavía no registró/i)
+    expect(calls.some((c) => c.url.endsWith('/pulls/3/merge'))).toBe(false)
   })
 
   it('resuelve el PR por rama cuando no hay número', async () => {
