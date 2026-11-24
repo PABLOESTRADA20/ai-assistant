@@ -7,6 +7,7 @@ import {
   hashContent,
   isIndexedFile,
   langFromPath,
+  needsCodeReindex,
 } from '@/app/lib/code-index'
 
 /**
@@ -162,5 +163,20 @@ describe('fuseCodeScores', () => {
   it('acota valores fuera de rango', () => {
     expect(fuseCodeScores(2, null)).toBe(1)
     expect(fuseCodeScores(-1, null)).toBe(0)
+  })
+})
+
+describe('needsCodeReindex', () => {
+  it('omite los ficheros cuyo hash no cambió', () => {
+    expect(needsCodeReindex('abc', 'abc')).toBe(false)
+  })
+
+  it('reindexa ficheros nuevos y modificados', () => {
+    expect(needsCodeReindex(undefined, 'abc')).toBe(true)
+    expect(needsCodeReindex('old', 'new')).toBe(true)
+  })
+
+  it('--force reindexa aunque el hash coincida', () => {
+    expect(needsCodeReindex('abc', 'abc', true)).toBe(true)
   })
 })

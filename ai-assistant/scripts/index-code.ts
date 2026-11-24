@@ -14,6 +14,7 @@ import type { Dirent } from 'node:fs'
  * `search_code` lo consulta desde la nube.
  *
  *   npm run db:index-code
+ *   npm run db:index-code -- --force   # tras cambiar el chunker
  *
  * Puertas de costo (por qué esto no quema la cuota de Workers AI):
  *
@@ -34,6 +35,7 @@ interface Env {
   chunkCode: typeof import('../app/lib/code-index').chunkCode
   codeChunkText: typeof import('../app/lib/code-index').codeChunkText
   hashContent: typeof import('../app/lib/code-index').hashContent
+  needsCodeReindex: typeof import('../app/lib/code-index').needsCodeReindex
   isIndexedFile: typeof import('../app/lib/code-index').isIndexedFile
   CODE_SKIP_DIRS: typeof import('../app/lib/code-index').CODE_SKIP_DIRS
   embed: typeof import('../app/lib/llm-embed').embed
@@ -136,6 +138,7 @@ async function main(): Promise<void> {
     chunkCode: lib.chunkCode,
     codeChunkText: lib.codeChunkText,
     hashContent: lib.hashContent,
+    needsCodeReindex: lib.needsCodeReindex,
     isIndexedFile: lib.isIndexedFile,
     CODE_SKIP_DIRS: lib.CODE_SKIP_DIRS,
     embed: llm.embed,
@@ -148,6 +151,8 @@ async function main(): Promise<void> {
 
   const root = path.resolve(process.env.CODE_INDEX_ROOT || process.cwd())
   const repo = process.env.CODE_INDEX_REPO?.trim() || 'local'
+  const force = process.argv.includes('--force')
+  if (force) console.log('[index-code] modo forzado: se reindexa todo aunque el hash no haya cambiado')
   const started = Date.now()
 
   if (!fs.existsSync(root)) {
@@ -205,7 +210,7 @@ async function main(): Promise<void> {
     }
 
     const fileHash = env.hashContent(content)
-    if (existingHash.get(rel) === fileHash) {
+    if (!env.needsCodeReindex(existingHash.get(rel), fileHash, force)) {
       unchanged++
       continue
     }
