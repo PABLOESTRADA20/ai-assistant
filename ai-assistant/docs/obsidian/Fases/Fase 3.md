@@ -2,7 +2,7 @@
 title: Fase 3 — Índice de código + mapa del repo
 tags: [aria, fase3, rag, indice]
 estado: hecha
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Fase 3 — Índice de código + mapa del repo ✅
@@ -23,9 +23,10 @@ updated: 2026-11-23
 | 2026-10-15 | 92/187, 574 trozos; `P1001` transitorio de Neon, reanudable. |
 | 2026-10-30 | 203/203 ficheros, 1.229 trozos, `failed 0`. |
 | 2026-11-02 | 204/204 ficheros, 1.245 trozos; pasada sin cambios con `embeddings.api: 0` ✅. |
-| Posterior | Tras arreglar el chunker para ignorar llaves en regex literales: **215 ficheros / 1.344 trozos / 155 con símbolos / 0 fallos**. |
+| 2026-11-23 | Tras arreglar el chunker para ignorar llaves en regex literales: **215/215 ficheros / 1.344 trozos / 155 con símbolos / 0 fallos**. `search_code` validado de nuevo. |
 
-> [!warning] `ROADMAP.md` sigue diciendo 204/204 y 1.245 trozos. La última reindexación real fue 215/1.344. Tras cualquier cambio del chunker hay que forzar reindexación completa. Ver [[Pendientes]].
+> [!tip] Recuento ya alineado
+> `ROADMAP.md` y `REPO_MAP.md` muestran 215/215 ficheros y 1.344 trozos. Desde el 2026-11-24 existe `npm run db:index-code -- --force` para repetir la indexación completa tras cambiar el chunker (la decisión es `needsCodeReindex()`, con unitarios). No se ejecutó aquí: no hay Docker, BD de pruebas ni cuota disponible.
 
 ## Decisiones
 

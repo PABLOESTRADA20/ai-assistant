@@ -2,7 +2,7 @@
 title: ARIA — Inicio
 aliases: [MOC, Índice ARIA]
 tags: [aria, indice, moc]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # ARIA — Inicio

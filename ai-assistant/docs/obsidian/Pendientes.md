@@ -1,7 +1,7 @@
 ﻿---
 title: ARIA — Pendientes
 tags: [aria, pendientes, bloqueos]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Pendientes
@@ -19,13 +19,16 @@ updated: 2026-11-23
 
 ## Deuda técnica
 
-- 5 vulnerabilidades altas: exigen Prisma 7 o Next 16 → **no se suben sin autorización**.
-- PRs de Dependabot #4–#12 sin revisar; evaluar OpenNext 1.20.16.
-- `ROADMAP.md` dice 204/204 ficheros; la última reindexación real fue 215/1.344. Forzar reindexación tras cambios del chunker.
-- Matiz de Fase 2: `github_get_check_runs` justo tras abrir un PR responde "sin checks" en vez de "pendiente, reintenta".
-- Fase 4: ruta de embedding con cuota agotada sin probar en vivo; falta test de integración del SQL crudo; vigilar solapamiento "nota" con el vault.
+- 5 vulnerabilidades altas: exigen Prisma 7 o Next 16 → **no se suben sin autorización**. Tras #16 el total bajó de 20 a 18 (13 moderadas).
+- Dependabot revisado el 2026-11-24: fusionados #15 y #16 (CI verde). #4–#7/#10/#11 son saltos mayores ya superados; #9 y #12 tienen CI roja; #8 estaba cerrado. No se cierran sin decisión explícita.
+- OpenNext 1.20.16 evaluado: exige Next ≥15.5.29; #16 trae 1.20.17 + Next 15.5.29. No se acepta nada que requiera Next 16.
+- [x] `ROADMAP.md` actualizado al recuento real: 215/215 ficheros y 1.344 trozos. Existe `npm run db:index-code -- --force` para repetir la indexación tras cambiar el chunker.
+- [x] Matiz de Fase 2 resuelto: PR recién abierto sin checks → `pending` + `checks_registered:false`; la auto-fusión espera.
+- [x] Fase 4: añadido `tests/integration/changelog.test.ts` para el SQL crudo (se omite sin `TEST_DATABASE_URL`). Siguen pendientes la ruta de embedding con cuota agotada y el solapamiento "nota" con el vault.
+- [x] `next dev` y `next start` ya no buscan el `.wasm` en `.next/server`: el externalizado es solo del build del worker.
 - WSL sin distro instalada: `.wslconfig` no se pudo medir.
 - CI de `web_anime` ya roto en `main` antes de las pruebas; no es culpa de ARIA.
+- Sin Docker ni `TEST_DATABASE_URL` en esta PC: el test de integración no se ha ejecutado aquí; la reindexación forzada tampoco (requiere BD + cuota).
 
 ## Señal de modelo
 

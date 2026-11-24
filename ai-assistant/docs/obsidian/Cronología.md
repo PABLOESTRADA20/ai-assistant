@@ -1,7 +1,7 @@
 ---
 title: ARIA — Cronología
 tags: [aria, historia, linea-de-tiempo]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Cronología
@@ -57,6 +57,14 @@ updated: 2026-11-23
 - Se generaron 6 trazas de #17/#18/#19 con veredicto `ci-passed`; `pilot:eval` evaluó 10 trazas: 6 aprobadas y 4 rechazadas.
 - Por tarea: resúmenes **4/4**, tests generados **2/6**. El fallo de #19 fue inventar `evaluatePilot` en vez de `evaluateTestProposal`.
 - Conclusión: construir el dataset ReAct/CoT para el **generador de tests** con held-out y early stopping; Fase 6 permanece cerrada. Ver [[Piloto/Trazas y evaluación]].
+
+## 2026-11-24 — errores generales y deuda
+
+- `next dev` / `next start` dejaron de buscar el WASM en `.next/server`: el externalizado es solo del build del worker (`scripts/next-wasm.cjs`).
+- `github_get_check_runs` distingue PR recién abierto (`pending`, `checks_registered:false`) de repo sin CI (`none`); la auto-fusión espera.
+- `tests/integration/changelog.test.ts` cubre el SQL crudo de [[Fases/Fase 4]]; `npm run db:index-code -- --force` permite reindexar tras cambiar el troceador.
+- `ROADMAP.md` y [[Fases/Fase 3]] quedan con el recuento real 215/215 y 1.344 trozos.
+- Dependabot #15 y #16 fusionados con CI verde: Next 15.5.29, OpenNext 1.20.17, Prisma 6.19.3, wrangler 4.164.0, Vitest 5.1.0. Auditoría: 18 avisos (5 altas siguen bloqueadas por Prisma 7/Next 16).
 
 ## Regla para futuras sesiones
 

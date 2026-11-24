@@ -1,7 +1,7 @@
 ﻿---
 title: ARIA — Registro de PRs
 tags: [aria, prs, git]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Registro de PRs
@@ -18,14 +18,19 @@ Todos los PRs locales se fusionaron con **merge commit** y las ramas **no se eli
 | #18 | `feat/piloto-llm` | `58250b7` | Cliente Groq opt-in, anonimización previa, 14 tests |
 | #19 | `feat/piloto-eval` | `3530f64` | Rúbrica 0-5, filtros y worktree temporal, 10 tests |
 | #20 | `feat/piloto-refs` | `1e66de9` | `--ref=`, reintentos 429, lote de 10 trazas evaluadas, 2 tests |
+| #21 | `docs/obsidian-vault` | `1ea90f0` | Bóveda Obsidian: 26 notas, MOC, canvas, wikilinks y frontmatter |
+| #16 | `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` | `af0032b` | 13 actualizaciones: Next 15.5.29, OpenNext 1.20.17, Prisma 6.19.3, wrangler 4.164.0, Vitest 5.1.0; CI 3/3 |
+| #15 | `dependabot/github_actions/softprops/action-gh-release-3` | `b795264` | `action-gh-release` v3 (runtime Node 24); CI 3/3 |
+
+Rama abierta: `fix/general-errors` (WASM en dev/start, PR recién abierto, test de integración de `ChangeLog`, `--force` y documentación).
 
 ## Ramas remotas vivas
 
-`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update).
+`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update).
 
-## Sin revisar
+## Revisados sin fusionar
 
-PRs de Dependabot **#4–#12**. Ver [[Pendientes]].
+PRs de Dependabot **#4–#7, #9–#12** (saltos mayores ya superados o CI roja; #8 estaba cerrado). No se cierran ni se fusionan sin una decisión explícita. Ver [[Pendientes]].
 
 ## Enlaces
 
