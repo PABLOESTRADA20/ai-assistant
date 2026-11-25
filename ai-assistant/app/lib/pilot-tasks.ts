@@ -54,6 +54,8 @@ export function buildTestGenerationPrompt(input: TestGenerationInput): string {
     '',
     'TAREA: propón UN archivo nuevo de tests unitarios para el cambio mostrado.',
     'Reglas: Vitest; usa vi.mock si el módulo tiene efectos; sin red, sin BD real, sin secretos.',
+    'ANTES de importar un símbolo, verifica que aparezca en el DIFF; si no aparece, no lo uses.',
+    'No inventes nombres parecidos: copia el export exacto del diff. Si el diff está truncado, reduces el test a lo observable.',
     'El archivo debe vivir en tests/unit/ y terminar en .test.ts.',
     'El path debe ser NUEVO: no sobrescribas ningún test existente; usa tests/unit/piloto-generado-<nombre>.test.ts.',
     'Máximo 40 líneas; cierra siempre el bloque ```. No expliques el código fuera del formato.',

@@ -114,12 +114,15 @@ export function bucketFor(value: string): number {
   return hash32(value) % 100
 }
 
-/** El PR de origen (o la traza si no hay ref) evita mezclar un mismo diff en dos splits. */
+/** PR de origen > conjunto de archivos > traza; nunca agrupa todo el repo en un solo split. */
 export function groupOf(trace: PilotTrace): string {
   const ref = trace.meta?.ref
   if (typeof ref === 'string' && ref.trim()) return `ref:${ref.trim()}`
-  const repo = trace.repo
-  if (typeof repo === 'string' && repo.trim()) return `repo:${repo.trim()}`
+  const files = trace.meta?.changedFiles
+  if (Array.isArray(files) && files.length > 0) {
+    const key = files.filter((file): file is string => typeof file === 'string').sort().join('|')
+    if (key) return `files:${hash32(key).toString(16)}`
+  }
   return `trace:${trace.id}`
 }
 
@@ -472,4 +475,58 @@ export function parseJsonl<T>(contents: string, source: string): T[] {
         throw new Error(`${source}:${number} no es JSON válido`)
       }
     })
+}
+
+export type TestgenAuditCode =
+  | 'empty-dataset'
+  | 'empty-answer'
+  | 'group-leak'
+  | 'missing-verdict-in-valid'
+  | 'unscrubbed-secret'
+  | 'known-bad-symbol'
+  | 'invalid-test-path'
+
+/**
+ * Puerta de calidad del dataset. Se ejecuta en el CLI y en los tests para que un
+ * cambio futuro no reintroduzca fugas entre splits, secretos ni el fallo de #19.
+ */
+export function auditTestgenExamples(examples: TestgenExample[]): TestgenAuditCode[] {
+  const issues = new Set<TestgenAuditCode>()
+  if (examples.length === 0) {
+    issues.add('empty-dataset')
+    return [...issues]
+  }
+
+  const byGroup = new Map<string, Set<TestgenSplit>>()
+  const allVerdicts = new Set<TestgenVerdict>()
+  const validVerdicts = new Set<TestgenVerdict>()
+
+  for (const example of examples) {
+    const splits = byGroup.get(example.group) ?? new Set<TestgenSplit>()
+    splits.add(example.split)
+    byGroup.set(example.group, splits)
+    allVerdicts.add(example.verdict)
+    if (example.split === 'valid') validVerdicts.add(example.verdict)
+
+    const answer = example.messages.find((message) => message.role === 'assistant')?.content ?? ''
+    if (!answer.trim()) issues.add('empty-answer')
+    if (scrubText(answer).redactions > 0) issues.add('unscrubbed-secret')
+    if (/\bevaluatePilot\s*\(/.test(answer)) issues.add('known-bad-symbol')
+
+    const path = answer.match(/ARCHIVO:\s*(\S+\.test\.ts)/)?.[1]
+    if (path && (!path.startsWith('tests/unit/') || path.includes('..'))) {
+      issues.add('invalid-test-path')
+    }
+  }
+
+  if ([...byGroup.values()].some((splits) => splits.size > 1)) issues.add('group-leak')
+  if (
+    examples.some((example) => example.split === 'valid') &&
+    allVerdicts.size > 1 &&
+    validVerdicts.size < allVerdicts.size
+  ) {
+    issues.add('missing-verdict-in-valid')
+  }
+
+  return [...issues].sort()
 }
