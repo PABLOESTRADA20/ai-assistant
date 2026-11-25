@@ -303,6 +303,20 @@ describe('auditTestgenExamples', () => {
     expect(issues).toContain('invalid-test-path')
   })
 
+  it('no marca como secreto una ruta ya anonimizada', () => {
+    const { traces, evals } = fixtures()
+    const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 0 }))
+    const cleanPath: TestgenExample = {
+      ...examples[0],
+      messages: [
+        examples[0].messages[0],
+        examples[0].messages[1],
+        { role: 'assistant', content: 'ARCHIVO: C:\\Users\\<usuario>\\repo\\tests\\unit\\x.test.ts' },
+      ],
+    }
+    expect(auditTestgenExamples([cleanPath])).not.toContain('unscrubbed-secret')
+  })
+
   it('pide veredictos en valid cuando existen ambos tipos', () => {
     const { traces, evals } = fixtures()
     const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 0 }))
