@@ -61,7 +61,7 @@ jobs:
           Write-Output "ARIA-Windows-x64.zip  $mb MB"
           Test-Path "$src\ARIA.exe"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ARIA-windows
           path: ARIA-Windows-x64.zip
