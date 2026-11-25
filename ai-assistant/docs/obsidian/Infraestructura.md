@@ -12,7 +12,7 @@ Next 15.5.28 · React 18 · Tailwind 3.4.x · Prisma 6.19.0 · OpenNext 1.20.6 �
 
 ## Runtime y build
 
-- Producción corre en **workerd** (Cloudflare Workers). `npm run preview` usa el mismo runtime; `next dev` falla con `Cannot find module ... query_engine_bg.wasm` y `next start` con `The loaded wasm module was unexpectedly undefined or null`.
+- Producción corre en **workerd** (Cloudflare Workers). `npm run preview` usa el mismo runtime; con Prisma 7 el módulo es `query_compiler_fast_bg.wasm`, y `next dev`/`next start` siguen sin resolverse fuera de workerd.
 - `npm run build:worker` centraliza el build de OpenNext, con `--dangerouslyUseUnsupportedNextVersion` y el parche WASM. No hace falta pasar la bandera a mano.
 - Auth en producción falla cerrada si falta `ARIA_ACCESS_TOKEN`.
 

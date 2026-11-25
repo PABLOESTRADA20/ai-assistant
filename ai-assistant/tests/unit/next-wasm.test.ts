@@ -16,6 +16,10 @@ describe('shouldExternalizeWasm', () => {
     expect(shouldExternalizeWasm({ OPENNEXT_WASM: '1' })).toBe(true)
   })
 
+  it('externaliza en el build que OpenNext marca como standalone', () => {
+    expect(shouldExternalizeWasm({ NEXT_PRIVATE_STANDALONE: 'true' })).toBe(true)
+  })
+
   it('no externaliza en dev, build ni start de Node', () => {
     expect(shouldExternalizeWasm({ npm_lifecycle_event: 'dev' })).toBe(false)
     expect(shouldExternalizeWasm({ npm_lifecycle_event: 'build' })).toBe(false)

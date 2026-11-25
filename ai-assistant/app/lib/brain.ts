@@ -24,7 +24,7 @@
  * cerebro la encuentra igual aunque la búsqueda no sea léxica, y la
  * consolidación/olvido la trata como un recuerdo más.
  */
-import { Prisma } from '../generated/prisma/wasm.js'
+import { Prisma } from '../generated/prisma/client'
 import { prisma } from './prisma'
 import { embed } from './llm-embed'
 import { createMemory } from './memory'

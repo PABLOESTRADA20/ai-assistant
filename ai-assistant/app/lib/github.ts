@@ -1,5 +1,5 @@
 import { prisma } from '@/app/lib/prisma'
-import type { Prisma } from '../generated/prisma/wasm.js'
+import type { Prisma } from '../generated/prisma/client'
 import { sliceWindow } from '@/app/lib/truncate'
 import { decodeBase64 } from '@/app/lib/base64'
 import {

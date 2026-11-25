@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/wasm.js'
+import { PrismaClient } from '../generated/prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
 
 /**
@@ -25,7 +25,10 @@ import { PrismaNeon } from '@prisma/adapter-neon'
  * @prisma/adapter-pg no aparece en el bundle del Worker (pg necesita node:net
  * y rompería el build de OpenNext/Cloudflare).
  */
-type AdapterFactory = (connectionString: string) => NonNullable<ConstructorParameters<typeof PrismaClient>[0]>['adapter']
+type AdapterFactory = (connectionString: string) => Extract<
+  NonNullable<ConstructorParameters<typeof PrismaClient>[0]>,
+  { adapter: unknown }
+>['adapter']
 
 // Symbol.for = registro global: la misma clave que usa el hook de Node.
 const ADAPTER_FACTORY_KEY = Symbol.for('aria.prismaAdapterFactory')

@@ -7,8 +7,8 @@ import '../scripts/register-pg-adapter.mjs'
 import dotenv from 'dotenv'
 import { register } from 'node:module'
 
-// El cliente Prisma genera `import("./query_engine_bg.wasm?module")` (runtime
-// cloudflare). Node no sabe cargar `.wasm` como módulo ES; este hook — el mismo
+// El cliente Prisma 7 genera `import("./query_compiler_fast_bg.wasm?module")`
+// (runtime cloudflare). Node no sabe cargar `.wasm` como módulo ES; este hook — el mismo
 // que usan los scripts (`npm run db:smoke`…) — lo convierte en un módulo que
 // exporta el WebAssembly.Module. Se registra antes de que ningún test importe
 // a app/lib/prisma.
