@@ -194,6 +194,32 @@ Los dos tests aprobados vinieron de los PRs `#17` y `#18`; el fallo del `#19` fu
 (4/4), pero su rúbrica no ejecuta código; el generador de tests es donde hay fallos medibles
 y es por ahí donde conviene construir el dataset con held-out.
 
+### Dataset ReAct/CoT del generador de tests
+
+```
+npm run pilot:dataset -- --dry          # solo informe
+npm run pilot:dataset                   # escribe train/valid/manifest
+npm run pilot:dataset -- --held-out=20 --patience=2
+```
+
+El generador (`app/lib/testgen-dataset.ts` + `scripts/build-testgen-dataset.ts`) cruza
+`data/traces/pilot.jsonl` con `data/traces/eval.jsonl`, conserva la **última** evaluación de
+cada traza y solo usa `test-generation` con veredicto `ci-passed`/`ci-failed`. Cada ejemplo es
+un chat con `system` (formato ReAct), `user` (prompt anonimizado del piloto) y `assistant`
+(`Pensamiento:` / `Acción:` / `Observación:` / `Respuesta:`). Los fallos **no repiten el código
+rechazado**: convierten el log de vitest en una corrección, para no premiar el error de #19.
+
+El split es por **grupo** (`meta.ref`, el PR de origen) con un hash FNV-1a estable: un mismo
+diff nunca aparece en `train` y `valid`. Se fuerza un grupo held-out si el hash no eligió
+ninguno. La salida es `data/lora/testgen-react/{train,valid,manifest}.jsonl` (ignorada por
+git); el manifest fija `earlyStopping: { monitor: "valid_loss", mode: "min", patience: 2,
+minDelta: 0.001 }`. Todo vuelve a pasar por `scrubText` y el informe cuenta las redacciones.
+
+Corrida actual sobre las trazas existentes: **6 ejemplos** (2 `ci-passed` / 4 `ci-failed`),
+4 grupos, `5 train / 1 valid` con 20% held-out y 2 rutas de usuario anonimizadas. Sigue siendo
+poco para entrenar; sirve para cerrar el formato y el protocolo de evaluación. La señal para
+decidir si se escala sigue siendo el generador de tests, no el resumidor (4/4 solo de formato).
+
 ## Si Kaggle se reinicia
 
 Kaggle borra `/kaggle/working` al reiniciar o expirar la sesión. Lo que sobrevive es el

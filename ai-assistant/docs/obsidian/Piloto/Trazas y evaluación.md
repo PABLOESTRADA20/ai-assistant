@@ -1,7 +1,7 @@
 ﻿---
 title: Piloto — Trazas y evaluación
 tags: [aria, piloto, evaluacion, veredictos]
-updated: 2026-11-23
+updated: 2026-11-24
 ---
 
 # Trazas y evaluación
@@ -29,10 +29,16 @@ Se generaron 6 trazas con `--ref=` sobre los PRs #17 (`c69e070`), #18 (`58250b7`
 
 ## Lectura
 
-El resumidor es consistente en formato (4/4), pero su rúbrica **no ejecuta código**: 4/4 no prueba corrección. El **generador de tests** tiene fallos reales y verificables (2/6): es donde conviene construir el dataset con **held-out** y **early stopping**.
+El resumidor es consistente en formato (4/4), pero su rúbrica **no ejecuta código**: 4/4 no prueba corrección. El **generador de tests** tiene fallos reales y verificables (2/6): es donde se construyó el dataset con **held-out** y **early stopping**.
+
+## Dataset ReAct/CoT (2026-11-24)
+
+`npm run pilot:dataset` une cada traza con su última evaluación y conserva solo propuestas de tests con veredicto. Los 2 casos `ci-passed` guardan el código aprobado; los 4 `ci-failed` guardan el razonamiento y la corrección, **sin repetir el código rechazado** (el fallo de #19 enseña a usar `evaluateTestProposal`, no `evaluatePilot`).
+
+El split no mezcla PRs: agrupa por `meta.ref`, usa un hash estable y reserva un grupo para `valid`. Resultado actual: **6 ejemplos**, `5 train / 1 valid`, 4 grupos, `early stopping` sobre `valid_loss` con `patience=2`. Archivos en `data/lora/testgen-react/` (ignorado); la fuente de verdad del formato está en [[Fuentes]] → `training/README.md`.
 
 > [!danger] Fase 6 sigue cerrada
-> No se reentrena hasta tener veredictos y un dataset con held-out. Ver [[Fases/Fase 6]] y [[Pendientes]].
+> No se reentrena hasta tener veredictos y un dataset con held-out suficiente; los 6 ejemplos actuales solo validan el formato. Ver [[Fases/Fase 6]] y [[Pendientes]].
 
 ## Enlaces
 

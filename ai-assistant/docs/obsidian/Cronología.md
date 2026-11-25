@@ -67,6 +67,7 @@ updated: 2026-11-24
 - Dependabot #15 y #16 fusionados con CI verde: Next 15.5.29, OpenNext 1.20.17, Prisma 6.19.3, wrangler 4.164.0, Vitest 5.1.0. Auditoría: 18 avisos (5 altas siguen bloqueadas por Prisma 7/Next 16).
 - PR #22 fusionado en `527137b` con CI 3/3; PR #23 ajustó la documentación en `a835beb`; `main` sigue limpio y las ramas no se eliminan.
 - Fase 7: OAuth de GitHub/Google en código (sesiones firmadas, state anti-CSRF, lista blanca de un usuario y botones en el login) con tests mockeados. PR #24 fusionado en `93269a9` con CI 3/3; falta probarlo con credenciales reales; ver [[Fases/Fase 7]].
+- Dataset ReAct/CoT del generador de tests: 6 ejemplos con split por PR y early stopping, 4 fallos convertidos en correcciones. Ver [[Piloto/Trazas y evaluación]]; Fase 6 sigue cerrada.
 
 ## Regla para futuras sesiones
 
