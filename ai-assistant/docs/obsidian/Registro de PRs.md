@@ -28,10 +28,13 @@ Todos los PRs locales se fusionaron con **merge commit** y las ramas **no se eli
 | #26 | `feat/testgen-dataset` | `d3f64ea` | Dataset ReAct/CoT con split por PR, correcciones y early stopping; CI 3/3 |
 | #27 | `fix/testgen-dataset-split` | `d0c2557` | `valid` estratificado y `--max-output-chars` real; CI 3/3 |
 | #4–#7, #10 | `dependabot/…` | `2b35ecf`, `62b2e0d`, `c810171`, `139b9e5`, `5f559e0` | Actions 7/6 y dotenv 18; los cinco con CI 3/3 |
+| #28 | `docs/post-merge-27-deps` | `fda75f9` | Registro de #27, Dependabot y deuda restante; CI 3/3 |
+| #29 | `feat/piloto-signal-quality` | `41042bb` | Prompt anti-invención, auditoría del dataset y agrupación por archivos; CI 3/3 |
+| #30 | `fix/audit-idempotente` | `2bc43c6` | La auditoría de secretos compara texto, no conteo; CI 3/3 |
 
 ## Ramas remotas vivas
 
-`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `docs/post-merge-24`, `feat/testgen-dataset`, `fix/testgen-dataset-split`, `docs/post-merge-27-deps`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update), `dependabot/github_actions/actions/checkout-7`, `dependabot/github_actions/actions/setup-node-7`, `dependabot/github_actions/actions/setup-java-6`, `dependabot/github_actions/actions/upload-artifact-7`, `dependabot/npm_and_yarn/ai-assistant/dotenv-18.0.9`.
+`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `docs/post-merge-24`, `feat/testgen-dataset`, `fix/testgen-dataset-split`, `docs/post-merge-27-deps`, `feat/piloto-signal-quality`, `fix/audit-idempotente`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update), `dependabot/github_actions/actions/checkout-7`, `dependabot/github_actions/actions/setup-node-7`, `dependabot/github_actions/actions/setup-java-6`, `dependabot/github_actions/actions/upload-artifact-7`, `dependabot/npm_and_yarn/ai-assistant/dotenv-18.0.9`.
 
 ## Revisados sin fusionar
 

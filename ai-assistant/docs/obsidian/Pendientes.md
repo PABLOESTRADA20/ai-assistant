@@ -19,9 +19,9 @@ updated: 2026-11-24
 
 ## Deuda técnica
 
-- 5 vulnerabilidades altas: exigen Prisma 7 o Next 16 → **no se suben sin autorización**. Tras #16 el total bajó de 20 a 18 (13 moderadas).
+- 5 vulnerabilidades altas: exigen Prisma 7 o Next 16. El 2026-11-25 el usuario **autorizó ambos saltos**; queda ejecutarlos y verificarlos. Tras #16 el total bajó de 20 a 18 (13 moderadas).
 - Dependabot actualizado el 2026-11-25: fusionados #15, #16, #4–#7 y #10 (todos con CI verde). Siguen abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas; #8 estaba cerrado. No se cierran sin decisión explícita.
-- OpenNext 1.20.16 evaluado: exige Next ≥15.5.29; #16 trae 1.20.17 + Next 15.5.29. No se acepta nada que requiera Next 16.
+- OpenNext 1.20.16 evaluado: exige Next ≥15.5.29; #16 trae 1.20.17 + Next 15.5.29. Con Next 16 autorizado hay que revisar la compatibilidad de OpenNext y el parche de WASM antes de subir.
 - [x] `ROADMAP.md` actualizado al recuento real: 215/215 ficheros y 1.344 trozos. Existe `npm run db:index-code -- --force` para repetir la indexación tras cambiar el chunker.
 - [x] Matiz de Fase 2 resuelto: PR recién abierto sin checks → `pending` + `checks_registered:false`; la auto-fusión espera.
 - [x] Fase 4: añadido `tests/integration/changelog.test.ts` para el SQL crudo (se omite sin `TEST_DATABASE_URL`). Siguen pendientes la ruta de embedding con cuota agotada y el solapamiento "nota" con el vault.
@@ -32,9 +32,9 @@ updated: 2026-11-24
 
 ## Señal de modelo
 
-- Acumular más trazas con veredicto real (`pilot:llm --ref=... --verdict=...`, `pilot:eval --all`).
-- [x] Dataset **ReAct/CoT** con held-out y early stopping listo para el **generador de tests** (6 ejemplos: 2 aprobados y 4 correcciones; 4 train / 2 valid estratificado). Ver [[Piloto/Trazas y evaluación]].
-- **No reabrir Fase 6** hasta tener veredictos y un dataset con held-out suficiente (el actual solo valida el formato).
+- [x] Acumular más trazas con veredicto real: 30 LLM sobre commits reales (21 aprobadas / 9 rechazadas; tests 7/16).
+- [x] Dataset **ReAct/CoT** con held-out, early stopping y auditoría listo para el **generador de tests** (16 ejemplos: 7 aprobados y 9 correcciones; 12 train / 4 valid). Ver [[Piloto/Trazas y evaluación]].
+- **No reabrir Fase 6** hasta tener un dataset mucho mayor (cientos/miles de ejemplos); los 16 actuales solo validan el formato y la puerta de calidad.
 
 ## Enlaces
 

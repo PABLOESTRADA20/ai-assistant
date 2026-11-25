@@ -7,13 +7,13 @@ updated: 2026-11-24
 # Estado actual
 
 > [!tip] Fecha de corte
-> 2026-11-24, con `main` en `93269a9` (merge del PR #24) y CI 3/3 en verde.
+> 2026-11-25, con `main` en `2bc43c6` (merge del PR #30) y CI 3/3 en verde.
 
 ## Repositorio
 
-- `main` en `93269a9` (merge del PR #24), árbol limpio, `origin/main` sincronizado. Antes pasó por `a835beb` (#23), `527137b` (#22) y `b795264` (#15); el build de escritorio se actualizó en `13d82c6`.
-- Las ramas ya fusionadas no se borran: `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7` y el resto siguen vivas.
-- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`, #22 → `527137b`, #23 → `a835beb`, #24 → `93269a9`. Ver [[Registro de PRs]].
+- `main` en `2bc43c6` (merge del PR #30), árbol limpio, `origin/main` sincronizado. Antes pasó por `41042bb` (#29), `fda75f9` (#28), `d0c2557` (#27) y `d3f64ea` (#26); el build de escritorio se actualizó en `13d82c6`.
+- Las ramas ya fusionadas no se borran: `feat/piloto-signal-quality`, `fix/audit-idempotente`, `feat/testgen-dataset`, `feat/oauth-fase7` y el resto siguen vivas.
+- PRs fusionados con **merge commit**: #3 → `59974dc`, #13 → `c1ea9e3`, #14 → `eb68f0b`, #17 → `c69e070`, #18 → `58250b7`, #19 → `3530f64`, #20 → `1e66de9`, #21 → `1ea90f0`, #16 → `af0032b`, #15 → `b795264`, #22 → `527137b`, #23 → `a835beb`, #24 → `93269a9`, #26 → `d3f64ea`, #27 → `d0c2557`, #28 → `fda75f9`, #29 → `41042bb`, #30 → `2bc43c6`. Ver [[Registro de PRs]].
 - Dependabot revisado: #15 y #16 fusionados con CI verde; #4–#7/#9–#12 quedan sin fusionar (saltos mayores superados o CI roja), #8 cerrado. Ver [[Pendientes]].
 
 ## Fases
@@ -44,23 +44,23 @@ updated: 2026-11-24
 
 ## Calidad
 
-- Última corrida local en `main` (`5f559e0`): `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**51 archivos / 532 tests**), `build` ✅.
-- CI de #22, #23, #24, #26 y #27: 3/3 checks en verde. #15, #16, #21 y los Dependabot #4–#7 y #10 también cerraron con 3/3.
+- Última corrida local en `main` (`2bc43c6`): `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**51 archivos / 538 tests**), `build` ✅.
+- CI de #22, #23, #24, #26–#30: 3/3 checks en verde. #15, #16, #21 y los Dependabot #4–#7 y #10 también cerraron con 3/3.
 - Variables usadas para validar: `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`.
-- Auditoría tras #10: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas), estable respecto de #16. Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**.
+- Auditoría tras #10: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas), estable respecto de #16. El 2026-11-25 se autorizaron explícitamente Prisma 7 y Next 16; la ejecución del salto queda pendiente.
 
 ## Datos y piloto
 
 - `data/lora/aria-chat.jsonl`: 15 turnos reales + 71 ejemplos sintéticos = 86 (ignorado por git).
-- `data/traces/pilot.jsonl`: 14 trazas (10 LLM, 2 demo, 2 sin `meta.mode`); `data/traces/eval.jsonl`: 14 registros de evaluación (últimos 10 = lote actual). Ver [[Piloto/Trazas y evaluación]].
-- Resultado del lote: 10 trazas LLM → **6 `ci-passed`, 4 `ci-failed`**; resúmenes 4/4, tests 2/6.
-- `data/lora/testgen-react/`: 6 ejemplos ReAct/CoT (2 aprobados + 4 correcciones), `4 train / 2 valid` por PR (estratificado), `manifest.json` con early stopping. Ignorado por git; ver [[Piloto/Trazas y evaluación]].
+- `data/traces/pilot.jsonl`: 34 trazas (30 LLM, 2 demo, 2 sin `meta.mode`); `data/traces/eval.jsonl`: 62 registros acumulados, se usa la última evaluación por traza. Ver [[Piloto/Trazas y evaluación]].
+- Resultado acumulado: 30 trazas LLM → **21 `ci-passed`, 9 `ci-failed`**; resúmenes 14/14, tests 7/16.
+- `data/lora/testgen-react/`: 16 ejemplos ReAct/CoT (7 aprobados + 9 correcciones), `12 train / 4 valid` por PR (estratificado), `manifest.json` con early stopping y auditoría limpia. Ignorado por git; ver [[Piloto/Trazas y evaluación]].
 
 ## Bloqueos
 
 - Fase 7 en vivo: faltan `GITHUB_TOKEN`, `GITLAB_TOKEN` y credenciales OAuth reales; el flujo OAuth ya está implementado y cubierto con mocks, pero no probado con apps reales.
 - Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp.
-- 5 vulnerabilidades altas pendientes de decisión (saltos mayores prohibidos).
+- 5 vulnerabilidades altas pendientes de aplicar los saltos ya autorizados (Prisma 7 / Next 16).
 - Dependabot abiertos excluidos por la versión acordada o CI roja: #9 (`react-dom`, CI roja), #11 (`@types/node` 26), #12 (Tailwind 4). No se cierran sin autorización.
 - Reindexación forzada no ejecutada aquí: sin Docker, `TEST_DATABASE_URL` ni cuota. El recuento vigente (215/215 y 1.344 trozos) ya está en `ROADMAP.md`; el comando es `npm run db:index-code -- --force`. Ver [[Pendientes]].
 
