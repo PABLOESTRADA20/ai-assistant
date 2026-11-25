@@ -11,7 +11,7 @@
  * El troceado (`chunkCode`) es puro: ni Postgres ni `node:fs`, para poder
  * testearlo (tests/unit/code-index.test.ts) y correrlo desde el script.
  */
-import { Prisma } from '../generated/prisma/wasm.js'
+import { Prisma } from '../generated/prisma/client'
 import { prisma } from './prisma'
 import { embed } from './llm-embed'
 import { normalizeLexical, orFuse } from './brain'

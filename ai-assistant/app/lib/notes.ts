@@ -1,5 +1,5 @@
 import { prisma } from '@/app/lib/prisma'
-import { Prisma } from '../generated/prisma/wasm.js'
+import { Prisma } from '../generated/prisma/client'
 
 /**
  * "Carpeta ARIA": notas guardadas en la nube.

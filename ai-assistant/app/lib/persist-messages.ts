@@ -1,6 +1,6 @@
 // app/lib/persist-messages.ts
 import { prisma } from '@/app/lib/prisma'
-import { Prisma } from '../generated/prisma/wasm.js'
+import { Prisma } from '../generated/prisma/client'
 
 /**
  * Un mensaje tal como llega por el PUT de conversaciones. `sources` y
@@ -50,9 +50,10 @@ export async function persistMessages(conversationId: string, messages: MessageI
 /**
  * Devuelve los mensajes con `sources`/`context` hidratados desde la BD.
  *
- * `prisma.conversation.findMany/findUnique` no selecciona esas columnas porque
- * el cliente WASM commiteado no las conoce; por eso se buscan por SQL crudo y
- * se mergean. Los mensajes sin extras se devuelven tal cual.
+ * El cliente Prisma 7 ya conoce `sources`/`context`, así que `findMany` puede
+ * traerlos a `null`. Se leen por SQL crudo para seguir hidratando en un solo
+ * sitio, y los nulos se eliminan para conservar la forma de respuesta anterior:
+ * los mensajes sin extras no incluyen esas claves.
  */
 export async function hydrateMessages<T extends { id: string }>(messages: T[]): Promise<T[]> {
   if (messages.length === 0) return messages
@@ -64,9 +65,11 @@ export async function hydrateMessages<T extends { id: string }>(messages: T[]): 
   return messages.map((m) => {
     const e = extras.get(m.id)
     if (!e) return m
-    const patch: Record<string, unknown> = {}
-    if (e.sources != null) patch.sources = e.sources
-    if (e.context != null) patch.context = e.context
-    return Object.keys(patch).length > 0 ? { ...m, ...patch } : m
+    const result: Record<string, unknown> = { ...m }
+    if (e.sources != null) result.sources = e.sources
+    else delete result.sources
+    if (e.context != null) result.context = e.context
+    else delete result.context
+    return result as T
   })
 }

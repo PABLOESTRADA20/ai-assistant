@@ -1,5 +1,5 @@
 import { prisma } from '@/app/lib/prisma'
-import { Prisma } from '../generated/prisma/wasm.js'
+import { Prisma } from '../generated/prisma/client'
 
 /**
  * Auditoría de cambios de datos (FASE 4).

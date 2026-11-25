@@ -38,8 +38,8 @@ function wasmModuleConvention(): Plugin {
  *
  * - `@/` se resuelve igual que en tsconfig para poder importar `@/app/lib/...`
  *   igual que hace el código de la app.
- * - El cliente Prisma (runtime cloudflare) importa `query_engine_bg.wasm?module`;
- *   el plugin de arriba lo resuelve para Node.
+ * - El cliente Prisma 7 (runtime cloudflare) importa
+ *   `query_compiler_fast_bg.wasm?module`; el plugin de arriba lo resuelve para Node.
  */
 export default defineConfig({
   plugins: [wasmModuleConvention()],

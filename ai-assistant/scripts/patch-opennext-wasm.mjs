@@ -8,7 +8,7 @@
  * pass then rewrites those relative imports to ABSOLUTE paths (pointing at
  * copied `.next` files that do not exist). This script:
  *
- *  1. Replaces every `import("<abs path>/query_engine_bg.wasm")` in
+ *  1. Replaces every `import("<abs path>/query_compiler_fast_bg.wasm")` in
  *     `handler.mjs` with a call to `__get_oe_wasm()`.
  *  2. Prepends a single top-level static `import` of the wasm file (relative to
  *     `handler.mjs`) plus the `__get_oe_wasm` helper, so wrangler bundles the
@@ -24,11 +24,11 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const serverDir = path.join(root, '.open-next', 'server-functions', 'default')
 const handlerPath = path.join(serverDir, 'handler.mjs')
-const sourceWasm = path.join(root, 'app', 'generated', 'prisma', 'query_engine_bg.wasm')
+const sourceWasm = path.join(root, 'app', 'generated', 'prisma', 'internal', 'query_compiler_fast_bg.wasm')
 
 const MARKER = '__get_oe_wasm'
 const REL_WASM_DIR = path.join('chunks', 'static', 'wasm')
-const WASM_NAME = 'query_engine_bg.wasm'
+const WASM_NAME = 'query_compiler_fast_bg.wasm'
 const REL_WASM = `${REL_WASM_DIR.replace(/\\/g, '/')}/${WASM_NAME}`
 
 function log(msg) {
@@ -53,8 +53,7 @@ if (handler.includes(MARKER)) {
   process.exit(0)
 }
 
-// eslint-disable-next-line no-useless-escape
-const importRe = /import\(\s*"([^"]*query_engine_bg\.wasm)"\s*\)/g
+const importRe = /import\(\s*"([^"]*query_compiler_fast_bg\.wasm(?:\?module)?)"\s*\)/g
 const matches = handler.match(importRe)
 if (!matches || matches.length === 0) {
   log('WARNING: no external wasm imports found in handler.mjs; nothing to patch!')
