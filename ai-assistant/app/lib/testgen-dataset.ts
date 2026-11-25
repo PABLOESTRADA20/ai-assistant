@@ -234,7 +234,7 @@ export function inventedSymbol(details: string | null): string | null {
   return match?.[1] ?? null
 }
 
-function assistantContent(trace: PilotTrace, evaluation: PilotEvalRecord): Cleaned {
+function assistantContent(trace: PilotTrace, evaluation: PilotEvalRecord, maxOutputChars: number): Cleaned {
   const reasons = evaluation.reasons.map((reason) => clean(reason).text).filter(Boolean)
   const reasonsText = reasons.slice(0, 4).map((reason) => clip(reason, 180)).join('; ')
   const rawDetails = clean(clip(evaluation.details ?? '', 320)).text
@@ -244,7 +244,7 @@ function assistantContent(trace: PilotTrace, evaluation: PilotEvalRecord): Clean
     (_match, name: string) => `${name} no existe en el cambio`,
   )
   const files = changedBases(trace).join(', ') || 'los archivos del cambio'
-  const rawOutput = sliceWindow(trace.output, 0, 8_000).content
+  const rawOutput = sliceWindow(trace.output, 0, maxOutputChars).content
   const output = clean(rawOutput).text
 
   const lines =
@@ -274,7 +274,7 @@ function assistantContent(trace: PilotTrace, evaluation: PilotEvalRecord): Clean
 
   const full = lines.join('\n')
   const cleaned = clean(full)
-  return { ...cleaned, text: clip(cleaned.text, 8_000) }
+  return { ...cleaned, text: clip(cleaned.text, maxOutputChars) }
 }
 
 /**
@@ -331,7 +331,7 @@ export function buildTestgenDataset(
 
     const group = groupOf(trace)
     const prompt = clean(sliceWindow(trace.prompt, 0, options.maxPromptChars).content)
-    const answer = assistantContent(trace, evaluation)
+    const answer = assistantContent(trace, evaluation, options.maxOutputChars)
     addClean(report, prompt)
     addClean(report, answer)
 
@@ -354,13 +354,59 @@ export function buildTestgenDataset(
 
   const groups = [...new Set(examples.map((example) => example.group))]
   report.groups = groups.length
-  if (groups.length > 1 && options.heldOutPercent > 0 && !examples.some((e) => e.split === 'valid')) {
-    const smallest = [...groups].sort((a, b) => bucketFor(a) - bucketFor(b))[0]
-    for (const example of examples) {
-      example.split = example.group === smallest ? 'valid' : 'train'
-    }
-    report.forcedHeldOut = true
+
+  const groupVerdicts = new Map<string, Set<TestgenVerdict>>()
+  for (const example of examples) {
+    const verdicts = groupVerdicts.get(example.group) ?? new Set<TestgenVerdict>()
+    verdicts.add(example.verdict)
+    groupVerdicts.set(example.group, verdicts)
   }
+
+  const sortedGroups = [...groups].sort(
+    (a, b) => bucketFor(a) - bucketFor(b) || a.localeCompare(b),
+  )
+  const desiredGroups =
+    options.heldOutPercent === 0
+      ? 0
+      : Math.max(1, Math.ceil((groups.length * options.heldOutPercent) / 100))
+  const verdictKinds = [...new Set(examples.map((example) => example.verdict))]
+  const heldOut = new Set(
+    options.heldOutPercent === 100
+      ? sortedGroups
+      : sortedGroups.filter((group) => bucketFor(group) < options.heldOutPercent),
+  )
+  const initialHeldOut = new Set(heldOut)
+
+  if (options.heldOutPercent > 0) {
+    for (const group of sortedGroups) {
+      if (heldOut.size >= desiredGroups) break
+      heldOut.add(group)
+    }
+
+    const coveredVerdicts = (): Set<TestgenVerdict> => {
+      const covered = new Set<TestgenVerdict>()
+      for (const group of heldOut) {
+        for (const verdict of groupVerdicts.get(group) ?? []) covered.add(verdict)
+      }
+      return covered
+    }
+    const cap = Math.min(groups.length, Math.max(desiredGroups, verdictKinds.length))
+    while (coveredVerdicts().size < verdictKinds.length && heldOut.size < cap) {
+      const missing = verdictKinds.filter((verdict) => !coveredVerdicts().has(verdict))
+      const candidate = sortedGroups.find(
+        (group) =>
+          !heldOut.has(group) &&
+          [...(groupVerdicts.get(group) ?? [])].some((verdict) => missing.includes(verdict)),
+      )
+      if (!candidate) break
+      heldOut.add(candidate)
+    }
+  }
+
+  for (const example of examples) {
+    example.split = heldOut.has(example.group) ? 'valid' : 'train'
+  }
+  report.forcedHeldOut = heldOut.size !== initialHeldOut.size
 
   report.examples = examples.length
   report.train = examples.filter((example) => example.split === 'train').length
