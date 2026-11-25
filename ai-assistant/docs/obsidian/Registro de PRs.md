@@ -31,10 +31,14 @@ Todos los PRs locales se fusionaron con **merge commit** y las ramas **no se eli
 | #28 | `docs/post-merge-27-deps` | `fda75f9` | Registro de #27, Dependabot y deuda restante; CI 3/3 |
 | #29 | `feat/piloto-signal-quality` | `41042bb` | Prompt anti-invención, auditoría del dataset y agrupación por archivos; CI 3/3 |
 | #30 | `fix/audit-idempotente` | `2bc43c6` | La auditoría de secretos compara texto, no conteo; CI 3/3 |
+| #31 | `docs/actualizacion-versiones-autorizacion` | `eccbcfe` | Documentación de la señal del piloto, autorización de Prisma 7/Next 16 y deuda; CI 3/3 |
+| #32 | `deps/prisma-7` | `25ab567` | Prisma 7.10.1 (cliente, adapters y config); auditoría 18 → 17; CI 3/3 |
+| #33 | `fix/prisma-generated-clean` | `4c0f9e4` | Regeneración limpia del cliente, imports a `generated/prisma/client`, WASM `query_compiler_fast_bg` y normalización de `sources`/`context` nulos; CI 3/3 |
+| #34 | `deps/next-16` | `8335183` | Next 16.4.6 + ESLint 9, webpack explícito, sin bandera de OpenNext; auditoría 17 → 10; CI 3/3 |
 
 ## Ramas remotas vivas
 
-`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `docs/post-merge-24`, `feat/testgen-dataset`, `fix/testgen-dataset-split`, `docs/post-merge-27-deps`, `feat/piloto-signal-quality`, `fix/audit-idempotente`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update), `dependabot/github_actions/actions/checkout-7`, `dependabot/github_actions/actions/setup-node-7`, `dependabot/github_actions/actions/setup-java-6`, `dependabot/github_actions/actions/upload-artifact-7`, `dependabot/npm_and_yarn/ai-assistant/dotenv-18.0.9`.
+`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `docs/post-merge-24`, `feat/testgen-dataset`, `fix/testgen-dataset-split`, `docs/post-merge-27-deps`, `feat/piloto-signal-quality`, `fix/audit-idempotente`, `docs/actualizacion-versiones-autorizacion`, `deps/prisma-7`, `fix/prisma-generated-clean`, `deps/next-16`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update), `dependabot/github_actions/actions/checkout-7`, `dependabot/github_actions/actions/setup-node-7`, `dependabot/github_actions/actions/setup-java-6`, `dependabot/github_actions/actions/upload-artifact-7`, `dependabot/npm_and_yarn/ai-assistant/dotenv-18.0.9`.
 
 ## Revisados sin fusionar
 
