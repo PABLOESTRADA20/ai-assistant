@@ -31,6 +31,7 @@
     "pilot:demo": "node --import tsx scripts/pilot-demo.ts",
     "pilot:llm": "node --import tsx scripts/pilot-llm.ts",
     "pilot:eval": "node --import tsx scripts/pilot-eval.ts",
+    "pilot:dataset": "node --import tsx scripts/build-testgen-dataset.ts",
     "icons": "node scripts/generate-icons.mjs",
     "lint": "next lint",
     "build:worker": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && node scripts/patch-opennext-wasm.mjs",

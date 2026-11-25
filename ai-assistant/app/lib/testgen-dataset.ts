@@ -403,3 +403,18 @@ export function buildTestgenDataset(
 export function serializeTestgenJsonl(examples: TestgenExample[]): string {
   return examples.map((example) => `${JSON.stringify({ messages: example.messages })}\n`).join('')
 }
+
+/** Parse tolerante a líneas vacías; cualquier línea rota se reporta con su número. */
+export function parseJsonl<T>(contents: string, source: string): T[] {
+  return contents
+    .split(/\r?\n/)
+    .map((line, index) => ({ line: line.trim(), number: index + 1 }))
+    .filter(({ line }) => Boolean(line))
+    .map(({ line, number }) => {
+      try {
+        return JSON.parse(line) as T
+      } catch {
+        throw new Error(`${source}:${number} no es JSON válido`)
+      }
+    })
+}

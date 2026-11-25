@@ -5,6 +5,7 @@ import {
   groupOf,
   hash32,
   inventedSymbol,
+  parseJsonl,
   parseOptions,
   serializeTestgenJsonl,
   TESTGEN_SYSTEM,
@@ -125,6 +126,14 @@ describe('parseOptions', () => {
     expect(() => parseOptions(['--held-out=101'])).toThrow(/0 y 100/)
     expect(() => parseOptions(['--patience=0'])).toThrow(/>= 1/)
     expect(() => parseOptions(['--min-delta=-1'])).toThrow(/negativo/)
+  })
+
+  it('parsea JSONL y señala la línea rota', () => {
+    expect(parseJsonl<{ id: string }>('{"id":"a"}\n\n{"id":"b"}\n', 'trazas.jsonl')).toEqual([
+      { id: 'a' },
+      { id: 'b' },
+    ])
+    expect(() => parseJsonl('{"id":"a"}\nroto\n', 'trazas.jsonl')).toThrow('trazas.jsonl:2')
   })
 })
 
