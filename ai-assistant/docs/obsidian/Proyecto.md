@@ -34,10 +34,10 @@ Repo: `PABLOESTRADA20/ai-assistant`. Usuario único (no multiusuario), confirmad
 
 ## Runtime
 
-- Next 15.5.28 + React 18 + Tailwind 3.4.x, empaquetado con OpenNext 1.20.6 para **workerd** (Cloudflare Workers).
-- Prisma 6.19.0 (SQL crudo donde el cliente generado no alcanza).
-- Vitest 5.0.3 con `maxWorkers: 4`.
-- El build se centralizó en `npm run build:worker` con `--dangerouslyUseUnsupportedNextVersion` y parche WASM. Detalles en [[Infraestructura]].
+- Next 16.4.6 + React 18.3.1 + Tailwind 3.4.x, empaquetado con OpenNext 1.20.17 para **workerd** (Cloudflare Workers).
+- Prisma 7.10.1 (cliente regenerado limpio; `client.ts` + `query_compiler_fast_bg.wasm`).
+- Vitest 5.1.0 con `maxWorkers: 4`; ESLint 9.39.5 con `eslint.config.mjs`.
+- El build se centralizó en `npm run build:worker` con parche WASM, sin bandera de versión. Detalles en [[Infraestructura]].
 
 ## Flujo de cambio seguro
 

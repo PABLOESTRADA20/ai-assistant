@@ -19,9 +19,9 @@ updated: 2026-11-24
 
 ## Deuda técnica
 
-- 5 vulnerabilidades altas: exigen Prisma 7 o Next 16. El 2026-11-25 el usuario **autorizó ambos saltos**; queda ejecutarlos y verificarlos. Tras #16 el total bajó de 20 a 18 (13 moderadas).
-- Dependabot actualizado el 2026-11-25: fusionados #15, #16, #4–#7 y #10 (todos con CI verde). Siguen abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas; #8 estaba cerrado. No se cierran sin decisión explícita.
-- OpenNext 1.20.16 evaluado: exige Next ≥15.5.29; #16 trae 1.20.17 + Next 15.5.29. Con Next 16 autorizado hay que revisar la compatibilidad de OpenNext y el parche de WASM antes de subir.
+- [x] Prisma 7 y Next 16 ejecutados el 2026-11-25 con autorización explícita (PR #32, #33 y salto de Next). La auditoría bajó de 18 a **10** avisos: 3 altas (`effect` → `@prisma/config` → `prisma`), 7 moderadas, 0 críticas. Prisma 8 RC sigue sin autorizarse.
+- Dependabot actualizado el 2026-11-25: fusionados #15, #16, #4–#7, #10, #32 y #33 (todos con CI verde). Siguen abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas; #8 estaba cerrado. No se cierran sin decisión explícita.
+- [x] OpenNext 1.20.17 admite Next 16.4.6 (`>=16.4.5`); se quitó `--dangerouslyUseUnsupportedNextVersion` y el parche de WASM sigue aplicando. `next dev/build` fuerzan webpack por el externalizado del WASM de Prisma.
 - [x] `ROADMAP.md` actualizado al recuento real: 215/215 ficheros y 1.344 trozos. Existe `npm run db:index-code -- --force` para repetir la indexación tras cambiar el chunker.
 - [x] Matiz de Fase 2 resuelto: PR recién abierto sin checks → `pending` + `checks_registered:false`; la auto-fusión espera.
 - [x] Fase 4: añadido `tests/integration/changelog.test.ts` para el SQL crudo (se omite sin `TEST_DATABASE_URL`). Siguen pendientes la ruta de embedding con cuota agotada y el solapamiento "nota" con el vault.
