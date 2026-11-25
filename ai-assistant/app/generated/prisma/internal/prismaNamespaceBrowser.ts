@@ -24,28 +24,30 @@ export const Decimal = runtime.Decimal
 
 
 export const NullTypes = {
-  DbNull: runtime.objectEnumValues.classes.DbNull as (new (secret: never) => typeof runtime.objectEnumValues.instances.DbNull),
-  JsonNull: runtime.objectEnumValues.classes.JsonNull as (new (secret: never) => typeof runtime.objectEnumValues.instances.JsonNull),
-  AnyNull: runtime.objectEnumValues.classes.AnyNull as (new (secret: never) => typeof runtime.objectEnumValues.instances.AnyNull),
+  DbNull: runtime.NullTypes.DbNull as (new (secret: never) => typeof runtime.DbNull),
+  JsonNull: runtime.NullTypes.JsonNull as (new (secret: never) => typeof runtime.JsonNull),
+  AnyNull: runtime.NullTypes.AnyNull as (new (secret: never) => typeof runtime.AnyNull),
 }
 /**
  * Helper for filtering JSON entries that have `null` on the database (empty on the db)
  *
  * @see https://www.prisma.io/docs/concepts/components/prisma-client/working-with-fields/working-with-json-fields#filtering-on-a-json-field
  */
-export const DbNull = runtime.objectEnumValues.instances.DbNull
+export const DbNull = runtime.DbNull
+
 /**
  * Helper for filtering JSON entries that have JSON `null` values (not empty on the db)
  *
  * @see https://www.prisma.io/docs/concepts/components/prisma-client/working-with-fields/working-with-json-fields#filtering-on-a-json-field
  */
-export const JsonNull = runtime.objectEnumValues.instances.JsonNull
+export const JsonNull = runtime.JsonNull
+
 /**
  * Helper for filtering JSON entries that are `Prisma.DbNull` or `Prisma.JsonNull`
  *
  * @see https://www.prisma.io/docs/concepts/components/prisma-client/working-with-fields/working-with-json-fields#filtering-on-a-json-field
  */
-export const AnyNull = runtime.objectEnumValues.instances.AnyNull
+export const AnyNull = runtime.AnyNull
 
 
 export const ModelName = {
@@ -54,8 +56,11 @@ export const ModelName = {
   VaultNote: 'VaultNote',
   Memory: 'Memory',
   SessionContext: 'SessionContext',
+  EmbeddingCache: 'EmbeddingCache',
   SystemPrompt: 'SystemPrompt',
-  Note: 'Note'
+  Note: 'Note',
+  CodeChunk: 'CodeChunk',
+  ChangeLog: 'ChangeLog'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -79,6 +84,7 @@ export const ConversationScalarFieldEnum = {
   title: 'title',
   model: 'model',
   summary: 'summary',
+  summarizedCount: 'summarizedCount',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -93,6 +99,8 @@ export const MessageScalarFieldEnum = {
   content: 'content',
   model: 'model',
   tools: 'tools',
+  sources: 'sources',
+  context: 'context',
   createdAt: 'createdAt'
 } as const
 
@@ -139,6 +147,15 @@ export const SessionContextScalarFieldEnum = {
 export type SessionContextScalarFieldEnum = (typeof SessionContextScalarFieldEnum)[keyof typeof SessionContextScalarFieldEnum]
 
 
+export const EmbeddingCacheScalarFieldEnum = {
+  hash: 'hash',
+  createdAt: 'createdAt',
+  usedAt: 'usedAt'
+} as const
+
+export type EmbeddingCacheScalarFieldEnum = (typeof EmbeddingCacheScalarFieldEnum)[keyof typeof EmbeddingCacheScalarFieldEnum]
+
+
 export const SystemPromptScalarFieldEnum = {
   id: 'id',
   role: 'role',
@@ -163,6 +180,40 @@ export const NoteScalarFieldEnum = {
 } as const
 
 export type NoteScalarFieldEnum = (typeof NoteScalarFieldEnum)[keyof typeof NoteScalarFieldEnum]
+
+
+export const CodeChunkScalarFieldEnum = {
+  id: 'id',
+  repo: 'repo',
+  path: 'path',
+  symbol: 'symbol',
+  kind: 'kind',
+  lang: 'lang',
+  startLine: 'startLine',
+  endLine: 'endLine',
+  content: 'content',
+  contentHash: 'contentHash',
+  fileHash: 'fileHash',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CodeChunkScalarFieldEnum = (typeof CodeChunkScalarFieldEnum)[keyof typeof CodeChunkScalarFieldEnum]
+
+
+export const ChangeLogScalarFieldEnum = {
+  id: 'id',
+  entity: 'entity',
+  entityId: 'entityId',
+  action: 'action',
+  before: 'before',
+  after: 'after',
+  actor: 'actor',
+  revertedAt: 'revertedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type ChangeLogScalarFieldEnum = (typeof ChangeLogScalarFieldEnum)[keyof typeof ChangeLogScalarFieldEnum]
 
 
 export const SortOrder = {

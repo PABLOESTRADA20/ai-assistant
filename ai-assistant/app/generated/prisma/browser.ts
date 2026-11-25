@@ -43,6 +43,11 @@ export type Memory = Prisma.MemoryModel
  */
 export type SessionContext = Prisma.SessionContextModel
 /**
+ * Model EmbeddingCache
+ * 
+ */
+export type EmbeddingCache = Prisma.EmbeddingCacheModel
+/**
  * Model SystemPrompt
  * 
  */
@@ -54,3 +59,28 @@ export type SystemPrompt = Prisma.SystemPromptModel
  * del PC, y así la carpeta está disponible igual desde el celular y el PC.
  */
 export type Note = Prisma.NoteModel
+/**
+ * Model CodeChunk
+ * Trozo de código indexado por significado (FASE 3).
+ * 
+ * Lo llena `scripts/index-code.ts` desde la PC (donde está el repo clonado);
+ * el Worker solo consulta con `search_code` y no puede leer el disco.
+ * 
+ * `fileHash` es el hash del fichero COMPLETO: si no cambió, el script cambió
+ * solo ese fichero y no gasta ni una llamada de embeddings (aceptación de la
+ * FASE 3: segunda ejecución sin cambios = cero llamadas).
+ */
+export type CodeChunk = Prisma.CodeChunkModel
+/**
+ * Model ChangeLog
+ * Auditoría de cambios de datos (FASE 4).
+ * 
+ * Registra cada modificación hecha por las herramientas `update_memory` /
+ * `update_cloud_note`: qué entidad y registro, el valor anterior completo
+ * (`before`) y el nuevo (`after`). Guardando `before`, un cambio es
+ * **reversible**: `revert_change` reaplica ese valor y marca `revertedAt`.
+ * 
+ * Se accede por SQL crudo (igual que `Note`): el cliente Prisma generado no
+ * incluye este modelo y regenerarlo arrastraría decenas de ficheros.
+ */
+export type ChangeLog = Prisma.ChangeLogModel

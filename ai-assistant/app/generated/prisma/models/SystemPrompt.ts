@@ -8,7 +8,7 @@
  *
  * 🟢 You can import this file directly.
  */
-import type * as runtime from "@prisma/client/runtime/wasm-engine-edge"
+import type * as runtime from "@prisma/client/runtime/wasm-compiler-edge"
 import type * as $Enums from "../enums"
 import type * as Prisma from "../internal/prismaNamespace"
 
@@ -161,7 +161,7 @@ export type SystemPromptGroupByOutputType = {
   _max: SystemPromptMaxAggregateOutputType | null
 }
 
-type GetSystemPromptGroupByPayload<T extends SystemPromptGroupByArgs> = Prisma.PrismaPromise<
+export type GetSystemPromptGroupByPayload<T extends SystemPromptGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SystemPromptGroupByOutputType, T['by']> &
       {
@@ -976,6 +976,11 @@ export type SystemPromptFindManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * Skip the first `n` SystemPrompts.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of SystemPrompts.
+   */
   distinct?: Prisma.SystemPromptScalarFieldEnum | Prisma.SystemPromptScalarFieldEnum[]
 }
 

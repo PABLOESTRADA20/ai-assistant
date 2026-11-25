@@ -8,7 +8,7 @@
  *
  * 🟢 You can import this file directly.
  */
-import type * as runtime from "@prisma/client/runtime/wasm-engine-edge"
+import type * as runtime from "@prisma/client/runtime/wasm-compiler-edge"
 import type * as $Enums from "../enums"
 import type * as Prisma from "../internal/prismaNamespace"
 
@@ -234,7 +234,7 @@ export type MemoryGroupByOutputType = {
   _max: MemoryMaxAggregateOutputType | null
 }
 
-type GetMemoryGroupByPayload<T extends MemoryGroupByArgs> = Prisma.PrismaPromise<
+export type GetMemoryGroupByPayload<T extends MemoryGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MemoryGroupByOutputType, T['by']> &
       {
@@ -1178,6 +1178,11 @@ export type MemoryFindManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
    * Skip the first `n` Memories.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Memories.
+   */
   distinct?: Prisma.MemoryScalarFieldEnum | Prisma.MemoryScalarFieldEnum[]
 }
 

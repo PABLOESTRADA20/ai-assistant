@@ -5,9 +5,9 @@ generator client {
   previewFeatures = ["postgresqlExtensions"]
 }
 
+// Prisma 7 lee la URL desde prisma.config.ts (DATABASE_URL_UNPOOLED/DATABASE_URL).
 datasource db {
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
   extensions = [vector]
 }
 
