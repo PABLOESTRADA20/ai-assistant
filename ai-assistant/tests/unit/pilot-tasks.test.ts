@@ -21,6 +21,8 @@ describe('buildTestGenerationPrompt', () => {
     expect(prompt).toContain('SYSTEM DE PRODUCCIÓN')
     expect(prompt).toContain(SYSTEM)
     expect(prompt).toContain('vi.mock')
+    expect(prompt).toContain('verifica que aparezca en el DIFF')
+    expect(prompt).toContain('No inventes nombres parecidos')
     expect(prompt).toContain('tests/unit/')
     expect(prompt).toContain('El path debe ser NUEVO')
     expect(prompt).toContain('Máximo 40 líneas')

@@ -14,6 +14,7 @@ import { resolve } from 'node:path'
 
 import type { PilotEvalRecord, PilotTrace } from '../app/lib/pilot-traces'
 import {
+  auditTestgenExamples,
   buildTestgenDataset,
   parseJsonl,
   parseOptions,
@@ -37,6 +38,10 @@ console.log(`Ejemplos ReAct/CoT: ${report.examples} (${report.byVerdict['ci-pass
 console.log(`Split por PR: ${report.train} train / ${report.valid} valid (${report.heldOutPercent}% held-out)`)
 console.log(`Grupos: ${report.groups}; redacciones: ${report.redactions}`)
 
+const audit = auditTestgenExamples(examples)
+console.log(`Auditoría: ${audit.length ? audit.join(', ') : 'sin incidencias'}`)
+if (audit.length > 0) throw new Error(`Dataset no apto para entrenamiento: ${audit.join(', ')}`)
+
 if (options.dryRun) {
   console.log('Modo --dry: no se escribió ningún archivo.')
 } else {
@@ -51,7 +56,7 @@ if (options.dryRun) {
   )
   writeFileSync(
     resolve(options.outDir, 'manifest.json'),
-    `${JSON.stringify({ ...manifest, generatedAt: new Date().toISOString() }, null, 2)}\n`,
+    `${JSON.stringify({ ...manifest, audit, generatedAt: new Date().toISOString() }, null, 2)}\n`,
   )
   console.log(`Escrito en ${options.outDir}: train.jsonl, valid.jsonl, manifest.json`)
 }

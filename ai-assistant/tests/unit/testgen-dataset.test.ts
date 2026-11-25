@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  auditTestgenExamples,
   buildTestgenDataset,
   bucketFor,
   groupOf,
@@ -9,7 +10,9 @@ import {
   parseOptions,
   serializeTestgenJsonl,
   TESTGEN_SYSTEM,
+  type TestgenExample,
   type TestgenOptions,
+  type TestgenSplit,
 } from '@/app/lib/testgen-dataset'
 import type { PilotEvalRecord, PilotTrace } from '@/app/lib/pilot-traces'
 
@@ -87,10 +90,13 @@ describe('helpers deterministas', () => {
     expect(bucketFor('ref-a')).toBeLessThan(100)
   })
 
-  it('el grupo es el PR de origen, no la traza', () => {
+  it('el grupo es el PR de origen, o el conjunto de archivos, nunca el repo', () => {
     const t = trace('t1', 'abc123')
     expect(groupOf(t)).toBe('ref:abc123')
-    expect(groupOf({ ...t, meta: {} })).toBe('repo:PABLOESTRADA20/ai-assistant')
+    expect(groupOf({ ...t, meta: {} })).toBe('trace:t1')
+    expect(groupOf({ ...t, meta: { changedFiles: ['b.ts', 'a.ts'] } })).toBe(
+      `files:${hash32('a.ts|b.ts').toString(16)}`,
+    )
   })
 
   it('extrae el símbolo inventado del log de vitest', () => {
@@ -245,5 +251,66 @@ describe('buildTestgenDataset', () => {
     const lines = serializeTestgenJsonl(examples).trim().split('\n')
     expect(lines).toHaveLength(examples.length)
     expect(Object.keys(JSON.parse(lines[0]))).toEqual(['messages'])
+  })
+})
+
+describe('auditTestgenExamples', () => {
+  it('acepta el dataset generado desde los fixtures', () => {
+    const { traces, evals } = fixtures()
+    const { examples } = buildTestgenDataset(traces, evals, opts())
+    expect(auditTestgenExamples(examples)).toEqual([])
+  })
+
+  it('rechaza un dataset vacío', () => {
+    expect(auditTestgenExamples([])).toEqual(['empty-dataset'])
+  })
+
+  it('detecta fuga de un mismo grupo entre splits', () => {
+    const { traces, evals } = fixtures()
+    const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 0 }))
+    const counts = new Map<string, number>()
+    for (const example of examples) counts.set(example.group, (counts.get(example.group) ?? 0) + 1)
+    const group = [...counts.entries()].find(([, total]) => total > 1)?.[0]
+    expect(group).toBeTruthy()
+    const firstId = examples.find((example) => example.group === group)!.id
+    const leak: TestgenExample[] = examples.map((example) => ({
+      ...example,
+      split:
+        example.group === group && example.id !== firstId
+          ? ('valid' as TestgenSplit)
+          : ('train' as TestgenSplit),
+    }))
+    expect(auditTestgenExamples(leak)).toContain('group-leak')
+  })
+
+  it('detecta secreto sin anonimizar, símbolo inventado y path fuera de tests/unit', () => {
+    const { traces, evals } = fixtures()
+    const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 0 }))
+    const bad: TestgenExample = {
+      ...examples[0],
+      messages: [
+        examples[0].messages[0],
+        examples[0].messages[1],
+        {
+          role: 'assistant',
+          content: 'gsk_abcdefghijklmnopqrstuvwx1234 evaluatePilot() ARCHIVO: ../mal.test.ts',
+        },
+      ],
+    }
+    const issues = auditTestgenExamples([bad])
+    expect(issues).toContain('unscrubbed-secret')
+    expect(issues).toContain('known-bad-symbol')
+    expect(issues).toContain('invalid-test-path')
+  })
+
+  it('pide veredictos en valid cuando existen ambos tipos', () => {
+    const { traces, evals } = fixtures()
+    const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 0 }))
+    const passedId = examples.find((example) => example.verdict === 'ci-passed')!.id
+    const forced: TestgenExample[] = examples.map((example) => ({
+      ...example,
+      split: example.id === passedId ? ('valid' as TestgenSplit) : ('train' as TestgenSplit),
+    }))
+    expect(auditTestgenExamples(forced)).toContain('missing-verdict-in-valid')
   })
 })
