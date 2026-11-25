@@ -35,7 +35,7 @@ El resumidor es consistente en formato (4/4), pero su rúbrica **no ejecuta cód
 
 `npm run pilot:dataset` une cada traza con su última evaluación y conserva solo propuestas de tests con veredicto. Los 2 casos `ci-passed` guardan el código aprobado; los 4 `ci-failed` guardan el razonamiento y la corrección, **sin repetir el código rechazado** (el fallo de #19 enseña a usar `evaluateTestProposal`, no `evaluatePilot`).
 
-El split no mezcla PRs: agrupa por `meta.ref`, usa un hash estable y reserva un grupo para `valid`. Resultado actual: **6 ejemplos**, `5 train / 1 valid`, 4 grupos, `early stopping` sobre `valid_loss` con `patience=2`. Archivos en `data/lora/testgen-react/` (ignorado); la fuente de verdad del formato está en [[Fuentes]] → `training/README.md`.
+El split no mezcla PRs: agrupa por `meta.ref`, usa un hash estable y estratifica `valid` para que tenga un aprobado y un fallo (elige el grupo pequeño que falta). Resultado actual: **6 ejemplos**, `4 train / 2 valid`, 4 grupos, `early stopping` sobre `valid_loss` con `patience=2`. Archivos en `data/lora/testgen-react/` (ignorado); la fuente de verdad del formato está en [[Fuentes]] → `training/README.md`.
 
 > [!danger] Fase 6 sigue cerrada
 > No se reentrena hasta tener veredictos y un dataset con held-out suficiente; los 6 ejemplos actuales solo validan el formato. Ver [[Fases/Fase 6]] y [[Pendientes]].
