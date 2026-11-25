@@ -22,7 +22,7 @@ jobs:
         working-directory: ./ai-assistant
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -84,7 +84,7 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:aria@localhost:5432/aria_test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -113,7 +113,7 @@ jobs:
         working-directory: ./ai-assistant
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
