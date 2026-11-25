@@ -37,9 +37,11 @@ npm run pilot:llm -- --live --model=qwen/qwen3.8-27b --max-tokens=900 --verdict=
 npm run pilot:llm -- --live --ref=3530f64 --verdict=ci-passed --retries=2
 npm run pilot:eval
 npm run pilot:eval -- --all
+npm run pilot:dataset -- --dry
+npm run pilot:dataset -- --held-out=20 --patience=2
 ```
 
-`--ref=` toma el diff de un commit contra su primer padre. `--retries=` reintenta 429/5xx. El modo real requiere `--live` y `GROQ_API_KEY`; revisa el diff antes de correrlo.
+`--ref=` toma el diff de un commit contra su primer padre. `--retries=` reintenta 429/5xx. El modo real requiere `--live` y `GROQ_API_KEY`; revisa el diff antes de correrlo. `pilot:dataset` escribe `train.jsonl`, `valid.jsonl` y `manifest.json` en `data/lora/testgen-react/` (ignorado por git); `--dry` solo imprime el informe.
 
 ## LoRA (histórico, no reactivar)
 

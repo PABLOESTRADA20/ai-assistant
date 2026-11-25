@@ -33,8 +33,8 @@ updated: 2026-11-24
 ## Señal de modelo
 
 - Acumular más trazas con veredicto real (`pilot:llm --ref=... --verdict=...`, `pilot:eval --all`).
-- Construir dataset **ReAct/CoT** con held-out y early stopping para el **generador de tests** (2/6 aprobados).
-- **No reabrir Fase 6** hasta tener veredictos y dataset con held-out.
+- [x] Dataset **ReAct/CoT** con held-out y early stopping listo para el **generador de tests** (6 ejemplos: 2 aprobados y 4 correcciones; 5 train / 1 valid). Ver [[Piloto/Trazas y evaluación]].
+- **No reabrir Fase 6** hasta tener veredictos y un dataset con held-out suficiente (el actual solo valida el formato).
 
 ## Enlaces
 

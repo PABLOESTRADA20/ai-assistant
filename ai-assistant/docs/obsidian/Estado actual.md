@@ -54,6 +54,7 @@ updated: 2026-11-24
 - `data/lora/aria-chat.jsonl`: 15 turnos reales + 71 ejemplos sintéticos = 86 (ignorado por git).
 - `data/traces/pilot.jsonl`: 14 trazas (10 LLM, 2 demo, 2 sin `meta.mode`); `data/traces/eval.jsonl`: 14 registros de evaluación (últimos 10 = lote actual). Ver [[Piloto/Trazas y evaluación]].
 - Resultado del lote: 10 trazas LLM → **6 `ci-passed`, 4 `ci-failed`**; resúmenes 4/4, tests 2/6.
+- `data/lora/testgen-react/`: 6 ejemplos ReAct/CoT (2 aprobados + 4 correcciones), `5 train / 1 valid` por PR, `manifest.json` con early stopping. Ignorado por git; ver [[Piloto/Trazas y evaluación]].
 
 ## Bloqueos
 
