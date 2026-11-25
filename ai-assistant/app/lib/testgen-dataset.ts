@@ -356,10 +356,12 @@ export function buildTestgenDataset(
   report.groups = groups.length
 
   const groupVerdicts = new Map<string, Set<TestgenVerdict>>()
+  const groupSizes = new Map<string, number>()
   for (const example of examples) {
     const verdicts = groupVerdicts.get(example.group) ?? new Set<TestgenVerdict>()
     verdicts.add(example.verdict)
     groupVerdicts.set(example.group, verdicts)
+    groupSizes.set(example.group, (groupSizes.get(example.group) ?? 0) + 1)
   }
 
   const sortedGroups = [...groups].sort(
@@ -393,11 +395,18 @@ export function buildTestgenDataset(
     const cap = Math.min(groups.length, Math.max(desiredGroups, verdictKinds.length))
     while (coveredVerdicts().size < verdictKinds.length && heldOut.size < cap) {
       const missing = verdictKinds.filter((verdict) => !coveredVerdicts().has(verdict))
-      const candidate = sortedGroups.find(
-        (group) =>
-          !heldOut.has(group) &&
-          [...(groupVerdicts.get(group) ?? [])].some((verdict) => missing.includes(verdict)),
-      )
+      const candidate = sortedGroups
+        .filter(
+          (group) =>
+            !heldOut.has(group) &&
+            [...(groupVerdicts.get(group) ?? [])].some((verdict) => missing.includes(verdict)),
+        )
+        .sort(
+          (a, b) =>
+            (groupSizes.get(a) ?? 0) - (groupSizes.get(b) ?? 0) ||
+            bucketFor(a) - bucketFor(b) ||
+            a.localeCompare(b),
+        )[0]
       if (!candidate) break
       heldOut.add(candidate)
     }

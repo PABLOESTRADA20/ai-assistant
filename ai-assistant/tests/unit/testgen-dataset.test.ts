@@ -188,6 +188,7 @@ describe('buildTestgenDataset', () => {
       examples.filter((example) => example.split === 'valid').map((example) => example.verdict),
     )
     expect(validVerdicts).toEqual(new Set(['ci-passed', 'ci-failed']))
+    expect(examples.filter((example) => example.split === 'valid').length).toBeLessThanOrEqual(3)
   })
 
   it('respeta maxOutputChars en la respuesta del asistente', () => {
