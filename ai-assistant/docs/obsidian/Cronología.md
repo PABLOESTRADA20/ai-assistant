@@ -69,6 +69,12 @@ updated: 2026-11-24
 - Fase 7: OAuth de GitHub/Google en código (sesiones firmadas, state anti-CSRF, lista blanca de un usuario y botones en el login) con tests mockeados. PR #24 fusionado en `93269a9` con CI 3/3; falta probarlo con credenciales reales; ver [[Fases/Fase 7]].
 - Dataset ReAct/CoT del generador de tests: 6 ejemplos con split por PR y early stopping, 4 fallos convertidos en correcciones; PR #26 fusionado en `d3f64ea`. Ajuste posterior: `valid` estratificado (4 train / 2 valid). Ver [[Piloto/Trazas y evaluación]]; Fase 6 sigue cerrada.
 
+## 2026-11-25 — cierre del dataset y deuda de dependencias
+
+- PR #27 fusionado en `d0c2557` con CI 3/3: `valid` estratificado (4 train / 2 valid, un aprobado y un fallo) y `--max-output-chars` aplicado de verdad; 532 tests en verde.
+- Dependabot #4–#7 (Actions) y #10 (dotenv 18) fusionados con CI 3/3. Quedan abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas.
+- Auditoría estable en 18 avisos (5 altas, 13 moderadas, 0 críticas); las altas siguen esperando una decisión sobre Prisma 7 / Next 16.
+
 ## Regla para futuras sesiones
 
 Al cerrar una sesión, añadir aquí una entrada corta y actualizar [[Estado actual]] + la nota de fase correspondiente.

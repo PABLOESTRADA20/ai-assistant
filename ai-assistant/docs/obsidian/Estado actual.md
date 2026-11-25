@@ -44,10 +44,10 @@ updated: 2026-11-24
 
 ## Calidad
 
-- Última corrida local (rama `feat/oauth-fase7`, ya en `main`): `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**50 archivos / 516 tests**), `build` ✅.
-- CI de #22, #23 y #24: 3/3 checks en verde (`Audit`, `Integration tests (Postgres)`, `Lint, typecheck, unit tests and build`). #15, #16 y #21 también cerraron con 3/3.
+- Última corrida local en `main` (`5f559e0`): `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**51 archivos / 532 tests**), `build` ✅.
+- CI de #22, #23, #24, #26 y #27: 3/3 checks en verde. #15, #16, #21 y los Dependabot #4–#7 y #10 también cerraron con 3/3.
 - Variables usadas para validar: `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`.
-- Auditoría tras #16: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas). Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**. Antes eran 20 (5 altas, 15 moderadas).
+- Auditoría tras #10: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas), estable respecto de #16. Las altas requieren Prisma 7 o Next 16 → saltos **excluidos sin autorización**.
 
 ## Datos y piloto
 
@@ -61,6 +61,7 @@ updated: 2026-11-24
 - Fase 7 en vivo: faltan `GITHUB_TOKEN`, `GITLAB_TOKEN` y credenciales OAuth reales; el flujo OAuth ya está implementado y cubierto con mocks, pero no probado con apps reales.
 - Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp.
 - 5 vulnerabilidades altas pendientes de decisión (saltos mayores prohibidos).
+- Dependabot abiertos excluidos por la versión acordada o CI roja: #9 (`react-dom`, CI roja), #11 (`@types/node` 26), #12 (Tailwind 4). No se cierran sin autorización.
 - Reindexación forzada no ejecutada aquí: sin Docker, `TEST_DATABASE_URL` ni cuota. El recuento vigente (215/215 y 1.344 trozos) ya está en `ROADMAP.md`; el comando es `npm run db:index-code -- --force`. Ver [[Pendientes]].
 
 ## Reglas operativas

@@ -1,7 +1,7 @@
 ﻿---
 title: ARIA — Registro de PRs
 tags: [aria, prs, git]
-updated: 2026-11-24
+updated: 2026-11-25
 ---
 
 # Registro de PRs
@@ -24,14 +24,18 @@ Todos los PRs locales se fusionaron con **merge commit** y las ramas **no se eli
 | #22 | `fix/general-errors` | `527137b` | 5 commits: WASM en dev/start, PR recién abierto vs. sin checks, test de integración de `ChangeLog`, `--force` y documentación; CI 3/3 |
 | #23 | `docs/post-merge-22` | `a835beb` | Ajuste documental tras #22 (ROADMAP, Obsidian y recuentos); CI 3/3 |
 | #24 | `feat/oauth-fase7` | `93269a9` | 4 commits: sesiones OAuth firmadas, rutas GitHub/Google, botones en el login y documentación; CI 3/3 |
+| #25 | `docs/post-merge-24` | `0a9d017` | Ajuste documental tras OAuth; CI 3/3 |
+| #26 | `feat/testgen-dataset` | `d3f64ea` | Dataset ReAct/CoT con split por PR, correcciones y early stopping; CI 3/3 |
+| #27 | `fix/testgen-dataset-split` | `d0c2557` | `valid` estratificado y `--max-output-chars` real; CI 3/3 |
+| #4–#7, #10 | `dependabot/…` | `2b35ecf`, `62b2e0d`, `c810171`, `139b9e5`, `5f559e0` | Actions 7/6 y dotenv 18; los cinco con CI 3/3 |
 
 ## Ramas remotas vivas
 
-`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `docs/post-merge-24`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update).
+`mejoras/endurecimiento`, `fix/kaggle-lora`, `docs/fase-6-lora-descartado`, `feat/piloto-trazas`, `feat/piloto-llm`, `feat/piloto-eval`, `feat/piloto-refs`, `docs/obsidian-vault`, `fix/general-errors`, `docs/post-merge-22`, `feat/oauth-fase7`, `docs/post-merge-24`, `feat/testgen-dataset`, `fix/testgen-dataset-split`, `docs/post-merge-27-deps`, `dependabot/github_actions/softprops/action-gh-release-3`, `dependabot/npm_and_yarn/ai-assistant/minor-and-patch-20893d2404` (forced update), `dependabot/github_actions/actions/checkout-7`, `dependabot/github_actions/actions/setup-node-7`, `dependabot/github_actions/actions/setup-java-6`, `dependabot/github_actions/actions/upload-artifact-7`, `dependabot/npm_and_yarn/ai-assistant/dotenv-18.0.9`.
 
 ## Revisados sin fusionar
 
-PRs de Dependabot **#4–#7, #9–#12** (saltos mayores ya superados o CI roja; #8 estaba cerrado). No se cierran ni se fusionan sin una decisión explícita. Ver [[Pendientes]].
+PRs de Dependabot **#9, #11, #12** (CI roja o versiones acordadas: React 18, `@types/node` 24.19.1 y Tailwind 3.4.x; #8 estaba cerrado). No se cierran sin una decisión explícita. Ver [[Pendientes]].
 
 ## Enlaces
 
