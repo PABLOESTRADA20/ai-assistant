@@ -510,7 +510,10 @@ export function auditTestgenExamples(examples: TestgenExample[]): TestgenAuditCo
 
     const answer = example.messages.find((message) => message.role === 'assistant')?.content ?? ''
     if (!answer.trim()) issues.add('empty-answer')
-    if (scrubText(answer).redactions > 0) issues.add('unscrubbed-secret')
+    // `scrubText` es idempotente en el texto: volver a aplicarlo a una ruta ya
+    // anonimizada cuenta una redacción pero no cambia nada. Solo nos interesa
+    // que el contenido *cambie*, porque eso significa que había dato sin limpiar.
+    if (scrubText(answer).text !== answer) issues.add('unscrubbed-secret')
     if (/\bevaluatePilot\s*\(/.test(answer)) issues.add('known-bad-symbol')
 
     const path = answer.match(/ARCHIVO:\s*(\S+\.test\.ts)/)?.[1]
