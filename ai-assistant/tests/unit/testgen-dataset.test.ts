@@ -181,6 +181,26 @@ describe('buildTestgenDataset', () => {
     expect(buildTestgenDataset(traces, evals, opts({ heldOutPercent: 100 })).report.train).toBe(0)
   })
 
+  it('estratifica el held-out para cubrir ambos veredictos cuando es posible', () => {
+    const { traces, evals } = fixtures()
+    const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 20 }))
+    const validVerdicts = new Set(
+      examples.filter((example) => example.split === 'valid').map((example) => example.verdict),
+    )
+    expect(validVerdicts).toEqual(new Set(['ci-passed', 'ci-failed']))
+    expect(examples.filter((example) => example.split === 'valid').length).toBeLessThanOrEqual(3)
+  })
+
+  it('respeta maxOutputChars en la respuesta del asistente', () => {
+    const longTrace = trace('long', 'ref-long', { output: 'x'.repeat(2_000) })
+    const { examples } = buildTestgenDataset(
+      [longTrace],
+      [evalRecord('long', 'ci-passed', '2026-11-25T00:00:00.000Z')],
+      opts({ heldOutPercent: 0, maxOutputChars: 300 }),
+    )
+    expect(examples[0].messages[2].content.length).toBeLessThanOrEqual(300)
+  })
+
   it('los ejemplos llevan ReAct y la corrección sin repetir código fallido', () => {
     const { traces, evals } = fixtures()
     const { examples } = buildTestgenDataset(traces, evals, opts({ heldOutPercent: 0 }))

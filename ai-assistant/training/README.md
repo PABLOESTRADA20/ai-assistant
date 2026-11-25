@@ -210,13 +210,17 @@ un chat con `system` (formato ReAct), `user` (prompt anonimizado del piloto) y `
 rechazado**: convierten el log de vitest en una corrección, para no premiar el error de #19.
 
 El split es por **grupo** (`meta.ref`, el PR de origen) con un hash FNV-1a estable: un mismo
-diff nunca aparece en `train` y `valid`. Se fuerza un grupo held-out si el hash no eligió
-ninguno. La salida es `data/lora/testgen-react/{train,valid,manifest}.jsonl` (ignorada por
-git); el manifest fija `earlyStopping: { monitor: "valid_loss", mode: "min", patience: 2,
-minDelta: 0.001 }`. Todo vuelve a pasar por `scrubText` y el informe cuenta las redacciones.
+diff nunca aparece en `train` y `valid`. El held-out se estratifica por veredicto: si con el
+20% configurado no aparecen ambos tipos, se añade el grupo pequeño que falta para que `valid`
+tenga al menos un `ci-passed` y un `ci-failed`. `--max-output-chars=` limita la respuesta
+guardada (por defecto 8.000). La salida es `data/lora/testgen-react/{train,valid}.jsonl` y
+`manifest.json` (ignorada por git); el manifest fija
+`earlyStopping: { monitor: "valid_loss", mode: "min", patience: 2, minDelta: 0.001 }`. Todo
+vuelve a pasar por `scrubText` y el informe cuenta las redacciones.
 
 Corrida actual sobre las trazas existentes: **6 ejemplos** (2 `ci-passed` / 4 `ci-failed`),
-4 grupos, `5 train / 1 valid` con 20% held-out y 2 rutas de usuario anonimizadas. Sigue siendo
+4 grupos, `4 train / 2 valid` con 20% held-out (un aprobado y un fallo en `valid`) y 2 rutas de
+usuario anonimizadas. Sigue siendo
 poco para entrenar; sirve para cerrar el formato y el protocolo de evaluación. La señal para
 decidir si se escala sigue siendo el generador de tests, no el resumidor (4/4 solo de formato).
 
