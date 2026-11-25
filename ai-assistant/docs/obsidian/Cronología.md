@@ -73,7 +73,9 @@ updated: 2026-11-24
 
 - PR #27 fusionado en `d0c2557` con CI 3/3: `valid` estratificado (4 train / 2 valid, un aprobado y un fallo) y `--max-output-chars` aplicado de verdad; 532 tests en verde.
 - Dependabot #4–#7 (Actions) y #10 (dotenv 18) fusionados con CI 3/3. Quedan abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas.
-- Auditoría estable en 18 avisos (5 altas, 13 moderadas, 0 críticas); las altas siguen esperando una decisión sobre Prisma 7 / Next 16.
+- Auditoría estable en 18 avisos (5 altas, 13 moderadas, 0 críticas). El usuario autorizó explícitamente Prisma 7 y Next 16; ejecución pendiente.
+- 20 trazas LLM nuevas sobre commits reales con la clave local; total 30 → 21 aprobadas / 9 rechazadas (tests 7/16, resúmenes 14/14).
+- PR #29 (`41042bb`) reforzó el prompt anti-invención y añadió la auditoría del dataset; PR #30 (`2bc43c6`) corrigió el falso positivo de rutas ya anonimizadas. Ambos con CI 3/3 y 538 tests en verde. Dataset final: 16 ejemplos, `12 train / 4 valid`, auditoría limpia.
 
 ## Regla para futuras sesiones
 

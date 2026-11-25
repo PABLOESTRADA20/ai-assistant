@@ -33,7 +33,7 @@ Tres checks: `Lint, typecheck, unit tests and build`, `Integration tests (Postgr
 
 ## Pendiente de infraestructura
 
-Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp. Auditoría: 20 vulnerabilidades (5 altas requieren Prisma 7 o Next 16, saltos excluidos). Ver [[Pendientes]].
+Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp. Auditoría: 18 vulnerabilidades (5 altas requieren Prisma 7 o Next 16, saltos autorizados el 2026-11-25 y pendientes de ejecutar). Ver [[Pendientes]].
 
 ## Enlaces
 

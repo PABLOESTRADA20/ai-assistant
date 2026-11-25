@@ -194,6 +194,8 @@ Los dos tests aprobados vinieron de los PRs `#17` y `#18`; el fallo del `#19` fu
 (4/4), pero su rúbrica no ejecuta código; el generador de tests es donde hay fallos medibles
 y es por ahí donde conviene construir el dataset con held-out.
 
+**Lote del 2026-11-25 (señal nueva):** 20 trazas LLM sobre 10 commits reales (`8d16a42`, `f434fc7`, `b4023f1`, `9b4bb71`, `f922590`, `a6e4a97`, `34fe287`, `7eee59a`, `a168fd3` y `ae80a18`) usando la clave ya presente en `.env.local`, sin imprimirla ni desplegar. Tras `pilot:eval`: **30 trazas → 21 `ci-passed` / 9 `ci-failed`**; por tarea, tests **7/16** y resúmenes **14/14**. El prompt de generación ahora pide verificar cada símbolo contra el diff antes de importarlo, pero el generador sigue siendo el cuello de botella; el resumidor mantiene 14/14 solo de formato.
+
 ### Dataset ReAct/CoT del generador de tests
 
 ```
@@ -209,20 +211,28 @@ un chat con `system` (formato ReAct), `user` (prompt anonimizado del piloto) y `
 (`Pensamiento:` / `Acción:` / `Observación:` / `Respuesta:`). Los fallos **no repiten el código
 rechazado**: convierten el log de vitest en una corrección, para no premiar el error de #19.
 
-El split es por **grupo** (`meta.ref`, el PR de origen) con un hash FNV-1a estable: un mismo
-diff nunca aparece en `train` y `valid`. El held-out se estratifica por veredicto: si con el
-20% configurado no aparecen ambos tipos, se añade el grupo pequeño que falta para que `valid`
-tenga al menos un `ci-passed` y un `ci-failed`. `--max-output-chars=` limita la respuesta
-guardada (por defecto 8.000). La salida es `data/lora/testgen-react/{train,valid}.jsonl` y
-`manifest.json` (ignorada por git); el manifest fija
-`earlyStopping: { monitor: "valid_loss", mode: "min", patience: 2, minDelta: 0.001 }`. Todo
-vuelve a pasar por `scrubText` y el informe cuenta las redacciones.
+El split es por **grupo**: `meta.ref` (el PR de origen), luego el hash FNV-1a del conjunto de
+`changedFiles` y, si no hay ninguno, la traza individual. Así un mismo diff nunca aparece en
+`train` y `valid`, pero las trazas sin PR no se agrupan todas bajo el repo. El held-out se
+estratifica por veredicto: si con el 20% configurado no aparecen ambos tipos, se añade el grupo
+pequeño que falta para que `valid` tenga al menos un `ci-passed` y un `ci-failed`.
+`--max-output-chars=` limita la respuesta guardada (por defecto 8.000). La salida es
+`data/lora/testgen-react/{train,valid}.jsonl` y `manifest.json` (ignorada por git); el manifest
+fija `earlyStopping: { monitor: "valid_loss", mode: "min", patience: 2, minDelta: 0.001 }`.
+Todo vuelve a pasar por `scrubText` y el informe cuenta las redacciones.
 
-Corrida actual sobre las trazas existentes: **6 ejemplos** (2 `ci-passed` / 4 `ci-failed`),
-4 grupos, `4 train / 2 valid` con 20% held-out (un aprobado y un fallo en `valid`) y 2 rutas de
-usuario anonimizadas. Sigue siendo
-poco para entrenar; sirve para cerrar el formato y el protocolo de evaluación. La señal para
-decidir si se escala sigue siendo el generador de tests, no el resumidor (4/4 solo de formato).
+Antes de escribir, `auditTestgenExamples` aplica la puerta de calidad: rechaza fuga de grupo
+entre splits, veredictos ausentes en `valid`, texto que cambia al re-scrubear (secreto sin
+limpiar), la llamada `evaluatePilot(` del fallo conocido y paths fuera de `tests/unit/`. El
+resultado se guarda en `manifest.audit` y el CLI falla si hay incidencias. La comprobación de
+secretos compara el texto antes y después: las rutas ya anonimizadas como `C:\Users\<usuario>`
+cuentan una redacción al re-scrubear, pero no cambian y por eso no se marcan.
+
+Corrida actual sobre las trazas existentes: **16 ejemplos** (7 `ci-passed` / 9 `ci-failed`),
+16 grupos, `12 train / 4 valid` con 20% held-out, 4 redacciones y auditoría sin incidencias.
+Sigue siendo poco para entrenar; sirve para cerrar el formato, la puerta de calidad y el
+protocolo de evaluación. La señal para decidir si se escala sigue siendo el generador de tests,
+no el resumidor (14/14 solo de formato).
 
 ## Si Kaggle se reinicia
 
