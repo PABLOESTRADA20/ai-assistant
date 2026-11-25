@@ -20,7 +20,7 @@ updated: 2026-11-24
 ## Deuda técnica
 
 - 5 vulnerabilidades altas: exigen Prisma 7 o Next 16 → **no se suben sin autorización**. Tras #16 el total bajó de 20 a 18 (13 moderadas).
-- Dependabot revisado el 2026-11-24: fusionados #15 y #16 (CI verde). #4–#7/#10/#11 son saltos mayores ya superados; #9 y #12 tienen CI roja; #8 estaba cerrado. No se cierran sin decisión explícita.
+- Dependabot actualizado el 2026-11-25: fusionados #15, #16, #4–#7 y #10 (todos con CI verde). Siguen abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas; #8 estaba cerrado. No se cierran sin decisión explícita.
 - OpenNext 1.20.16 evaluado: exige Next ≥15.5.29; #16 trae 1.20.17 + Next 15.5.29. No se acepta nada que requiera Next 16.
 - [x] `ROADMAP.md` actualizado al recuento real: 215/215 ficheros y 1.344 trozos. Existe `npm run db:index-code -- --force` para repetir la indexación tras cambiar el chunker.
 - [x] Matiz de Fase 2 resuelto: PR recién abierto sin checks → `pending` + `checks_registered:false`; la auto-fusión espera.
