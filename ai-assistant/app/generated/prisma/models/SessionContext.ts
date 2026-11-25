@@ -8,7 +8,7 @@
  *
  * 🟢 You can import this file directly.
  */
-import type * as runtime from "@prisma/client/runtime/wasm-engine-edge"
+import type * as runtime from "@prisma/client/runtime/wasm-compiler-edge"
 import type * as $Enums from "../enums"
 import type * as Prisma from "../internal/prismaNamespace"
 
@@ -161,7 +161,7 @@ export type SessionContextGroupByOutputType = {
   _max: SessionContextMaxAggregateOutputType | null
 }
 
-type GetSessionContextGroupByPayload<T extends SessionContextGroupByArgs> = Prisma.PrismaPromise<
+export type GetSessionContextGroupByPayload<T extends SessionContextGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SessionContextGroupByOutputType, T['by']> &
       {
@@ -976,6 +976,11 @@ export type SessionContextFindManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Skip the first `n` SessionContexts.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of SessionContexts.
+   */
   distinct?: Prisma.SessionContextScalarFieldEnum | Prisma.SessionContextScalarFieldEnum[]
 }
 

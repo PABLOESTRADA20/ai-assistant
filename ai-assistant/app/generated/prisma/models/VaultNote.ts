@@ -8,7 +8,7 @@
  *
  * 🟢 You can import this file directly.
  */
-import type * as runtime from "@prisma/client/runtime/wasm-engine-edge"
+import type * as runtime from "@prisma/client/runtime/wasm-compiler-edge"
 import type * as $Enums from "../enums"
 import type * as Prisma from "../internal/prismaNamespace"
 
@@ -158,7 +158,7 @@ export type VaultNoteGroupByOutputType = {
   _max: VaultNoteMaxAggregateOutputType | null
 }
 
-type GetVaultNoteGroupByPayload<T extends VaultNoteGroupByArgs> = Prisma.PrismaPromise<
+export type GetVaultNoteGroupByPayload<T extends VaultNoteGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<VaultNoteGroupByOutputType, T['by']> &
       {
@@ -954,6 +954,11 @@ export type VaultNoteFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Skip the first `n` VaultNotes.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of VaultNotes.
+   */
   distinct?: Prisma.VaultNoteScalarFieldEnum | Prisma.VaultNoteScalarFieldEnum[]
 }
 

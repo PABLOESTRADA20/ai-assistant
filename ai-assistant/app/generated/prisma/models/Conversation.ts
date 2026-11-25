@@ -8,7 +8,7 @@
  *
  * 🟢 You can import this file directly.
  */
-import type * as runtime from "@prisma/client/runtime/wasm-engine-edge"
+import type * as runtime from "@prisma/client/runtime/wasm-compiler-edge"
 import type * as $Enums from "../enums"
 import type * as Prisma from "../internal/prismaNamespace"
 
@@ -20,8 +20,18 @@ export type ConversationModel = runtime.Types.Result.DefaultSelection<Prisma.$Co
 
 export type AggregateConversation = {
   _count: ConversationCountAggregateOutputType | null
+  _avg: ConversationAvgAggregateOutputType | null
+  _sum: ConversationSumAggregateOutputType | null
   _min: ConversationMinAggregateOutputType | null
   _max: ConversationMaxAggregateOutputType | null
+}
+
+export type ConversationAvgAggregateOutputType = {
+  summarizedCount: number | null
+}
+
+export type ConversationSumAggregateOutputType = {
+  summarizedCount: number | null
 }
 
 export type ConversationMinAggregateOutputType = {
@@ -29,6 +39,7 @@ export type ConversationMinAggregateOutputType = {
   title: string | null
   model: string | null
   summary: string | null
+  summarizedCount: number | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -38,6 +49,7 @@ export type ConversationMaxAggregateOutputType = {
   title: string | null
   model: string | null
   summary: string | null
+  summarizedCount: number | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -47,17 +59,27 @@ export type ConversationCountAggregateOutputType = {
   title: number
   model: number
   summary: number
+  summarizedCount: number
   createdAt: number
   updatedAt: number
   _all: number
 }
 
 
+export type ConversationAvgAggregateInputType = {
+  summarizedCount?: true
+}
+
+export type ConversationSumAggregateInputType = {
+  summarizedCount?: true
+}
+
 export type ConversationMinAggregateInputType = {
   id?: true
   title?: true
   model?: true
   summary?: true
+  summarizedCount?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -67,6 +89,7 @@ export type ConversationMaxAggregateInputType = {
   title?: true
   model?: true
   summary?: true
+  summarizedCount?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -76,6 +99,7 @@ export type ConversationCountAggregateInputType = {
   title?: true
   model?: true
   summary?: true
+  summarizedCount?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -119,6 +143,18 @@ export type ConversationAggregateArgs<ExtArgs extends runtime.Types.Extensions.I
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
+   * Select which fields to average
+  **/
+  _avg?: ConversationAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
+   * Select which fields to sum
+  **/
+  _sum?: ConversationSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
    * Select which fields to find the minimum value
   **/
   _min?: ConversationMinAggregateInputType
@@ -149,6 +185,8 @@ export type ConversationGroupByArgs<ExtArgs extends runtime.Types.Extensions.Int
   take?: number
   skip?: number
   _count?: ConversationCountAggregateInputType | true
+  _avg?: ConversationAvgAggregateInputType
+  _sum?: ConversationSumAggregateInputType
   _min?: ConversationMinAggregateInputType
   _max?: ConversationMaxAggregateInputType
 }
@@ -158,14 +196,17 @@ export type ConversationGroupByOutputType = {
   title: string
   model: string
   summary: string | null
+  summarizedCount: number
   createdAt: Date
   updatedAt: Date
   _count: ConversationCountAggregateOutputType | null
+  _avg: ConversationAvgAggregateOutputType | null
+  _sum: ConversationSumAggregateOutputType | null
   _min: ConversationMinAggregateOutputType | null
   _max: ConversationMaxAggregateOutputType | null
 }
 
-type GetConversationGroupByPayload<T extends ConversationGroupByArgs> = Prisma.PrismaPromise<
+export type GetConversationGroupByPayload<T extends ConversationGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ConversationGroupByOutputType, T['by']> &
       {
@@ -188,6 +229,7 @@ export type ConversationWhereInput = {
   title?: Prisma.StringFilter<"Conversation"> | string
   model?: Prisma.StringFilter<"Conversation"> | string
   summary?: Prisma.StringNullableFilter<"Conversation"> | string | null
+  summarizedCount?: Prisma.IntFilter<"Conversation"> | number
   createdAt?: Prisma.DateTimeFilter<"Conversation"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Conversation"> | Date | string
   messages?: Prisma.MessageListRelationFilter
@@ -198,6 +240,7 @@ export type ConversationOrderByWithRelationInput = {
   title?: Prisma.SortOrder
   model?: Prisma.SortOrder
   summary?: Prisma.SortOrderInput | Prisma.SortOrder
+  summarizedCount?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   messages?: Prisma.MessageOrderByRelationAggregateInput
@@ -211,6 +254,7 @@ export type ConversationWhereUniqueInput = Prisma.AtLeast<{
   title?: Prisma.StringFilter<"Conversation"> | string
   model?: Prisma.StringFilter<"Conversation"> | string
   summary?: Prisma.StringNullableFilter<"Conversation"> | string | null
+  summarizedCount?: Prisma.IntFilter<"Conversation"> | number
   createdAt?: Prisma.DateTimeFilter<"Conversation"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Conversation"> | Date | string
   messages?: Prisma.MessageListRelationFilter
@@ -221,11 +265,14 @@ export type ConversationOrderByWithAggregationInput = {
   title?: Prisma.SortOrder
   model?: Prisma.SortOrder
   summary?: Prisma.SortOrderInput | Prisma.SortOrder
+  summarizedCount?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.ConversationCountOrderByAggregateInput
+  _avg?: Prisma.ConversationAvgOrderByAggregateInput
   _max?: Prisma.ConversationMaxOrderByAggregateInput
   _min?: Prisma.ConversationMinOrderByAggregateInput
+  _sum?: Prisma.ConversationSumOrderByAggregateInput
 }
 
 export type ConversationScalarWhereWithAggregatesInput = {
@@ -236,6 +283,7 @@ export type ConversationScalarWhereWithAggregatesInput = {
   title?: Prisma.StringWithAggregatesFilter<"Conversation"> | string
   model?: Prisma.StringWithAggregatesFilter<"Conversation"> | string
   summary?: Prisma.StringNullableWithAggregatesFilter<"Conversation"> | string | null
+  summarizedCount?: Prisma.IntWithAggregatesFilter<"Conversation"> | number
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Conversation"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Conversation"> | Date | string
 }
@@ -245,6 +293,7 @@ export type ConversationCreateInput = {
   title?: string
   model?: string
   summary?: string | null
+  summarizedCount?: number
   createdAt?: Date | string
   updatedAt?: Date | string
   messages?: Prisma.MessageCreateNestedManyWithoutConversationInput
@@ -255,6 +304,7 @@ export type ConversationUncheckedCreateInput = {
   title?: string
   model?: string
   summary?: string | null
+  summarizedCount?: number
   createdAt?: Date | string
   updatedAt?: Date | string
   messages?: Prisma.MessageUncheckedCreateNestedManyWithoutConversationInput
@@ -265,6 +315,7 @@ export type ConversationUpdateInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   model?: Prisma.StringFieldUpdateOperationsInput | string
   summary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  summarizedCount?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   messages?: Prisma.MessageUpdateManyWithoutConversationNestedInput
@@ -275,6 +326,7 @@ export type ConversationUncheckedUpdateInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   model?: Prisma.StringFieldUpdateOperationsInput | string
   summary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  summarizedCount?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   messages?: Prisma.MessageUncheckedUpdateManyWithoutConversationNestedInput
@@ -285,6 +337,7 @@ export type ConversationCreateManyInput = {
   title?: string
   model?: string
   summary?: string | null
+  summarizedCount?: number
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -294,6 +347,7 @@ export type ConversationUpdateManyMutationInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   model?: Prisma.StringFieldUpdateOperationsInput | string
   summary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  summarizedCount?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -303,6 +357,7 @@ export type ConversationUncheckedUpdateManyInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   model?: Prisma.StringFieldUpdateOperationsInput | string
   summary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  summarizedCount?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -312,8 +367,13 @@ export type ConversationCountOrderByAggregateInput = {
   title?: Prisma.SortOrder
   model?: Prisma.SortOrder
   summary?: Prisma.SortOrder
+  summarizedCount?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type ConversationAvgOrderByAggregateInput = {
+  summarizedCount?: Prisma.SortOrder
 }
 
 export type ConversationMaxOrderByAggregateInput = {
@@ -321,6 +381,7 @@ export type ConversationMaxOrderByAggregateInput = {
   title?: Prisma.SortOrder
   model?: Prisma.SortOrder
   summary?: Prisma.SortOrder
+  summarizedCount?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -330,8 +391,13 @@ export type ConversationMinOrderByAggregateInput = {
   title?: Prisma.SortOrder
   model?: Prisma.SortOrder
   summary?: Prisma.SortOrder
+  summarizedCount?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type ConversationSumOrderByAggregateInput = {
+  summarizedCount?: Prisma.SortOrder
 }
 
 export type ConversationScalarRelationFilter = {
@@ -345,6 +411,14 @@ export type StringFieldUpdateOperationsInput = {
 
 export type NullableStringFieldUpdateOperationsInput = {
   set?: string | null
+}
+
+export type IntFieldUpdateOperationsInput = {
+  set?: number
+  increment?: number
+  decrement?: number
+  multiply?: number
+  divide?: number
 }
 
 export type DateTimeFieldUpdateOperationsInput = {
@@ -370,6 +444,7 @@ export type ConversationCreateWithoutMessagesInput = {
   title?: string
   model?: string
   summary?: string | null
+  summarizedCount?: number
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -379,6 +454,7 @@ export type ConversationUncheckedCreateWithoutMessagesInput = {
   title?: string
   model?: string
   summary?: string | null
+  summarizedCount?: number
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -404,6 +480,7 @@ export type ConversationUpdateWithoutMessagesInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   model?: Prisma.StringFieldUpdateOperationsInput | string
   summary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  summarizedCount?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -413,6 +490,7 @@ export type ConversationUncheckedUpdateWithoutMessagesInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   model?: Prisma.StringFieldUpdateOperationsInput | string
   summary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  summarizedCount?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -453,6 +531,7 @@ export type ConversationSelect<ExtArgs extends runtime.Types.Extensions.Internal
   title?: boolean
   model?: boolean
   summary?: boolean
+  summarizedCount?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   messages?: boolean | Prisma.Conversation$messagesArgs<ExtArgs>
@@ -464,6 +543,7 @@ export type ConversationSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   title?: boolean
   model?: boolean
   summary?: boolean
+  summarizedCount?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["conversation"]>
@@ -473,6 +553,7 @@ export type ConversationSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   title?: boolean
   model?: boolean
   summary?: boolean
+  summarizedCount?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["conversation"]>
@@ -482,11 +563,12 @@ export type ConversationSelectScalar = {
   title?: boolean
   model?: boolean
   summary?: boolean
+  summarizedCount?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type ConversationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "title" | "model" | "summary" | "createdAt" | "updatedAt", ExtArgs["result"]["conversation"]>
+export type ConversationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "title" | "model" | "summary" | "summarizedCount" | "createdAt" | "updatedAt", ExtArgs["result"]["conversation"]>
 export type ConversationInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   messages?: boolean | Prisma.Conversation$messagesArgs<ExtArgs>
   _count?: boolean | Prisma.ConversationCountOutputTypeDefaultArgs<ExtArgs>
@@ -504,6 +586,10 @@ export type $ConversationPayload<ExtArgs extends runtime.Types.Extensions.Intern
     title: string
     model: string
     summary: string | null
+    /**
+     * Nº de mensajes iniciales ya plegados en `summary` (compactación incremental).
+     */
+    summarizedCount: number
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["conversation"]>
@@ -934,6 +1020,7 @@ export interface ConversationFieldRefs {
   readonly title: Prisma.FieldRef<"Conversation", 'String'>
   readonly model: Prisma.FieldRef<"Conversation", 'String'>
   readonly summary: Prisma.FieldRef<"Conversation", 'String'>
+  readonly summarizedCount: Prisma.FieldRef<"Conversation", 'Int'>
   readonly createdAt: Prisma.FieldRef<"Conversation", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Conversation", 'DateTime'>
 }
@@ -1132,6 +1219,11 @@ export type ConversationFindManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * Skip the first `n` Conversations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Conversations.
+   */
   distinct?: Prisma.ConversationScalarFieldEnum | Prisma.ConversationScalarFieldEnum[]
 }
 

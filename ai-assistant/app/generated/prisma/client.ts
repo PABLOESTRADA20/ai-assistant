@@ -6,13 +6,13 @@
 /*
  * This file should be your main import to use Prisma. Through it you get access to all the models, enums, and input types.
  * If you're looking for something you can import in the client-side of your application, please refer to the `browser.ts` file instead.
- * 
+ *
  * 🟢 You can import this file directly.
  */
 
 globalThis['__dirname'] = '/'
 
-import * as runtime from "@prisma/client/runtime/wasm-engine-edge"
+import * as runtime from "@prisma/client/runtime/wasm-compiler-edge"
 import * as $Enums from "./enums"
 import * as $Class from "./internal/class"
 import * as Prisma from "./internal/prismaNamespace"
@@ -25,18 +25,18 @@ export * from "./enums"
  * Type-safe database client for TypeScript
  * @example
  * ```
- * const prisma = new PrismaClient()
+ * const prisma = new PrismaClient({
+ *   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL })
+ * })
  * // Fetch zero or more Conversations
  * const conversations = await prisma.conversation.findMany()
  * ```
  * 
- * Read more in our [docs](https://www.prisma.io/docs/reference/tools-and-interfaces/prisma-client).
+ * Read more in our [docs](https://pris.ly/d/client).
  */
-export const PrismaClient = $Class.getPrismaClientClass(__dirname)
+export const PrismaClient = $Class.getPrismaClientClass()
 export type PrismaClient<LogOpts extends Prisma.LogLevel = never, OmitOpts extends Prisma.PrismaClientOptions["omit"] = Prisma.PrismaClientOptions["omit"], ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = $Class.PrismaClient<LogOpts, OmitOpts, ExtArgs>
 export { Prisma }
-
-
 
 /**
  * Model Conversation
@@ -64,6 +64,11 @@ export type Memory = Prisma.MemoryModel
  */
 export type SessionContext = Prisma.SessionContextModel
 /**
+ * Model EmbeddingCache
+ * 
+ */
+export type EmbeddingCache = Prisma.EmbeddingCacheModel
+/**
  * Model SystemPrompt
  * 
  */
@@ -75,3 +80,28 @@ export type SystemPrompt = Prisma.SystemPromptModel
  * del PC, y así la carpeta está disponible igual desde el celular y el PC.
  */
 export type Note = Prisma.NoteModel
+/**
+ * Model CodeChunk
+ * Trozo de código indexado por significado (FASE 3).
+ * 
+ * Lo llena `scripts/index-code.ts` desde la PC (donde está el repo clonado);
+ * el Worker solo consulta con `search_code` y no puede leer el disco.
+ * 
+ * `fileHash` es el hash del fichero COMPLETO: si no cambió, el script cambió
+ * solo ese fichero y no gasta ni una llamada de embeddings (aceptación de la
+ * FASE 3: segunda ejecución sin cambios = cero llamadas).
+ */
+export type CodeChunk = Prisma.CodeChunkModel
+/**
+ * Model ChangeLog
+ * Auditoría de cambios de datos (FASE 4).
+ * 
+ * Registra cada modificación hecha por las herramientas `update_memory` /
+ * `update_cloud_note`: qué entidad y registro, el valor anterior completo
+ * (`before`) y el nuevo (`after`). Guardando `before`, un cambio es
+ * **reversible**: `revert_change` reaplica ese valor y marca `revertedAt`.
+ * 
+ * Se accede por SQL crudo (igual que `Note`): el cliente Prisma generado no
+ * incluye este modelo y regenerarlo arrastraría decenas de ficheros.
+ */
+export type ChangeLog = Prisma.ChangeLogModel
