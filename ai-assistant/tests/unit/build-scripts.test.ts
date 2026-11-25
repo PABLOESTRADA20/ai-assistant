@@ -16,10 +16,10 @@ const deployWorkflow = readFileSync(
 )
 
 describe('scripts de build para Workers', () => {
-  it('centraliza el build de OpenNext en build:worker con la bandera de versión', () => {
+  it('centraliza el build de OpenNext en build:worker sin banderas de versión', () => {
     const build = packageJson.scripts['build:worker']
     expect(build).toBeDefined()
-    expect(build).toContain('--dangerouslyUseUnsupportedNextVersion')
+    expect(build).not.toContain('--dangerouslyUseUnsupportedNextVersion')
     expect(build).toContain('scripts/patch-opennext-wasm.mjs')
   })
 

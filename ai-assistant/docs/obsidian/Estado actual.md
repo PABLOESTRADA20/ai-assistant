@@ -44,10 +44,10 @@ updated: 2026-11-24
 
 ## Calidad
 
-- Última corrida local en `main` (`2bc43c6`): `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**51 archivos / 538 tests**), `build` ✅.
-- CI de #22, #23, #24, #26–#30: 3/3 checks en verde. #15, #16, #21 y los Dependabot #4–#7 y #10 también cerraron con 3/3.
+- Última corrida local: `lint` ✅, `typecheck` ✅, `test:unit` ✅ (**52 archivos / 542 tests**), `build` ✅ y `build:worker` ✅ (16 imports WASM parcheados).
+- CI de #22, #23, #24, #26–#33: 3/3 checks en verde. #15, #16, #21 y los Dependabot #4–#7 y #10 también cerraron con 3/3.
 - Variables usadas para validar: `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`.
-- Auditoría tras #10: **18 vulnerabilidades** (5 altas, 13 moderadas, 0 críticas), estable respecto de #16. El 2026-11-25 se autorizaron explícitamente Prisma 7 y Next 16; la ejecución del salto queda pendiente.
+- Auditoría tras Prisma 7 + Next 16: **10 vulnerabilidades** (3 altas de `effect` vía `@prisma/config`, 7 moderadas, 0 críticas). Antes era 18 (5 altas). Prisma 8 RC no está autorizado.
 
 ## Datos y piloto
 

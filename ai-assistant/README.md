@@ -5,7 +5,7 @@ Asistente de IA conversacional con Next.js 15, React, TypeScript, Tailwind CSS, 
 ## Stack
 
 - **Frontend**: Next.js 15, React 18, Tailwind CSS 3, TypeScript
-- **Backend**: Next.js API Routes, Prisma 6.19 ORM
+- **Backend**: Next.js API Routes, Prisma 7.10 ORM
 - **Base de datos**: Neon (PostgreSQL serverless) + pgvector (búsqueda semántica por embeddings)
 - **IA**: Groq (`gpt-oss-120b`, `qwen3.8-27b`, `gpt-oss-20b`) + **DeepSeek R1 32B gratis** vía Cloudflare Workers AI
 - **Embeddings**: Cloudflare Workers AI `@cf/baai/bge-m3` (1024 dims), mismo modelo en local y en producción
@@ -365,7 +365,7 @@ La BD vive en Neon (serverless); la app se despliega como Worker con `@opennextj
 
 El pipeline: `prisma migrate deploy` (Neon) → `npm run build:worker` → `wrangler deploy` → `wrangler secret put` de los secrets configurados.
 
-`build:worker` usa `--dangerouslyUseUnsupportedNextVersion` porque OpenNext 1.20.6 todavía no reconoce Next 15.5.28; el build verificado funciona con esa bandera. Cuando OpenNext publique soporte para esta versión, hay que quitarla (y actualizar ambos scripts).
+`build:worker` ya no necesita `--dangerouslyUseUnsupportedNextVersion`: OpenNext 1.20.17 admite Next 16.4.6. Next 16 usa webpack de forma explícita (`next build --webpack` / `next dev --webpack`) porque `next.config.js` externaliza el WASM de Prisma; `npm run lint` invoca directamente la CLI de ESLint 9 con `eslint.config.mjs`. React sigue en 18 (Next 16 lo admite con aviso de deprecación para Next 17).
 
 Pruebas locales del mismo entorno: `npm run preview` (Worker en workerd).
 

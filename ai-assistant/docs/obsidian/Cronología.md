@@ -73,7 +73,9 @@ updated: 2026-11-24
 
 - PR #27 fusionado en `d0c2557` con CI 3/3: `valid` estratificado (4 train / 2 valid, un aprobado y un fallo) y `--max-output-chars` aplicado de verdad; 532 tests en verde.
 - Dependabot #4–#7 (Actions) y #10 (dotenv 18) fusionados con CI 3/3. Quedan abiertos #9 (CI roja), #11 (`@types/node` 26) y #12 (Tailwind 4), excluidos por las versiones acordadas.
-- Auditoría estable en 18 avisos (5 altas, 13 moderadas, 0 críticas). El usuario autorizó explícitamente Prisma 7 y Next 16; ejecución pendiente.
+- Auditoría previa: 18 avisos (5 altas, 13 moderadas, 0 críticas). El usuario autorizó explícitamente Prisma 7 y Next 16; ambos saltos se ejecutaron el mismo día.
+- PR #32 (`25ab567`) subió Prisma a 7.10.1 (17 avisos, 4 altas). PR #33 (`4c0f9e4`) regeneró el cliente desde cero: desapareció `wasm.js`/`query_engine_bg.wasm`, los imports pasaron a `generated/prisma/client` y el parche de WASM reescribe `query_compiler_fast_bg.wasm?module` (16 imports). Ambos con CI 3/3.
+- Salto a Next 16.4.6 con ESLint 9 y webpack explícito: `next lint` desapareció, se migró a `eslint.config.mjs`, React 18 se mantiene (aviso de deprecación para Next 17) y OpenNext 1.20.17 sigue sirviendo sin bandera. Auditoría final: 10 avisos (3 altas de `effect` vía `@prisma/config`, 7 moderadas, 0 críticas).
 - 20 trazas LLM nuevas sobre commits reales con la clave local; total 30 → 21 aprobadas / 9 rechazadas (tests 7/16, resúmenes 14/14).
 - PR #29 (`41042bb`) reforzó el prompt anti-invención y añadió la auditoría del dataset; PR #30 (`2bc43c6`) corrigió el falso positivo de rutas ya anonimizadas. Ambos con CI 3/3 y 538 tests en verde. Dataset final: 16 ejemplos, `12 train / 4 valid`, auditoría limpia.
 

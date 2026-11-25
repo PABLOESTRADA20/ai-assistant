@@ -8,17 +8,17 @@ updated: 2026-11-23
 
 ## Stack
 
-Next 15.5.28 · React 18 · Tailwind 3.4.x · Prisma 6.19.0 · OpenNext 1.20.6 · wrangler 4.158.0 · Vitest 5.0.3 · @types/node 24.19.1.
+Next 16.4.6 · React 18.3.1 · Tailwind 3.4.x · Prisma 7.10.1 · OpenNext 1.20.17 · wrangler 4.164.0 · Vitest 5.1.0 · ESLint 9.39.5 · @types/node 24.19.1.
 
 ## Runtime y build
 
 - Producción corre en **workerd** (Cloudflare Workers). `npm run preview` usa el mismo runtime; con Prisma 7 el módulo es `query_compiler_fast_bg.wasm`, y `next dev`/`next start` siguen sin resolverse fuera de workerd.
-- `npm run build:worker` centraliza el build de OpenNext, con `--dangerouslyUseUnsupportedNextVersion` y el parche WASM. No hace falta pasar la bandera a mano.
+- `npm run build:worker` centraliza el build de OpenNext y el parche WASM (16 imports); ya no hace falta `--dangerouslyUseUnsupportedNextVersion`. `next dev`/`next build` usan `--webpack` porque `next.config.js` externaliza el WASM, y `npm run lint` usa la CLI de ESLint 9.
 - Auth en producción falla cerrada si falta `ARIA_ACCESS_TOKEN`.
 
 ## CI
 
-Tres checks: `Lint, typecheck, unit tests and build`, `Integration tests (Postgres)` y `Audit (no bloqueante)`. Validaciones locales con `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`. Última corrida: 46 archivos / 461 tests, todo en verde.
+Tres checks: `Lint, typecheck, unit tests and build`, `Integration tests (Postgres)` y `Audit (no bloqueante)`. Validaciones locales con `DATABASE_URL=postgres://ci:ci@localhost:5432/ci` y `GROQ_API_KEY=x`. Última corrida local: 52 archivos / 542 tests en verde; `build:worker` parchea los 16 imports WASM y compila el Worker.
 
 ## Variables de entorno (solo nombres, nunca valores)
 
@@ -33,7 +33,7 @@ Tres checks: `Lint, typecheck, unit tests and build`, `Integration tests (Postgr
 
 ## Pendiente de infraestructura
 
-Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp. Auditoría: 18 vulnerabilidades (5 altas requieren Prisma 7 o Next 16, saltos autorizados el 2026-11-25 y pendientes de ejecutar). Ver [[Pendientes]].
+Sin verificación real del deploy en Cloudflare ni del webhook de Meta/WhatsApp; `npm run preview` tampoco se pudo abrir aquí porque OpenNext pide sesión de Cloudflare. Auditoría tras Prisma 7 + Next 16: **10 vulnerabilidades** (3 altas de `effect` vía `@prisma/config`, 7 moderadas, 0 críticas). Ver [[Pendientes]].
 
 ## Enlaces
 
